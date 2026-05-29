@@ -34,8 +34,13 @@ namespace PresentationLayer
                     options.SaveTokens = false;
                 });
             builder.Services.AddSingleton<DataAccessLayer.IKnowledgeRepository>(_ =>
-                new DataAccessLayer.JsonKnowledgeRepository(
-                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "rag-store.json")));
+            {
+                var repository = new DataAccessLayer.Repositories.SqlKnowledgeRepository(
+                    builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty);
+                repository.ImportFromJsonIfEmptyAsync(
+                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "rag-store.json")).GetAwaiter().GetResult();
+                return repository;
+            });
             builder.Services.AddSingleton<PresentationLayer.Services.IUserAccountStore>(_ =>
                 new PresentationLayer.Services.UserAccountStore(
                     Path.Combine(builder.Environment.ContentRootPath, "App_Data", "users.json")));
@@ -87,6 +92,7 @@ namespace PresentationLayer
             builder.Services.AddScoped<ServicesLayer.IRagChatService, ServicesLayer.RagChatService>();
 
             var app = builder.Build();
+            _ = app.Services.GetRequiredService<DataAccessLayer.IKnowledgeRepository>();
 
             if (!app.Environment.IsDevelopment())
             {

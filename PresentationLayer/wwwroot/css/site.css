@@ -2571,7 +2571,7 @@ body.chat-body .navbar {
 
 .chat-empty-state {
   margin: 0 0 8px;
-  padding: 18px;
+  padding: 14px;
   border-color: #d9e7f4;
   background: #ffffff;
   box-shadow: 0 12px 30px rgba(17, 33, 55, 0.05);
@@ -2579,79 +2579,94 @@ body.chat-body .navbar {
 
 .suggestion-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .suggestion-chip {
-  min-height: 44px;
+  min-height: 34px;
+  padding: 8px 11px;
   border-color: #d6e4f2;
-  border-radius: 12px;
+  border-radius: 10px;
   color: #123253;
+  font-size: 0.82rem;
+  line-height: 1.25;
 }
 
 .codex-chat-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 14px 18px 18px;
+  gap: 8px;
+  padding: 8px 12px 10px;
   border-top: 1px solid #d9e7f4;
   background: #ffffff;
 }
 
 .chat-related-strip {
   grid-column: 1 / -1;
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
 }
 
 .chat-related-strip > span {
+  flex: 0 0 auto;
   color: #66788f;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0;
+  line-height: 1;
 }
 
 .chat-related-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
   max-height: none;
-  overflow: visible;
-  padding: 0 2px 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 2px 4px 0;
+  scrollbar-width: thin;
 }
 
 .related-question-chip {
-  flex: 0 1 auto;
-  max-width: min(430px, 100%);
-  min-height: 36px;
+  flex: 0 0 auto;
+  max-width: min(310px, 72vw);
+  min-height: 26px;
+  padding: 4px 10px;
   border-color: #c9dff2;
   border-radius: 999px;
   background: #f7fbff;
   color: #075f9e;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   line-height: 1.25;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .codex-chat-form textarea {
-  min-height: 68px;
-  max-height: 130px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 96px;
+  padding: 9px 12px;
   resize: none;
   border-color: #cbdbea;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fbfdff;
-  font-size: 0.98rem;
-  line-height: 1.45;
+  font-size: 0.94rem;
+  line-height: 1.35;
 }
 
 .codex-chat-form .btn {
-  min-width: 76px;
-  min-height: 68px;
-  border-radius: 12px;
+  min-width: 66px;
+  height: 42px;
+  min-height: 42px;
+  border-radius: 10px;
   background: #0072bc;
   border-color: #0072bc;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 900;
 }
 
@@ -2734,16 +2749,19 @@ body.chat-body .navbar {
     grid-template-columns: 1fr;
   }
 
+  .chat-related-strip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .codex-chat-form .btn {
     width: 100%;
-    min-height: 48px;
+    min-height: 44px;
   }
 
   .related-question-chip,
   .suggestion-chip {
-    width: 100%;
     max-width: 100%;
-    white-space: normal;
     text-align: left;
   }
 

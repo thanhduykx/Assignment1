@@ -141,6 +141,69 @@ const assistantLauncher = document.getElementById("chatbotHelper");
 const assistantLauncherButton = document.getElementById("chatbotHelperButton");
 let isSending = false;
 
+const relatedQuestionPool = [
+  {
+    id: "credits",
+    en: "How many credits does DBA103 have?",
+    vi: "M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?"
+  },
+  {
+    id: "overview",
+    en: "What is DBA103 about?",
+    vi: "DBA103 l\u00e0 m\u00f4n g\u00ec?"
+  },
+  {
+    id: "main-content",
+    en: "What are the main contents of DBA103?",
+    vi: "N\u1ed9i dung ch\u00ednh c\u1ee7a DBA103 g\u1ed3m nh\u1eefng g\u00ec?"
+  },
+  {
+    id: "time-allocation",
+    en: "What is the time allocation of DBA103?",
+    vi: "Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 bao nhi\u00eau?"
+  },
+  {
+    id: "prerequisite",
+    en: "Does DBA103 have any prerequisite?",
+    vi: "DBA103 c\u00f3 m\u00f4n ti\u00ean quy\u1ebft kh\u00f4ng?"
+  },
+  {
+    id: "knowledge",
+    en: "What knowledge should students gain from DBA103?",
+    vi: "Sinh vi\u00ean c\u1ea7n n\u1eafm ki\u1ebfn th\u1ee9c g\u00ec trong DBA103?"
+  },
+  {
+    id: "skills",
+    en: "What skills should students practice in DBA103?",
+    vi: "Sinh vi\u00ean c\u1ea7n luy\u1ec7n t\u1eadp k\u1ef9 n\u0103ng g\u00ec trong DBA103?"
+  },
+  {
+    id: "songs",
+    en: "Which songs are practiced in DBA103?",
+    vi: "DBA103 luy\u1ec7n t\u1eadp nh\u1eefng b\u00e0i n\u00e0o?"
+  },
+  {
+    id: "assessment",
+    en: "How is DBA103 assessed?",
+    vi: "DBA103 \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 nh\u01b0 th\u1ebf n\u00e0o?"
+  },
+  {
+    id: "assignment-weight",
+    en: "What is the assignment weight in DBA103?",
+    vi: "B\u00e0i t\u1eadp trong DBA103 chi\u1ebfm bao nhi\u00eau ph\u1ea7n tr\u0103m?"
+  },
+  {
+    id: "final-exam",
+    en: "When is the DBA103 final exam held?",
+    vi: "DBA103 thi cu\u1ed1i kh\u00f3a v\u00e0o l\u00fac n\u00e0o?"
+  },
+  {
+    id: "online-resources",
+    en: "How does DBA103 use online resources?",
+    vi: "DBA103 s\u1eed d\u1ee5ng t\u00e0i nguy\u00ean tr\u00ean m\u1ea1ng nh\u01b0 th\u1ebf n\u00e0o?"
+  }
+];
+
 function getLanguage() {
   return localStorage.getItem(languageKey) === "vi" ? "vi" : "en";
 }
@@ -207,16 +270,113 @@ function updateSuggestionButtons() {
 }
 
 function updateRelatedQuestionButtons() {
+  renderRelatedQuestions();
+}
+
+function normalizeQuestionForMemory(question) {
+  return (question || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function getAskedQuestionKey() {
+  return `ragChatAskedQuestions:${getSessionId()}`;
+}
+
+function readAskedQuestions() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(getAskedQuestionKey()) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberAskedQuestion(question) {
+  const normalized = normalizeQuestionForMemory(question);
+  if (!normalized) {
+    return;
+  }
+
+  const asked = readAskedQuestions();
+  asked.add(normalized);
+  localStorage.setItem(getAskedQuestionKey(), JSON.stringify([...asked].slice(-80)));
+}
+
+function collectVisibleUserQuestions() {
+  document.querySelectorAll(".message.user .bubble").forEach((bubble) => {
+    rememberAskedQuestion(bubble.textContent || "");
+  });
+}
+
+function getRelatedRotationIndex() {
+  return Number(sessionStorage.getItem(`ragChatRelatedRotation:${getSessionId()}`) || "0");
+}
+
+function advanceRelatedRotation() {
+  const key = `ragChatRelatedRotation:${getSessionId()}`;
+  sessionStorage.setItem(key, String(getRelatedRotationIndex() + 1));
+}
+
+function questionWasAsked(item, asked) {
+  return asked.has(normalizeQuestionForMemory(item.en))
+    || asked.has(normalizeQuestionForMemory(item.vi));
+}
+
+function renderRelatedQuestions() {
+  const list = document.querySelector(".chat-related-list");
+  if (!list) {
+    return;
+  }
+
+  collectVisibleUserQuestions();
   const language = getLanguage();
-  document.querySelectorAll(".related-question-chip").forEach((button) => {
-    const question = language === "vi" ? button.dataset.questionVi : button.dataset.questionEn;
-    if (!question) {
-      return;
+  const asked = readAskedQuestions();
+  const available = relatedQuestionPool.filter((item) => !questionWasAsked(item, asked));
+  const pool = available.length > 0 ? available : relatedQuestionPool;
+  const offset = getRelatedRotationIndex() % pool.length;
+  const ordered = [...pool.slice(offset), ...pool.slice(0, offset)];
+  const currentQuestions = new Set(
+    [...list.querySelectorAll(".related-question-chip")]
+      .map((button) => normalizeQuestionForMemory(button.dataset.question || button.textContent))
+      .filter(Boolean));
+  const picked = [];
+
+  for (const item of ordered) {
+    const text = language === "vi" ? item.vi : item.en;
+    const normalized = normalizeQuestionForMemory(text);
+    if (!normalized || picked.some((pickedItem) => pickedItem.id === item.id)) {
+      continue;
     }
 
-    button.textContent = question;
-    button.dataset.question = question;
-  });
+    if (available.length > 3 && currentQuestions.has(normalized)) {
+      continue;
+    }
+
+    picked.push(item);
+    if (picked.length === 3) {
+      break;
+    }
+  }
+
+  if (picked.length < 3) {
+    for (const item of ordered) {
+      if (!picked.some((pickedItem) => pickedItem.id === item.id)) {
+        picked.push(item);
+      }
+      if (picked.length === 3) {
+        break;
+      }
+    }
+  }
+
+  list.innerHTML = picked.map((item) => {
+    const text = language === "vi" ? item.vi : item.en;
+    return `<button type="button" class="related-question-chip" data-question-id="${escapeHtml(item.id)}" data-question="${escapeHtml(text)}" data-question-en="${escapeHtml(item.en)}" data-question-vi="${escapeHtml(item.vi)}">${escapeHtml(text)}</button>`;
+  }).join("");
+  bindSuggestionButtons();
 }
 
 function updateDropzoneDefaultText() {
@@ -252,6 +412,7 @@ function getSessionId() {
 function setSessionId(sessionId) {
   localStorage.setItem("ragChatSessionId", sessionId);
   markActiveSession(sessionId);
+  renderRelatedQuestions();
 }
 
 function formatSessionTime(value) {
@@ -307,6 +468,7 @@ function renderSessionMessages(messages) {
   messages.forEach((message) => {
     appendMessageTo(chatMessages, message.role, message.content);
   });
+  renderRelatedQuestions();
 }
 
 function markActiveSession(sessionId) {
@@ -419,6 +581,9 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
     return false;
   }
 
+  rememberAskedQuestion(question);
+  advanceRelatedRotation();
+  renderRelatedQuestions();
   appendMessageTo(messagesTarget, "user", question);
   input.value = "";
   const loadingMessage = appendMessageTo(messagesTarget, "assistant", t("chat.loading"));
@@ -443,6 +608,8 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
       activeSessionTitle.textContent = question.length <= 56 ? question : `${question.slice(0, 56)}...`;
     }
     appendMessageTo(messagesTarget, "assistant", payload.answer);
+    advanceRelatedRotation();
+    renderRelatedQuestions();
     refreshSessionList();
     return true;
   } catch {
@@ -625,6 +792,11 @@ function initAssistantLauncherDrag() {
 
 function bindSuggestionButtons() {
   document.querySelectorAll("[data-question]").forEach((button) => {
+    if (button.dataset.questionBound === "true") {
+      return;
+    }
+
+    button.dataset.questionBound = "true";
     button.addEventListener("click", () => {
       if (!questionInput) {
         return;
