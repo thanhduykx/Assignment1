@@ -1,0 +1,46 @@
+@model PresentationLayer.Models.RegisterViewModel
+@{
+    ViewData["Title"] = "Tạo tài khoản";
+    ViewData["BodyClass"] = "auth-body";
+}
+
+<section class="auth-page">
+    <partial name="_AuthStars" />
+    <div class="auth-panel">
+        <p class="eyebrow">Tài khoản mới</p>
+        <h1>Tạo tài khoản</h1>
+        <p class="subtitle">Tạo tài khoản nội bộ để quản lý tài liệu và sử dụng phiên hỏi đáp.</p>
+
+        <form asp-action="Register" method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <label>
+                Họ tên
+                <input asp-for="FullName" class="form-control" autocomplete="name" />
+                <span asp-validation-for="FullName" class="text-danger"></span>
+            </label>
+            <label>
+                Email
+                <input asp-for="Email" class="form-control" autocomplete="email" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </label>
+            <label>
+                Mật khẩu
+                <input asp-for="Password" class="form-control" autocomplete="new-password" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </label>
+            <label>
+                Nhập lại mật khẩu
+                <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+                <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+            </label>
+            <button type="submit" class="btn btn-primary">Tạo tài khoản</button>
+        </form>
+
+        <p class="auth-switch">Đã có tài khoản? <a asp-action="Login">Đăng nhập</a></p>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

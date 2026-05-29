@@ -1,19 +1,20 @@
-﻿<!DOCTYPE html>
+@using System.Security.Claims
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - PresentationLayer</title>
+    <title>@ViewData["Title"] - Course Assistant</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/PresentationLayer.styles.css" asp-append-version="true" />
 </head>
-<body>
+<body class="@ViewData["BodyClass"]">
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">PresentationLayer</a>
+                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">Course Assistant</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
@@ -21,11 +22,38 @@
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Chat" data-i18n="nav.chat">Chat</a>
                         </li>
+                    </ul>
+                    <ul class="navbar-nav account-nav">
+                        <li class="nav-item">
+                            <div class="language-switch" role="group" aria-label="Language">
+                                <button type="button" class="language-option" data-language-option="en" aria-pressed="true">ENG</button>
+                                <button type="button" class="language-option" data-language-option="vi" aria-pressed="false">VN</button>
+                            </div>
+                        </li>
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <li class="nav-item user-chip">@User.FindFirstValue(ClaimTypes.Email)</li>
+                            <li class="nav-item">
+                                <form asp-controller="Account" asp-action="Logout" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="nav-link logout-button" data-i18n="nav.logout">Logout</button>
+                                </form>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Login" data-i18n="nav.login">Login</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Register" data-i18n="nav.register">Create account</a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>
@@ -37,9 +65,28 @@
         </main>
     </div>
 
+    @{
+        var hideAssistantLauncher = ViewData["HideAssistantLauncher"] as bool? ?? false;
+    }
+
+    @if (User.Identity?.IsAuthenticated == true && !hideAssistantLauncher)
+    {
+        var displayName = User.FindFirstValue(ClaimTypes.Name)
+            ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0]
+            ?? "you";
+
+        <section class="assistant-launcher chatbot-helper" id="chatbotHelper" aria-label="Chatbot helper">
+            <a class="assistant-launcher-card chatbot-helper-card" id="chatbotHelperButton" asp-controller="Home" asp-action="Chat" aria-label="Open chat page" title="Open chat page" data-i18n-aria-label="assistant.open" data-i18n-title="assistant.open" draggable="false">
+                <img src="~/img/dog.gif" asp-append-version="true" alt="Chatbot assistant" class="chatbot-helper-avatar" draggable="false" />
+                <span class="assistant-launcher-bubble chatbot-helper-copy" data-assistant-greeting data-assistant-name="@displayName">Hi @displayName, I can help you find information faster.</span>
+                <span class="visually-hidden" data-i18n="assistant.hidden">Hi @displayName, I am your chatbot assistant for finding information faster.</span>
+            </a>
+        </section>
+    }
+
     <footer class="border-top footer text-muted">
         <div class="container">
-            &copy; 2026 - PresentationLayer - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            &copy; 2026 - Course Assistant
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

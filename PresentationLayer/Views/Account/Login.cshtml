@@ -1,0 +1,51 @@
+@model PresentationLayer.Models.LoginViewModel
+@{
+    ViewData["Title"] = "Đăng nhập";
+    ViewData["BodyClass"] = "auth-body";
+}
+
+<section class="auth-page">
+    <partial name="_AuthStars" />
+    <div class="auth-panel">
+        <p class="eyebrow">Course Assistant</p>
+        <h1>Đăng nhập</h1>
+        <p class="subtitle">Truy cập kho tài liệu, quản lý nội dung đã index và tiếp tục phiên hỏi đáp theo nguồn.</p>
+
+        @if (TempData["AuthError"] is string error)
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <form asp-action="Login" method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="ReturnUrl" type="hidden" />
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <label>
+                Email
+                <input asp-for="Email" class="form-control" autocomplete="email" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </label>
+            <label>
+                Mật khẩu
+                <input asp-for="Password" class="form-control" autocomplete="current-password" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </label>
+            <button type="submit" class="btn btn-primary">Đăng nhập</button>
+        </form>
+
+        <form asp-action="GoogleLogin" method="post" class="google-form">
+            @Html.AntiForgeryToken()
+            <input name="returnUrl" value="@Model.ReturnUrl" type="hidden" />
+            <button type="submit" class="btn btn-outline-dark google-button">
+                <img src="~/img/google-g.svg" alt="" class="google-icon" />
+                <span>Đăng nhập với Google</span>
+            </button>
+        </form>
+
+        <p class="auth-switch">Chưa có tài khoản? <a asp-action="Register">Tạo tài khoản</a></p>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,8 +1,184 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@model PresentationLayer.Models.HomeIndexViewModel
+@{
+    ViewData["Title"] = "Course document repository";
+    var totalDocuments = Model.Documents.Count;
+    var totalChunks = Model.Documents.Sum(document => document.ChunkCount);
+    var indexedDocuments = totalDocuments;
+    var processingDocuments = 0;
+    var subjectOptions = Model.Documents
+        .Select(document => document.Subject)
+        .Where(subject => !string.IsNullOrWhiteSpace(subject))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(subject => subject)
+        .ToList();
+    var chapterOptions = Model.Documents
+        .Select(document => document.Chapter)
+        .Where(chapter => !string.IsNullOrWhiteSpace(chapter))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(chapter => chapter)
+        .ToList();
+    var groupedDocuments = Model.Documents
+        .GroupBy(document => document.Subject)
+        .OrderBy(group => group.Key)
+        .ToList();
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<section class="app-shell document-only-shell">
+    <div class="workspace-header document-page-header">
+        <div>
+            <h1 data-i18n="documents.title">Course document repository</h1>
+            <p class="subtitle" data-i18n="documents.subtitle">Manage uploaded learning materials, extract content, and index them for the dedicated chat page.</p>
+        </div>
+        <a class="btn btn-primary" asp-controller="Home" asp-action="Chat" data-i18n="documents.openChat">Open chat</a>
+    </div>
+
+    <div class="dashboard-stats" aria-label="Document repository statistics" data-i18n-aria-label="documents.statsAria">
+        <article class="stat-card stat-card-blue">
+            <span data-i18n="documents.statsDocuments">Documents</span>
+            <strong>@totalDocuments</strong>
+        </article>
+        <article class="stat-card stat-card-orange">
+            <span>Chunks</span>
+            <strong>@totalChunks</strong>
+        </article>
+        <article class="stat-card stat-card-green">
+            <span data-i18n="documents.statsIndexed">Indexed</span>
+            <strong>@indexedDocuments</strong>
+        </article>
+        <article class="stat-card stat-card-neutral">
+            <span data-i18n="documents.statsProcessing">Processing</span>
+            <strong>@processingDocuments</strong>
+        </article>
+    </div>
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="alert alert-success">@success</div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="document-management-grid">
+        <section id="documents" class="document-panel">
+            <div class="panel-heading">
+                <h2 data-i18n="documents.uploadTitle">Upload document</h2>
+                <p data-i18n="documents.uploadSubtitle">PDF, DOCX, PPTX, TXT, or a lecture page URL will be extracted, chunked, and embedded automatically.</p>
+            </div>
+
+            <form asp-action="Upload" method="post" enctype="multipart/form-data" class="upload-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Language" value="en" data-language-field />
+                <div class="form-row">
+                    <label>
+                        <span data-i18n="documents.subject">Subject</span>
+                        <input name="Subject" class="form-control" list="subjectOptions" placeholder="Example: DBA103 - Traditional musical instrument" data-i18n-placeholder="documents.subjectPlaceholder" />
+                    </label>
+                    <label>
+                        <span data-i18n="documents.chapter">Chapter</span>
+                        <input name="Chapter" class="form-control" list="chapterOptions" placeholder="Example: Syllabus 11835 or Chapter 1" data-i18n-placeholder="documents.chapterPlaceholder" />
+                    </label>
+                </div>
+                <datalist id="subjectOptions">
+                    @foreach (var subject in subjectOptions)
+                    {
+                        <option value="@subject"></option>
+                    }
+                </datalist>
+                <datalist id="chapterOptions">
+                    @foreach (var chapter in chapterOptions)
+                    {
+                        <option value="@chapter"></option>
+                    }
+                </datalist>
+
+                <label id="documentDropzone" class="dropzone" for="documentFileInput">
+                    <input id="documentFileInput" name="File" type="file" accept=".pdf,.docx,.pptx,.txt" />
+                    <span class="dropzone-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M12 3v12m0-12 4.5 4.5M12 3 7.5 7.5M5 15v3.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V15" />
+                        </svg>
+                    </span>
+                    <span class="dropzone-title" data-i18n="documents.dropzoneTitle">Drag and drop a document or click to choose a file</span>
+                    <span id="documentFileName" class="dropzone-meta" data-default-en="Supports PDF, DOCX, PPTX, TXT" data-default-vi="H\u1ed7 tr\u1ee3 PDF, DOCX, PPTX, TXT">Supports PDF, DOCX, PPTX, TXT</span>
+                </label>
+
+                <div class="source-divider"><span data-i18n="documents.or">or</span></div>
+
+                <label>
+                    <span data-i18n="documents.url">Lecture page URL</span>
+                    <input name="SourceUrl" class="form-control" type="url" placeholder="https://example.com/react-vue-lecture" data-i18n-placeholder="documents.urlPlaceholder" />
+                    <span class="input-hint" data-i18n="documents.urlHint">SPA/React/Vue pages will be rendered with Playwright before DOM extraction.</span>
+                </label>
+
+                <button type="submit" class="btn btn-primary" data-i18n="documents.submit">Upload and index</button>
+            </form>
+        </section>
+
+        <section class="document-panel document-list-panel">
+            <div class="section-title">
+                <h2 data-i18n="documents.indexedTitle">Indexed documents</h2>
+                <span>@totalDocuments <span data-i18n="documents.filesUnit">files</span></span>
+            </div>
+
+            @if (Model.Documents.Count == 0)
+            {
+                <p class="empty-state" data-i18n="documents.empty">No documents yet. Upload course materials to start asking source-grounded questions.</p>
+            }
+            else
+            {
+                <div class="document-tree">
+                    @foreach (var subjectGroup in groupedDocuments)
+                    {
+                        var subjectDocuments = subjectGroup.ToList();
+                        <section class="subject-group">
+                            <div class="subject-group-header">
+                                <div>
+                                    <span data-i18n="documents.subject">Subject</span>
+                                    <h3>@subjectGroup.Key</h3>
+                                </div>
+                                <strong>@subjectDocuments.Count <span data-i18n="documents.filesUnit">files</span></strong>
+                            </div>
+
+                            @foreach (var chapterGroup in subjectDocuments.GroupBy(document => document.Chapter).OrderBy(group => group.Key))
+                            {
+                                var chapterDocuments = chapterGroup.OrderByDescending(document => document.UploadedAt).ToList();
+                                <section class="chapter-group">
+                                    <div class="chapter-group-header">
+                                        <div>
+                                            <span data-i18n="documents.chapter">Chapter</span>
+                                            <h4>@chapterGroup.Key</h4>
+                                        </div>
+                                        <small>@chapterDocuments.Sum(document => document.ChunkCount) chunks</small>
+                                    </div>
+
+                                    <div class="document-list document-list-rows">
+                                        @foreach (var document in chapterDocuments)
+                                        {
+                                            <article class="document-item">
+                                                <div class="document-item-main">
+                                                    <strong>@document.FileName</strong>
+                                                    <small>@document.ChunkCount chunks / @document.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
+                                                </div>
+                                                <a class="btn btn-outline-secondary document-view-link"
+                                                   asp-controller="Home"
+                                                   asp-action="ViewDocument"
+                                                   asp-route-id="@document.Id"
+                                                   target="_blank"
+                                                   rel="noopener"
+                                                   data-i18n="documents.view">
+                                                    View
+                                                </a>
+                                            </article>
+                                        }
+                                    </div>
+                                </section>
+                            }
+                        </section>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+</section>

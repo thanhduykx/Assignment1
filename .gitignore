@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Runtime data for the demo chatbot/auth store
+PresentationLayer/App_Data/

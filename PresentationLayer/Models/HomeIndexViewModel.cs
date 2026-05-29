@@ -1,0 +1,30 @@
+using DataAccessLayer;
+
+namespace PresentationLayer.Models;
+
+public sealed class HomeIndexViewModel
+{
+    public IReadOnlyList<IndexedDocument> Documents { get; set; } = Array.Empty<IndexedDocument>();
+}
+
+public sealed class ChatIndexViewModel
+{
+    public IReadOnlyList<ChatSession> ChatSessions { get; set; } = Array.Empty<ChatSession>();
+    public IReadOnlyList<IndexedDocument> Documents { get; set; } = Array.Empty<IndexedDocument>();
+}
+
+public sealed class DocumentUploadViewModel
+{
+    public IFormFile? File { get; set; }
+    public string? SourceUrl { get; set; }
+    public string? Language { get; set; }
+    public string Subject { get; set; } = "DBA103 - Traditional musical instrument";
+    public string Chapter { get; set; } = "Syllabus 11835";
+}
+
+public sealed class ChatRequest
+{
+    public string? SessionId { get; set; }
+    public string? Question { get; set; }
+    public string? Language { get; set; }
+}

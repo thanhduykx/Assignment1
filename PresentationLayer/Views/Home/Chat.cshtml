@@ -1,0 +1,131 @@
+@model PresentationLayer.Models.ChatIndexViewModel
+@{
+    ViewData["Title"] = "Document chat";
+    ViewData["BodyClass"] = "chat-body";
+    ViewData["HideAssistantLauncher"] = true;
+    var suggestedQuestions = new[]
+    {
+        new
+        {
+            En = "Summarize the main content of the uploaded documents",
+            Vi = "T\u00f3m t\u1eaft n\u1ed9i dung ch\u00ednh c\u1ee7a t\u00e0i li\u1ec7u \u0111\u00e3 upload"
+        },
+        new
+        {
+            En = "What assessment requirements does this course have?",
+            Vi = "M\u00f4n h\u1ecdc n\u00e0y c\u00f3 nh\u1eefng y\u00eau c\u1ea7u \u0111\u00e1nh gi\u00e1 n\u00e0o?"
+        },
+        new
+        {
+            En = "Explain the most important part of the current chapter",
+            Vi = "Gi\u1ea3i th\u00edch ph\u1ea7n quan tr\u1ecdng nh\u1ea5t trong ch\u01b0\u01a1ng hi\u1ec7n t\u1ea1i"
+        },
+        new
+        {
+            En = "Which document contains this information?",
+            Vi = "Cho m\u00ecnh bi\u1ebft th\u00f4ng tin n\u00e0y n\u1eb1m \u1edf t\u00e0i li\u1ec7u n\u00e0o?"
+        }
+    };
+    var primaryDocument = Model.Documents
+        .OrderByDescending(document =>
+            document.FileName.StartsWith("FLM-", StringComparison.OrdinalIgnoreCase)
+            || document.FileName.Contains("Syllabus-11835", StringComparison.OrdinalIgnoreCase)
+                ? 3
+                : document.Subject.Contains("DBA103", StringComparison.OrdinalIgnoreCase)
+                  || document.Chapter.Contains("Syllabus 11835", StringComparison.OrdinalIgnoreCase)
+                    ? 2
+                    : 1)
+        .ThenByDescending(document => document.UploadedAt)
+        .FirstOrDefault();
+    var primarySubject = primaryDocument?.Subject;
+    var primaryChapter = primaryDocument?.Chapter;
+    var subjectLabel = string.IsNullOrWhiteSpace(primarySubject) ? "this course" : primarySubject;
+    var chapterLabel = string.IsNullOrWhiteSpace(primaryChapter) ? "the current chapter" : primaryChapter;
+    var relatedQuestions = primaryDocument is null
+        ? Array.Empty<(string En, string Vi)>()
+        : new[]
+        {
+            ($"What is {subjectLabel} about?", $"{subjectLabel} là môn gì?"),
+            ($"How many credits does {subjectLabel} have?", $"{subjectLabel} có bao nhiêu tín chỉ?"),
+            ($"What are the main contents of {subjectLabel}?", $"Nội dung chính của {subjectLabel} gồm những gì?"),
+            ($"What should students practice in {chapterLabel}?", $"Sinh viên cần luyện tập gì trong {chapterLabel}?")
+        };
+}
+
+<section class="chat-page-shell">
+    <aside class="codex-session-sidebar" aria-label="Chat session history" data-i18n-aria-label="chat.sessionsAria">
+        <div class="codex-sidebar-top">
+            <a class="btn btn-outline-secondary" asp-controller="Home" asp-action="Index" data-i18n="chat.documents">Documents</a>
+            <button id="newSessionButton" type="button" class="btn btn-primary" data-i18n="chat.newSession">New session</button>
+        </div>
+        <div class="session-sidebar-header">
+            <strong data-i18n="chat.history">Session history</strong>
+            <span><span id="sessionCount">@Model.ChatSessions.Count</span> <span data-i18n="chat.sessionsUnit">sessions</span></span>
+        </div>
+        <div id="chatSessionList" class="chat-session-list">
+            @if (Model.ChatSessions.Count == 0)
+            {
+                <p class="session-empty" data-i18n="chat.noSessions">No sessions yet.</p>
+            }
+            else
+            {
+                foreach (var session in Model.ChatSessions)
+                {
+                    var firstQuestion = session.Messages.FirstOrDefault(message => message.Role == "user")?.Content?.Trim();
+                    var title = string.IsNullOrWhiteSpace(firstQuestion)
+                        ? "Session without a question"
+                        : firstQuestion.Length <= 56 ? firstQuestion : $"{firstQuestion[..56]}...";
+
+                    <button type="button" class="chat-session-item" data-session-id="@session.Id">
+                        <span>@title</span>
+                        <small>@session.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") / @session.Messages.Count <span data-i18n="chat.messagesUnit">messages</span></small>
+                    </button>
+                }
+            }
+        </div>
+    </aside>
+
+    <main class="codex-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
+        <header class="codex-chat-header">
+            <div>
+                <h1 data-i18n="chat.title">Document chat</h1>
+                <p data-i18n="chat.subtitle">Ask questions based on indexed documents. Questions outside the document scope will be marked as insufficient data.</p>
+            </div>
+            <span id="activeSessionTitle" data-i18n="chat.currentSession">Current session</span>
+        </header>
+
+        <div id="chatMessages" class="chat-messages codex-chat-messages">
+            <div class="chat-empty-state">
+                <span class="empty-state-mark">AI</span>
+                <h3 data-i18n="chat.emptyTitle">Start with a specific question</h3>
+                <p data-i18n="chat.emptyText">Choose a suggestion below or type your question. If the documents do not contain enough data, the chatbot will say so instead of guessing.</p>
+                <div class="suggestion-grid" aria-label="Question suggestions" data-i18n-aria-label="chat.suggestionsAria">
+                    @foreach (var question in suggestedQuestions)
+                    {
+                        <button type="button" class="suggestion-chip" data-question="@question.En" data-question-en="@question.En" data-question-vi="@question.Vi">@question.En</button>
+                    }
+                </div>
+            </div>
+            <div class="message assistant">
+                <div class="bubble" data-i18n="chat.welcome">You can ask about uploaded document content. I will answer concisely when there is enough data.</div>
+            </div>
+        </div>
+
+        <form id="chatForm" class="chat-form codex-chat-form">
+            @if (relatedQuestions.Length > 0)
+            {
+                <div class="chat-related-strip" aria-label="Related questions" data-i18n-aria-label="chat.relatedAria">
+                    <span data-i18n="chat.relatedLabel">Related questions</span>
+                    <div class="chat-related-list">
+                        @foreach (var question in relatedQuestions)
+                        {
+                            <button type="button" class="related-question-chip" data-question="@question.Item1" data-question-en="@question.Item1" data-question-vi="@question.Item2">@question.Item1</button>
+                        }
+                    </div>
+                </div>
+            }
+            <textarea id="questionInput" rows="2" placeholder="Example: How many credits does DBA103 have?" data-i18n-placeholder="chat.placeholder"></textarea>
+            <button type="submit" class="btn btn-primary" data-i18n="chat.send">Send</button>
+        </form>
+    </main>
+</section>
