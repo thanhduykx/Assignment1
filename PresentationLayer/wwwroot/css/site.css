@@ -2414,3 +2414,340 @@ body {
     font-size: 0.68rem;
   }
 }
+
+/* Chat page polish pass */
+body.chat-body {
+  background: #f4f7fb;
+  overflow-x: hidden;
+}
+
+body.chat-body .footer {
+  display: none;
+}
+
+body.chat-body > .container {
+  width: 100%;
+  max-width: 1360px;
+  padding-right: 18px;
+  padding-left: 18px;
+}
+
+body.chat-body .navbar {
+  margin-bottom: 12px !important;
+}
+
+.chat-page-shell {
+  min-width: 0;
+  border: 1px solid #d7e3ef;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 22px 70px rgba(17, 33, 55, 0.09);
+}
+
+.codex-session-sidebar {
+  background: #f8fbfe;
+}
+
+.codex-sidebar-top {
+  gap: 10px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.codex-sidebar-top .btn {
+  min-height: 42px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 850;
+}
+
+.session-sidebar-header {
+  min-height: 56px;
+  padding: 14px 16px;
+  background: #f8fbfe;
+}
+
+.chat-session-list {
+  gap: 6px;
+  padding: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 114, 188, 0.35) transparent;
+}
+
+.chat-session-item {
+  padding: 12px;
+  border-radius: 10px;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.chat-session-item:hover,
+.chat-session-item:focus {
+  transform: translateY(-1px);
+}
+
+.chat-session-item.is-active {
+  border-color: rgba(0, 114, 188, 0.32);
+  background: #eaf5ff;
+  box-shadow: inset 3px 0 0 var(--fpt-blue);
+}
+
+.codex-chat-main {
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.codex-chat-header {
+  min-height: 118px;
+  padding: 24px 30px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.codex-chat-header h1 {
+  margin: 0 0 7px;
+  color: #07162d;
+  font-size: clamp(1.65rem, 2vw, 2.12rem);
+  line-height: 1.08;
+}
+
+.codex-chat-header p {
+  max-width: 760px;
+  color: #52657f;
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.codex-chat-header > span {
+  flex: 0 0 auto;
+  max-width: 300px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: #eef7ff;
+  color: #075f9e;
+  font-size: 0.82rem;
+}
+
+.codex-chat-messages {
+  gap: 18px;
+  padding: 28px 30px;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(0, 114, 188, 0.055), transparent 34%),
+    linear-gradient(180deg, #fbfdff 0%, #f7fbff 100%);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 114, 188, 0.38) transparent;
+}
+
+.message {
+  width: 100%;
+}
+
+.bubble {
+  max-width: min(780px, 74%);
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  box-shadow: 0 10px 28px rgba(17, 33, 55, 0.05);
+}
+
+.message.assistant .bubble,
+.assistant .bubble {
+  border: 1px solid #bfddf7;
+  background: #eef7ff;
+  color: #092238;
+}
+
+.message.user .bubble,
+.user .bubble {
+  border-radius: 16px 16px 4px 16px;
+  background: #0072bc;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 114, 188, 0.22);
+}
+
+.message.assistant .bubble {
+  border-radius: 16px 16px 16px 4px;
+}
+
+.chat-empty-state {
+  margin: 0 0 8px;
+  padding: 18px;
+  border-color: #d9e7f4;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(17, 33, 55, 0.05);
+}
+
+.suggestion-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.suggestion-chip {
+  min-height: 44px;
+  border-color: #d6e4f2;
+  border-radius: 12px;
+  color: #123253;
+}
+
+.codex-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid #d9e7f4;
+  background: #ffffff;
+}
+
+.chat-related-strip {
+  grid-column: 1 / -1;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-related-strip > span {
+  color: #66788f;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+}
+
+.chat-related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+  padding: 0 2px 2px 0;
+}
+
+.related-question-chip {
+  flex: 0 1 auto;
+  max-width: min(430px, 100%);
+  min-height: 36px;
+  border-color: #c9dff2;
+  border-radius: 999px;
+  background: #f7fbff;
+  color: #075f9e;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.codex-chat-form textarea {
+  min-height: 68px;
+  max-height: 130px;
+  resize: none;
+  border-color: #cbdbea;
+  border-radius: 12px;
+  background: #fbfdff;
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.codex-chat-form .btn {
+  min-width: 76px;
+  min-height: 68px;
+  border-radius: 12px;
+  background: #0072bc;
+  border-color: #0072bc;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.codex-chat-form .btn:hover,
+.codex-chat-form .btn:focus {
+  background: #005f9d;
+  border-color: #005f9d;
+}
+
+.codex-chat-messages::-webkit-scrollbar,
+.chat-related-list::-webkit-scrollbar,
+.chat-session-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.codex-chat-messages::-webkit-scrollbar-thumb,
+.chat-related-list::-webkit-scrollbar-thumb,
+.chat-session-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(0, 114, 188, 0.35);
+}
+
+@media (min-width: 901px) {
+  body.chat-body .chat-page-shell {
+    height: calc(100vh - 94px);
+  }
+}
+
+@media (max-width: 900px) {
+  body.chat-body {
+    overflow-y: auto;
+  }
+
+  body.chat-body > .container {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .chat-page-shell {
+    border-radius: 12px;
+  }
+
+  .codex-session-sidebar {
+    max-height: 220px;
+  }
+
+  .chat-session-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .chat-session-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .codex-chat-header {
+    min-height: auto;
+    padding: 20px;
+  }
+
+  .codex-chat-header > span {
+    max-width: 100%;
+  }
+
+  .codex-chat-messages {
+    min-height: 420px;
+    padding: 22px 18px;
+  }
+
+  .bubble {
+    max-width: 88%;
+  }
+}
+
+@media (max-width: 560px) {
+  .codex-chat-form {
+    grid-template-columns: 1fr;
+  }
+
+  .codex-chat-form .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .related-question-chip,
+  .suggestion-chip {
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+
+  .bubble {
+    max-width: 94%;
+  }
+}
