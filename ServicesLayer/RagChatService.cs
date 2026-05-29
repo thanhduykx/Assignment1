@@ -131,6 +131,10 @@ public sealed class RagChatService : IRagChatService
             trimmedQuestion,
             historyBeforeQuestion,
             cancellationToken);
+        var resolvedQuestion = ResolveKnownCourseAliases(rewrittenQuestion);
+        var correctionPrefix = resolvedQuestion.Equals(rewrittenQuestion, StringComparison.Ordinal)
+            ? string.Empty
+            : BuildAliasCorrectionPrefix(responseLanguage);
 
         var allChunks = await _repository.GetChunksAsync(cancellationToken);
         if (allChunks.Count == 0)
@@ -140,9 +144,9 @@ public sealed class RagChatService : IRagChatService
 
         var flmChunks = allChunks.Where(IsFlmChunk).ToList();
         var scopedChunks = flmChunks.Count > 0 ? flmChunks : allChunks;
-        var queryTerms = ExtractTerms(rewrittenQuestion);
+        var queryTerms = ExtractTerms(resolvedQuestion);
         var minimumSharedTerms = queryTerms.Count >= 4 ? 2 : 1;
-        var queryEmbedding = await _embeddingService.EmbedAsync(rewrittenQuestion, cancellationToken);
+        var queryEmbedding = await _embeddingService.EmbedAsync(resolvedQuestion, cancellationToken);
 
         var matches = scopedChunks
             .Select(chunk => new
@@ -188,7 +192,7 @@ public sealed class RagChatService : IRagChatService
 
         var matchedChunks = matches.Select(item => item.Chunk).ToList();
         var answer = await _chatCompletionService.GenerateAnswerAsync(
-                         trimmedQuestion,
+                         resolvedQuestion,
                          ResolveSubject(matchedChunks),
                          historyBeforeQuestion,
                          matchedChunks,
@@ -201,7 +205,7 @@ public sealed class RagChatService : IRagChatService
             return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
         }
 
-        return await SaveAssistantAnswer(sessionId, answer, citations, cancellationToken);
+        return await SaveAssistantAnswer(sessionId, correctionPrefix + answer, citations, cancellationToken);
     }
 
     private async Task<ChatAnswer> SaveAssistantAnswer(
@@ -227,6 +231,34 @@ public sealed class RagChatService : IRagChatService
                || chunk.FileName.Contains("Syllabus-11835", StringComparison.OrdinalIgnoreCase)
                || chunk.Subject.Contains("DBA103", StringComparison.OrdinalIgnoreCase)
                || chunk.Chapter.Contains("Syllabus 11835", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveKnownCourseAliases(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        var terms = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var looksLikeDba103 = normalized.Contains("bdi", StringComparison.Ordinal)
+                              || normalized.Contains("dba103", StringComparison.Ordinal)
+                              || normalized.Contains("dba 103", StringComparison.Ordinal)
+                              || terms.Any(term => TermsMatch(term, "dba103"));
+
+        if (!looksLikeDba103)
+        {
+            return question;
+        }
+
+        return Regex.Replace(
+            question,
+            @"\bbdi\b|\bdba[\s-]?103\b",
+            "DBA103",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static string BuildAliasCorrectionPrefix(string language)
+    {
+        return language == "vi"
+            ? "Có vẻ bạn đang nhắc đến DBA103. "
+            : "It looks like you are referring to DBA103. ";
     }
 
     private static bool LooksLikePromptInjection(string question)
@@ -334,7 +366,7 @@ public sealed class RagChatService : IRagChatService
     private static string BuildUserIdentityAnswer(string? userDisplayName)
     {
         var name = string.IsNullOrWhiteSpace(userDisplayName) ? "bạn" : userDisplayName.Trim();
-        return $"Bạn là {name}. Và nói thật là cái tên này nhìn khá sáng giao diện, hợp để làm chủ kho tài liệu này đấy.";
+        return $"Bạn là {name}. Trong ứng dụng này, bạn là chủ kho tài liệu và là người mình đang hỗ trợ.";
     }
 
     private static string BuildCasualChatAnswer(string question)

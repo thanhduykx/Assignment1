@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Claims;
+using System.Text;
 using DataAccessLayer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -98,8 +99,8 @@ namespace PresentationLayer.Controllers
                 }
 
                 TempData["Success"] = isVietnamese
-                    ? $"Đã index {result.ChunkCount} chunks từ tài liệu."
-                    : result.Message;
+                    ? "Đã index tài liệu."
+                    : "The document has been indexed.";
             }
             catch (Exception ex)
             {
@@ -169,6 +170,16 @@ namespace PresentationLayer.Controllers
             if (!storedPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(storedPath))
             {
                 return NotFound();
+            }
+
+            if (IsTextDocument(document))
+            {
+                var content = await System.IO.File.ReadAllTextAsync(storedPath, Encoding.UTF8, cancellationToken);
+                return View("DocumentText", new DocumentTextViewModel
+                {
+                    Document = document,
+                    Content = content
+                });
             }
 
             Response.Headers.ContentDisposition = $"inline; filename=\"{document.FileName.Replace("\"", string.Empty)}\"";
@@ -272,6 +283,14 @@ namespace PresentationLayer.Controllers
                 ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 _ => "application/octet-stream"
             };
+        }
+
+        private static bool IsTextDocument(IndexedDocument document)
+        {
+            var extension = Path.GetExtension(document.FileName);
+            return extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+                   || document.ContentType.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase)
+                   || document.ContentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetSessionTitle(ChatSession session)

@@ -22,6 +22,12 @@ public sealed class DocumentUploadViewModel
     public string Chapter { get; set; } = "Syllabus 11835";
 }
 
+public sealed class DocumentTextViewModel
+{
+    public IndexedDocument Document { get; set; } = new();
+    public string Content { get; set; } = string.Empty;
+}
+
 public sealed class ChatRequest
 {
     public string? SessionId { get; set; }

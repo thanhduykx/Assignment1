@@ -18,6 +18,7 @@ const translations = {
     "documents.uploadSubtitle": "PDF, DOCX, PPTX, TXT, or a lecture page URL will be extracted, chunked, and embedded automatically.",
     "documents.subject": "Subject",
     "documents.chapter": "Chapter",
+    "documents.source": "Source",
     "documents.subjectPlaceholder": "Example: DBA103 - Traditional musical instrument",
     "documents.chapterPlaceholder": "Example: Syllabus 11835 or Chapter 1",
     "documents.dropzoneTitle": "Drag and drop a document or click to choose a file",
@@ -55,10 +56,10 @@ const translations = {
     "chat.requestError": "Could not process the question.",
     "chat.connectionError": "Could not connect to the server. Check the app and try again.",
     "chat.suggestions": [
-      "Summarize the main content of the uploaded documents",
-      "What assessment requirements does this course have?",
-      "Explain the most important part of the current chapter",
-      "Which document contains this information?"
+      "How many credits does DBA103 have?",
+      "What is DBA103 about?",
+      "What should students learn in DBA103?",
+      "What is the time allocation of DBA103?"
     ]
   },
   vi: {
@@ -80,6 +81,7 @@ const translations = {
     "documents.uploadSubtitle": "PDF, DOCX, PPTX, TXT ho\u1eb7c URL trang b\u00e0i gi\u1ea3ng s\u1ebd \u0111\u01b0\u1ee3c tr\u00edch xu\u1ea5t, chunk v\u00e0 embed t\u1ef1 \u0111\u1ed9ng.",
     "documents.subject": "M\u00f4n h\u1ecdc",
     "documents.chapter": "Ch\u01b0\u01a1ng",
+    "documents.source": "Ngu\u1ed3n",
     "documents.subjectPlaceholder": "VD: DBA103 - Traditional musical instrument",
     "documents.chapterPlaceholder": "VD: Syllabus 11835 ho\u1eb7c Chapter 1",
     "documents.dropzoneTitle": "K\u00e9o th\u1ea3 t\u00e0i li\u1ec7u ho\u1eb7c b\u1ea5m \u0111\u1ec3 ch\u1ecdn file",
@@ -117,10 +119,10 @@ const translations = {
     "chat.requestError": "Kh\u00f4ng x\u1eed l\u00fd \u0111\u01b0\u1ee3c c\u00e2u h\u1ecfi.",
     "chat.connectionError": "Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c server. Ki\u1ec3m tra l\u1ea1i \u1ee9ng d\u1ee5ng r\u1ed3i th\u1eed ti\u1ebfp.",
     "chat.suggestions": [
-      "T\u00f3m t\u1eaft n\u1ed9i dung ch\u00ednh c\u1ee7a t\u00e0i li\u1ec7u \u0111\u00e3 upload",
-      "M\u00f4n h\u1ecdc n\u00e0y c\u00f3 nh\u1eefng y\u00eau c\u1ea7u \u0111\u00e1nh gi\u00e1 n\u00e0o?",
-      "Gi\u1ea3i th\u00edch ph\u1ea7n quan tr\u1ecdng nh\u1ea5t trong ch\u01b0\u01a1ng hi\u1ec7n t\u1ea1i",
-      "Cho m\u00ecnh bi\u1ebft th\u00f4ng tin n\u00e0y n\u1eb1m \u1edf t\u00e0i li\u1ec7u n\u00e0o?"
+      "M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?",
+      "DBA103 l\u00e0 m\u00f4n g\u00ec?",
+      "Sinh vi\u00ean s\u1ebd h\u1ecdc nh\u1eefng g\u00ec trong DBA103?",
+      "Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 bao nhi\u00eau?"
     ]
   }
 };

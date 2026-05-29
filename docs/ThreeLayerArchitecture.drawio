@@ -1,0 +1,64 @@
+<mxfile host="app.diagrams.net" modified="2026-05-29T00:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="eduviet-rag-3-layer" name="3-Layer Architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;Mô hình kiến trúc 3 lớp - EduViet RAG&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=26;fontStyle=1;fontColor=#08223F;" vertex="1" parent="1">
+          <mxGeometry x="330" y="30" width="740" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="user" value="&lt;b&gt;Sinh viên / Admin&lt;/b&gt;&lt;br&gt;Upload tài liệu&lt;br&gt;Chat hỏi đáp&lt;br&gt;Xem tài liệu" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F4FF;strokeColor=#0072BC;fontSize=15;fontColor=#08223F;arcSize=10;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="55" y="150" width="160" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="presentation" value="&lt;b&gt;1. Presentation Layer&lt;/b&gt;&lt;br&gt;&lt;br&gt;ASP.NET MVC Views + Controllers&lt;br&gt;HomeController / AccountController&lt;br&gt;Upload area, Chat page, Document viewer&lt;br&gt;BROmega font + FPT design tokens" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0072BC;strokeWidth=2;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="270" y="115" width="270" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="service" value="&lt;b&gt;2. Business / Services Layer&lt;/b&gt;&lt;br&gt;&lt;br&gt;DocumentIndexingService&lt;br&gt;RagChatService&lt;br&gt;OllamaChatCompletionService&lt;br&gt;WebPageTextExtractor&lt;br&gt;Rewrite query, fuzzy alias, citations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E8;strokeColor=#F37021;strokeWidth=2;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="600" y="115" width="310" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="data" value="&lt;b&gt;3. Data Access Layer&lt;/b&gt;&lt;br&gt;&lt;br&gt;JsonKnowledgeRepository&lt;br&gt;EduVietRagDbContext&lt;br&gt;IndexedDocument&lt;br&gt;DocumentChunk&lt;br&gt;ChatSession / ChatMessage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF8EF;strokeColor=#00B050;strokeWidth=2;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="980" y="115" width="300" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="storage" value="&lt;b&gt;Storage&lt;/b&gt;&lt;br&gt;&lt;br&gt;App_Data/rag-store.json&lt;br&gt;App_Data/uploads&lt;br&gt;Uploaded documents&lt;br&gt;Indexed chunks + metadata&lt;br&gt;Optional SQL Server via EF Core" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7FAFC;strokeColor=#A8B6C8;strokeWidth=2;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="980" y="430" width="300" height="185" as="geometry" />
+        </mxCell>
+        <mxCell id="extractor" value="&lt;b&gt;Document Extraction&lt;/b&gt;&lt;br&gt;&lt;br&gt;PDF: theo trang&lt;br&gt;DOCX: theo đoạn&lt;br&gt;PPTX: theo slide&lt;br&gt;TXT / FLM page: format sạch&lt;br&gt;Playwright cho trang render bằng JS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9FCFF;strokeColor=#0072BC;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="270" y="430" width="270" height="185" as="geometry" />
+        </mxCell>
+        <mxCell id="ai" value="&lt;b&gt;Local AI Runtime&lt;/b&gt;&lt;br&gt;&lt;br&gt;Ollama&lt;br&gt;qwen2.5:3b&lt;br&gt;Chat completion&lt;br&gt;Embedding vector thật&lt;br&gt;Chỉ trả lời khi đủ dữ liệu tài liệu" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8EE;strokeColor=#F37021;fontSize=15;fontColor=#08223F;arcSize=8;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="600" y="430" width="310" height="185" as="geometry" />
+        </mxCell>
+        <mxCell id="uploadflow" value="&lt;b&gt;Upload &amp;amp; Index Flow&lt;/b&gt;&lt;br&gt;File -&amp;gt; validate/hash -&amp;gt; extract -&amp;gt; chunk -&amp;gt; embed -&amp;gt; store metadata + vectors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D8E4F0;dashed=1;fontSize=14;fontColor=#3C536B;arcSize=8;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="270" y="675" width="1010" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="chatflow" value="&lt;b&gt;Chat RAG Flow&lt;/b&gt;&lt;br&gt;Question -&amp;gt; save message -&amp;gt; history -&amp;gt; rewrite/fuzzy match -&amp;gt; embedding -&amp;gt; retrieve top chunks -&amp;gt; answer + citations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D8E4F0;dashed=1;fontSize=14;fontColor=#3C536B;arcSize=8;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="270" y="765" width="1010" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="endArrow=block;html=1;rounded=0;strokeColor=#0072BC;strokeWidth=2;" edge="1" parent="1" source="user" target="presentation">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" style="endArrow=block;html=1;rounded=0;strokeColor=#F37021;strokeWidth=2;" edge="1" parent="1" source="presentation" target="service">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" style="endArrow=block;html=1;rounded=0;strokeColor=#00B050;strokeWidth=2;" edge="1" parent="1" source="service" target="data">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" style="endArrow=block;html=1;rounded=0;strokeColor=#7A8DA3;strokeWidth=2;" edge="1" parent="1" source="data" target="storage">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" style="endArrow=block;html=1;rounded=0;strokeColor=#0072BC;strokeWidth=2;" edge="1" parent="1" source="presentation" target="extractor">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a6" style="endArrow=block;html=1;rounded=0;strokeColor=#F37021;strokeWidth=2;" edge="1" parent="1" source="service" target="ai">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" style="endArrow=block;html=1;rounded=0;strokeColor=#F37021;strokeWidth=2;" edge="1" parent="1" source="extractor" target="service">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a8" style="endArrow=block;html=1;rounded=0;strokeColor=#00B050;strokeWidth=2;" edge="1" parent="1" source="ai" target="data">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

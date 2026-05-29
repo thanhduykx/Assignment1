@@ -1,0 +1,120 @@
+@model PresentationLayer.Models.DocumentTextViewModel
+@{
+    ViewData["Title"] = Model.Document.FileName;
+    var document = Model.Document;
+    var ignoredHeaderLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Home",
+        "FPT University Learning Materials",
+        "Syllabus Details"
+    };
+
+    var rows = new List<(string Label, List<string> Values)>();
+    var looseLines = new List<string>();
+    var materialLines = new List<string>();
+    var currentMaterialSection = false;
+
+    foreach (var rawLine in Model.Content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+    {
+        var line = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(line) || ignoredHeaderLines.Contains(line))
+        {
+            continue;
+        }
+
+        if (line.EndsWith("material(s)", StringComparison.OrdinalIgnoreCase))
+        {
+            currentMaterialSection = true;
+            materialLines.Add(line);
+            continue;
+        }
+
+        if (currentMaterialSection)
+        {
+            materialLines.Add(line);
+            continue;
+        }
+
+        var separatorIndex = line.IndexOf(":\t", StringComparison.Ordinal);
+        if (separatorIndex < 0)
+        {
+            separatorIndex = line.IndexOf(": ", StringComparison.Ordinal);
+        }
+
+        if (separatorIndex > 0 && separatorIndex <= 32)
+        {
+            var label = line[..separatorIndex].Trim().TrimEnd(':');
+            var value = line[(separatorIndex + 1)..].Trim();
+            rows.Add((label, new List<string> { value }));
+            continue;
+        }
+
+        if (rows.Count > 0)
+        {
+            rows[^1].Values.Add(line);
+        }
+        else
+        {
+            looseLines.Add(line);
+        }
+    }
+}
+
+<section class="flm-reader-shell">
+    <div class="flm-reader-topbar">
+        <a class="btn btn-outline-secondary" asp-controller="Home" asp-action="Index">Home</a>
+        <span>FPT University Learning Materials</span>
+    </div>
+
+    <div class="flm-reader-card">
+        <h1>Syllabus Details</h1>
+
+        <table class="flm-syllabus-table">
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr>
+                        <th>@row.Label:</th>
+                        <td>
+                            @foreach (var value in row.Values.Where(value => !string.IsNullOrWhiteSpace(value)))
+                            {
+                                <div>@value</div>
+                            }
+                        </td>
+                    </tr>
+                }
+                <tr>
+                    <th>Source:</th>
+                    <td>@document.Chapter</td>
+                </tr>
+                <tr>
+                    <th>UploadedDate:</th>
+                    <td>@document.UploadedAt.ToLocalTime().ToString("M/d/yyyy HH:mm")</td>
+                </tr>
+            </tbody>
+        </table>
+
+        @if (looseLines.Count > 0)
+        {
+            <section class="flm-extra-section">
+                @foreach (var line in looseLines)
+                {
+                    <p>@line</p>
+                }
+            </section>
+        }
+
+        @if (materialLines.Count > 0)
+        {
+            <section class="flm-material-section">
+                <h2>@materialLines[0]</h2>
+                <div class="flm-material-table">
+                    @foreach (var line in materialLines.Skip(1))
+                    {
+                        <div>@line</div>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</section>
