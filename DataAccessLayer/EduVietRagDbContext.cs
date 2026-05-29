@@ -1,4 +1,6 @@
 using DataAccessLayer.Entities;
+using EntityChatMessage = DataAccessLayer.Entities.ChatMessage;
+using EntityChatSession = DataAccessLayer.Entities.ChatSession;
 using Microsoft.EntityFrameworkCore;
 
 namespace DataAccessLayer;
@@ -12,8 +14,8 @@ public class EduVietRagDbContext(DbContextOptions<EduVietRagDbContext> options) 
     public DbSet<Embedding> Embeddings => Set<Embedding>();
     public DbSet<EmbeddingModel> EmbeddingModels => Set<EmbeddingModel>();
     public DbSet<ChunkingStrategy> ChunkingStrategies => Set<ChunkingStrategy>();
-    public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
-    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<EntityChatSession> ChatSessions => Set<EntityChatSession>();
+    public DbSet<EntityChatMessage> ChatMessages => Set<EntityChatMessage>();
     public DbSet<Citation> Citations => Set<Citation>();
     public DbSet<Experiment> Experiments => Set<Experiment>();
     public DbSet<ExperimentRun> ExperimentRuns => Set<ExperimentRun>();
@@ -134,7 +136,7 @@ public class EduVietRagDbContext(DbContextOptions<EduVietRagDbContext> options) 
             entity.Property(x => x.Description).HasColumnName("description").HasColumnType("nvarchar(max)");
         });
 
-        modelBuilder.Entity<ChatSession>(entity =>
+        modelBuilder.Entity<EntityChatSession>(entity =>
         {
             entity.ToTable("chat_sessions");
             entity.HasKey(x => x.Id);
@@ -149,7 +151,7 @@ public class EduVietRagDbContext(DbContextOptions<EduVietRagDbContext> options) 
             entity.HasIndex(x => new { x.UserId, x.SubjectId });
         });
 
-        modelBuilder.Entity<ChatMessage>(entity =>
+        modelBuilder.Entity<EntityChatMessage>(entity =>
         {
             entity.ToTable("chat_messages", table => table.HasCheckConstraint("CK_chat_messages_retrieved_chunks_json", "[retrieved_chunks] IS NULL OR ISJSON([retrieved_chunks]) = 1"));
             entity.HasKey(x => x.Id);

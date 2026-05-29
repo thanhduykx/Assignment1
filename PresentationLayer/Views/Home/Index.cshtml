@@ -2,7 +2,6 @@
 @{
     ViewData["Title"] = "Course document repository";
     var totalDocuments = Model.Documents.Count;
-    var totalChunks = Model.Documents.Sum(document => document.ChunkCount);
     var indexedDocuments = totalDocuments;
     var processingDocuments = 0;
     var subjectOptions = Model.Documents
@@ -36,10 +35,6 @@
         <article class="stat-card stat-card-blue">
             <span data-i18n="documents.statsDocuments">Documents</span>
             <strong>@totalDocuments</strong>
-        </article>
-        <article class="stat-card stat-card-orange">
-            <span>Chunks</span>
-            <strong>@totalChunks</strong>
         </article>
         <article class="stat-card stat-card-green">
             <span data-i18n="documents.statsIndexed">Indexed</span>
@@ -147,10 +142,10 @@
                                 <section class="chapter-group">
                                     <div class="chapter-group-header">
                                         <div>
-                                            <span data-i18n="documents.chapter">Chapter</span>
+                                            <span data-i18n="documents.source">Source</span>
                                             <h4>@chapterGroup.Key</h4>
                                         </div>
-                                        <small>@chapterDocuments.Sum(document => document.ChunkCount) chunks</small>
+                                        <small>@chapterDocuments.Count documents</small>
                                     </div>
 
                                     <div class="document-list document-list-rows">
@@ -159,7 +154,7 @@
                                             <article class="document-item">
                                                 <div class="document-item-main">
                                                     <strong>@document.FileName</strong>
-                                                    <small>@document.ChunkCount chunks / @document.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
+                                                    <small>@document.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
                                                 </div>
                                                 <a class="btn btn-outline-secondary document-view-link"
                                                    asp-controller="Home"
