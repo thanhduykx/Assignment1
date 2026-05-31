@@ -15,37 +15,22 @@ internal static class KnowledgeSqlSchemaInitializer
     {
         var changed = false;
 
-        changed |= AddEmbeddingModelIfMissing(
-            context,
-            name: "hashing-baseline",
-            provider: "Hashing",
-            modelId: "hashing-baseline",
-            dimensions: 512,
-            configJson: "{}");
+        foreach (var model in context.ResearchEmbeddingModels.Where(item => item.Provider != "Gemini"))
+        {
+            if (model.IsActive)
+            {
+                model.IsActive = false;
+                changed = true;
+            }
+        }
 
-        changed |= AddEmbeddingModelIfMissing(
+        changed |= UpsertEmbeddingModel(
             context,
-            name: "bge-m3",
-            provider: "Ollama",
-            modelId: "bge-m3",
-            dimensions: 1024,
-            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
-
-        changed |= AddEmbeddingModelIfMissing(
-            context,
-            name: "multilingual-e5-base",
-            provider: "Ollama",
-            modelId: "multilingual-e5-base",
+            name: "gemini-embedding-001",
+            provider: "Gemini",
+            modelId: "gemini-embedding-001",
             dimensions: 768,
-            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
-
-        changed |= AddEmbeddingModelIfMissing(
-            context,
-            name: "phobert-base",
-            provider: "Ollama",
-            modelId: "phobert-base",
-            dimensions: 768,
-            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
+            configJson: "{\"outputDimensionality\":768}");
 
         changed |= AddChunkingStrategyIfMissing(
             context,
@@ -85,7 +70,7 @@ internal static class KnowledgeSqlSchemaInitializer
         }
     }
 
-    private static bool AddEmbeddingModelIfMissing(
+    private static bool UpsertEmbeddingModel(
         KnowledgeSqlDbContext context,
         string name,
         string provider,
@@ -93,9 +78,41 @@ internal static class KnowledgeSqlSchemaInitializer
         int dimensions,
         string configJson)
     {
-        if (context.ResearchEmbeddingModels.Any(item => item.Name == name))
+        var existing = context.ResearchEmbeddingModels.FirstOrDefault(item => item.Name == name);
+        if (existing is not null)
         {
-            return false;
+            var changed = false;
+            if (existing.Provider != provider)
+            {
+                existing.Provider = provider;
+                changed = true;
+            }
+
+            if (existing.ModelId != modelId)
+            {
+                existing.ModelId = modelId;
+                changed = true;
+            }
+
+            if (existing.Dimensions != dimensions)
+            {
+                existing.Dimensions = dimensions;
+                changed = true;
+            }
+
+            if (existing.ConfigJson != configJson)
+            {
+                existing.ConfigJson = configJson;
+                changed = true;
+            }
+
+            if (!existing.IsActive)
+            {
+                existing.IsActive = true;
+                changed = true;
+            }
+
+            return changed;
         }
 
         context.ResearchEmbeddingModels.Add(new KnowledgeSqlResearchEmbeddingModel

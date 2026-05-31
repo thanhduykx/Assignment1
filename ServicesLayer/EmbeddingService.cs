@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
 using System.Text;
@@ -191,4 +192,105 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
 
     private sealed record OllamaEmbeddingResponse(
         [property: JsonPropertyName("embedding")] List<double> Embedding);
+}
+
+public sealed class GeminiEmbeddingService : IEmbeddingService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private readonly HttpClient _httpClient;
+    private readonly GeminiApiOptions _options;
+    private readonly HashingEmbeddingService _similarity = new();
+
+    public GeminiEmbeddingService(HttpClient httpClient, GeminiApiOptions options)
+    {
+        _httpClient = httpClient;
+        _options = options;
+    }
+
+    public async Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new Dictionary<int, double>();
+        }
+
+        if (!_options.Enabled || string.IsNullOrWhiteSpace(_options.ApiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is required for embeddings.");
+        }
+
+        var model = string.IsNullOrWhiteSpace(_options.EmbeddingModel)
+            ? "gemini-embedding-001"
+            : _options.EmbeddingModel.Trim();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{model}:embedContent");
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", _options.ApiKey);
+        request.Content = JsonContent.Create(
+            new GeminiEmbeddingRequest(
+                $"models/{model}",
+                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                Math.Max(1, _options.EmbeddingOutputDimensionality)),
+            options: JsonOptions);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Gemini embedding request failed with HTTP {(int)response.StatusCode}.");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
+        if (payload?.Embedding?.Values is not { Count: > 0 } values)
+        {
+            throw new InvalidOperationException("Gemini embedding response did not contain vector values.");
+        }
+
+        return NormalizeDenseEmbedding(values);
+    }
+
+    public double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)
+    {
+        return _similarity.CosineSimilarity(left, right);
+    }
+
+    internal static Dictionary<int, double> NormalizeDenseEmbedding(IReadOnlyList<double> embedding)
+    {
+        var norm = Math.Sqrt(embedding.Sum(value => value * value));
+        var vector = new Dictionary<int, double>(embedding.Count);
+        if (norm == 0)
+        {
+            return vector;
+        }
+
+        for (var index = 0; index < embedding.Count; index++)
+        {
+            var value = embedding[index] / norm;
+            if (Math.Abs(value) > 0)
+            {
+                vector[index] = value;
+            }
+        }
+
+        return vector;
+    }
+
+    private sealed record GeminiEmbeddingRequest(
+        [property: JsonPropertyName("model")] string Model,
+        [property: JsonPropertyName("content")] GeminiEmbeddingContent Content,
+        [property: JsonPropertyName("outputDimensionality")] int OutputDimensionality);
+
+    private sealed record GeminiEmbeddingContent(
+        [property: JsonPropertyName("parts")] IReadOnlyList<GeminiEmbeddingPart> Parts);
+
+    private sealed record GeminiEmbeddingPart(
+        [property: JsonPropertyName("text")] string Text);
+
+    private sealed record GeminiEmbeddingResponse(
+        [property: JsonPropertyName("embedding")] GeminiEmbedding? Embedding);
+
+    private sealed record GeminiEmbedding(
+        [property: JsonPropertyName("values")] List<double>? Values);
 }

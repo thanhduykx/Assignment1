@@ -88,6 +88,7 @@ public sealed class SqlResearchRepository : IResearchRepository
         await using var context = CreateContext();
         return await context.ResearchEmbeddingModels
             .AsNoTracking()
+            .Where(item => item.IsActive)
             .OrderBy(item => item.Name)
             .Select(item => new ResearchOption
             {
@@ -105,6 +106,7 @@ public sealed class SqlResearchRepository : IResearchRepository
         await using var context = CreateContext();
         return await context.ResearchChunkingStrategies
             .AsNoTracking()
+            .Where(item => item.IsActive)
             .OrderBy(item => item.Name)
             .Select(item => new ResearchOption
             {

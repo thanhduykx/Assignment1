@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using PresentationLayer.Models;
+using PresentationLayer.Services;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers;
@@ -11,11 +12,16 @@ namespace PresentationLayer.Controllers;
 public sealed class ResearchController : Controller
 {
     private readonly IResearchBenchmarkService _researchService;
+    private readonly IResearchReportPdfService _reportPdfService;
     private readonly ILogger<ResearchController> _logger;
 
-    public ResearchController(IResearchBenchmarkService researchService, ILogger<ResearchController> logger)
+    public ResearchController(
+        IResearchBenchmarkService researchService,
+        IResearchReportPdfService reportPdfService,
+        ILogger<ResearchController> logger)
     {
         _researchService = researchService;
+        _reportPdfService = reportPdfService;
         _logger = logger;
     }
 
@@ -54,6 +60,16 @@ public sealed class ResearchController : Controller
             ModelState.AddModelError(nameof(model.QuestionsText), "Add at least one question in the format: question | expected answer.");
         }
 
+        if (model.EmbeddingModelIds.Count == 0)
+        {
+            ModelState.AddModelError(nameof(model.EmbeddingModelIds), "Choose Gemini embedding model before creating an experiment.");
+        }
+
+        if (model.ChunkingStrategyIds.Count == 0)
+        {
+            ModelState.AddModelError(nameof(model.ChunkingStrategyIds), "Choose at least one chunking strategy.");
+        }
+
         if (!ModelState.IsValid)
         {
             return View(await BuildCreateViewModelAsync(model, cancellationToken));
@@ -89,6 +105,20 @@ public sealed class ResearchController : Controller
         return experiment is null ? NotFound() : View(new ResearchDetailViewModel { Experiment = experiment });
     }
 
+    [HttpGet]
+    public async Task<IActionResult> ReportPdf(Guid id, CancellationToken cancellationToken)
+    {
+        var experiment = await _researchService.GetExperimentAsync(id, cancellationToken);
+        if (experiment is null)
+        {
+            return NotFound();
+        }
+
+        var bytes = _reportPdfService.BuildReport(experiment);
+        var fileName = $"rbl-report-{SanitizeFileName(experiment.Name)}-{DateTime.UtcNow:yyyyMMddHHmm}.pdf";
+        return File(bytes, "application/pdf", fileName);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Run(Guid id, CancellationToken cancellationToken)
@@ -110,6 +140,16 @@ public sealed class ResearchController : Controller
     private async Task<ResearchCreateViewModel> BuildCreateViewModelAsync(ResearchCreateViewModel model, CancellationToken cancellationToken)
     {
         var catalog = await _researchService.GetCatalogAsync(cancellationToken);
+        if (model.EmbeddingModelIds.Count == 0)
+        {
+            model.EmbeddingModelIds = catalog.EmbeddingModels.Select(item => item.Id).ToList();
+        }
+
+        if (model.ChunkingStrategyIds.Count == 0)
+        {
+            model.ChunkingStrategyIds = catalog.ChunkingStrategies.Select(item => item.Id).ToList();
+        }
+
         model.EmbeddingModels = catalog.EmbeddingModels.Select(item => new SelectListItem
         {
             Value = item.Id.ToString(),
@@ -144,5 +184,13 @@ public sealed class ResearchController : Controller
                 Difficulty = "Medium"
             })
             .ToList();
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(value.Select(character => invalid.Contains(character) ? '-' : character).ToArray());
+        cleaned = string.Join("-", cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return string.IsNullOrWhiteSpace(cleaned) ? "experiment" : cleaned.ToLowerInvariant();
     }
 }

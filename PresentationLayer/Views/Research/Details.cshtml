@@ -10,6 +10,7 @@
     var ragRuns = runs.Where(item => item.RunKind.Equals("Rag", StringComparison.OrdinalIgnoreCase)).ToList();
     var fineTunedRuns = runs.Where(item => item.RunKind.Equals("FineTuned", StringComparison.OrdinalIgnoreCase)).ToList();
     var bestRun = runs.Where(item => item.AverageRagasScore.HasValue).OrderByDescending(item => item.AverageRagasScore).FirstOrDefault();
+    var hasReportData = runs.Any(item => item.ResultCount > 0);
 
     double? AverageMetric(IEnumerable<ResearchRunSummary> source, Func<ResearchRunSummary, double?> selector)
     {
@@ -41,13 +42,22 @@
             <h1>@Model.Experiment.Name</h1>
             <p>@Model.Experiment.Subject - @Model.Experiment.QuestionCount questions - @Model.Experiment.RunCount runs</p>
         </div>
-        <form asp-action="Run" asp-route-id="@Model.Experiment.Id" method="post">
-            @Html.AntiForgeryToken()
-            <button type="submit" class="rbl-submit-button">
-                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                Run benchmark
-            </button>
-        </form>
+        <div class="rbl-detail-actions">
+            @if (hasReportData)
+            {
+                <a class="rbl-secondary-button" asp-action="ReportPdf" asp-route-id="@Model.Experiment.Id">
+                    <span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
+                    Download PDF
+                </a>
+            }
+            <form asp-action="Run" asp-route-id="@Model.Experiment.Id" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="rbl-submit-button">
+                    <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                    Run benchmark
+                </button>
+            </form>
+        </div>
     </div>
 
     @if (TempData["Success"] is string success)

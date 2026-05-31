@@ -34,17 +34,20 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private readonly IKnowledgeRepository _knowledgeRepository;
     private readonly ILocalChatCompletionService _chatCompletionService;
     private readonly HttpClient _httpClient;
+    private readonly GeminiApiOptions _geminiOptions;
 
     public ResearchBenchmarkService(
         IResearchRepository researchRepository,
         IKnowledgeRepository knowledgeRepository,
         ILocalChatCompletionService chatCompletionService,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        GeminiApiOptions geminiOptions)
     {
         _researchRepository = researchRepository;
         _knowledgeRepository = knowledgeRepository;
         _chatCompletionService = chatCompletionService;
         _httpClient = httpClient;
+        _geminiOptions = geminiOptions;
     }
 
     public async Task<ResearchCatalog> GetCatalogAsync(CancellationToken cancellationToken = default)
@@ -212,6 +215,17 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             return HashEmbedding(text);
         }
 
+        if (run.EmbeddingProvider?.Equals("Gemini", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return await EmbedWithGeminiAsync(run, text, cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(run.EmbeddingProvider)
+            && !run.EmbeddingProvider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Only Gemini embeddings are enabled.");
+        }
+
         var config = string.IsNullOrWhiteSpace(run.EmbeddingConfigJson)
             ? new Dictionary<string, string>()
             : JsonSerializer.Deserialize<Dictionary<string, string>>(run.EmbeddingConfigJson, JsonOptions) ?? new Dictionary<string, string>();
@@ -235,6 +249,50 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         return Normalize(payload.Embedding);
+    }
+
+    private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
+        ResearchRunSummary run,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        if (!_geminiOptions.Enabled || string.IsNullOrWhiteSpace(_geminiOptions.ApiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is required for RBL embeddings.");
+        }
+
+        var config = string.IsNullOrWhiteSpace(run.EmbeddingConfigJson)
+            ? new Dictionary<string, string>()
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(run.EmbeddingConfigJson, JsonOptions) ?? new Dictionary<string, string>();
+        var model = run.EmbeddingModelIdValue ?? _geminiOptions.EmbeddingModel;
+        var outputDimensionality = int.TryParse(config.GetValueOrDefault("outputDimensionality"), out var parsedDimensions)
+            ? parsedDimensions
+            : _geminiOptions.EmbeddingOutputDimensionality;
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent");
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
+        request.Content = JsonContent.Create(
+            new GeminiEmbeddingRequest(
+                $"models/{model}",
+                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                Math.Max(1, outputDimensionality)),
+            options: JsonOptions);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"{run.EmbeddingModelName} Gemini embedding runtime returned HTTP {(int)response.StatusCode}.");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
+        if (payload?.Embedding?.Values is not { Count: > 0 } values)
+        {
+            throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty Gemini embedding.");
+        }
+
+        return GeminiEmbeddingService.NormalizeDenseEmbedding(values);
     }
 
     private static List<DocumentChunk> Rechunk(IReadOnlyList<DocumentChunk> originalChunks, ResearchRunSummary run)
@@ -473,6 +531,23 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private sealed record OllamaEmbeddingResponse(
         [property: JsonPropertyName("embedding")] List<double> Embedding);
+
+    private sealed record GeminiEmbeddingRequest(
+        [property: JsonPropertyName("model")] string Model,
+        [property: JsonPropertyName("content")] GeminiEmbeddingContent Content,
+        [property: JsonPropertyName("outputDimensionality")] int OutputDimensionality);
+
+    private sealed record GeminiEmbeddingContent(
+        [property: JsonPropertyName("parts")] IReadOnlyList<GeminiEmbeddingPart> Parts);
+
+    private sealed record GeminiEmbeddingPart(
+        [property: JsonPropertyName("text")] string Text);
+
+    private sealed record GeminiEmbeddingResponse(
+        [property: JsonPropertyName("embedding")] GeminiEmbedding? Embedding);
+
+    private sealed record GeminiEmbedding(
+        [property: JsonPropertyName("values")] List<double>? Values);
 
     private sealed record FineTunedRequest(
         [property: JsonPropertyName("subject")] string Subject,

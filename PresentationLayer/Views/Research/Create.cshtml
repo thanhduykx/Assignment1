@@ -14,7 +14,7 @@
                 Back to dashboard
             </a>
             <h1>Trình cấu hình thực nghiệm</h1>
-            <p>Thiết lập ma trận benchmark RAG theo embedding model, chunking strategy và fine-tuned baseline.</p>
+            <p>Thiết lập ma trận benchmark RAG theo Gemini embedding, nhiều chunking strategy và fine-tuned baseline.</p>
         </div>
     </div>
 
@@ -29,7 +29,7 @@
                 </div>
             </div>
 
-            <div asp-validation-summary="ModelOnly" class="rbl-validation"></div>
+            <div asp-validation-summary="All" class="rbl-validation"></div>
 
             <div class="rbl-form-grid">
                 <label class="rbl-field">
@@ -48,7 +48,7 @@
             <div class="rbl-choice-section">
                 <div>
                     <h3>Mô hình Embedding</h3>
-                    <p>Chọn một hoặc nhiều model để sinh run matrix.</p>
+                    <p>Hệ thống chỉ dùng Gemini embedding model cho bản RBL này.</p>
                 </div>
                 <div class="rbl-choice-grid">
                     @foreach (var item in Model.EmbeddingModels)
@@ -57,7 +57,7 @@
                             <input type="checkbox" name="EmbeddingModelIds" value="@item.Value" checked="@item.Selected" />
                             <span>
                                 <strong>@item.Text</strong>
-                                <small>Embedding runner</small>
+                                <small>Gemini embedding runner</small>
                             </span>
                         </label>
                     }
