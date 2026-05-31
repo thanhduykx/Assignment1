@@ -1,0 +1,131 @@
+@model PresentationLayer.Models.ResearchCreateViewModel
+@{
+    ViewData["Title"] = "Cấu hình thực nghiệm RBL";
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "config";
+    ViewData["ShellTitle"] = "Cấu hình thực nghiệm";
+}
+
+<section class="rbl-config-page">
+    <div class="rbl-page-heading">
+        <div>
+            <a asp-action="Index" class="rbl-back-link">
+                <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+                Back to dashboard
+            </a>
+            <h1>Trình cấu hình thực nghiệm</h1>
+            <p>Thiết lập ma trận benchmark RAG theo embedding model, chunking strategy và fine-tuned baseline.</p>
+        </div>
+    </div>
+
+    <form asp-action="Create" method="post" class="rbl-config-grid">
+        @Html.AntiForgeryToken()
+
+        <section class="rbl-panel rbl-config-form">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">Thông số phiên mới</span>
+                    <h2>Benchmark setup</h2>
+                </div>
+            </div>
+
+            <div asp-validation-summary="ModelOnly" class="rbl-validation"></div>
+
+            <div class="rbl-form-grid">
+                <label class="rbl-field">
+                    <span>Experiment name</span>
+                    <input asp-for="Name" placeholder="DBA103 RAG vs fine-tuned baseline" />
+                    <small><span asp-validation-for="Name"></span></small>
+                </label>
+
+                <label class="rbl-field">
+                    <span>Subject filter</span>
+                    <input asp-for="Subject" placeholder="DBA103" />
+                    <small><span asp-validation-for="Subject"></span></small>
+                </label>
+            </div>
+
+            <div class="rbl-choice-section">
+                <div>
+                    <h3>Mô hình Embedding</h3>
+                    <p>Chọn một hoặc nhiều model để sinh run matrix.</p>
+                </div>
+                <div class="rbl-choice-grid">
+                    @foreach (var item in Model.EmbeddingModels)
+                    {
+                        <label class="rbl-choice-card">
+                            <input type="checkbox" name="EmbeddingModelIds" value="@item.Value" checked="@item.Selected" />
+                            <span>
+                                <strong>@item.Text</strong>
+                                <small>Embedding runner</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="rbl-choice-section">
+                <div>
+                    <h3>Chunking strategies</h3>
+                    <p>Benchmark nhiều cách chia tài liệu, không fallback âm thầm.</p>
+                </div>
+                <div class="rbl-choice-grid">
+                    @foreach (var item in Model.ChunkingStrategies)
+                    {
+                        <label class="rbl-choice-card">
+                            <input type="checkbox" name="ChunkingStrategyIds" value="@item.Value" checked="@item.Selected" />
+                            <span>
+                                <strong>@item.Text</strong>
+                                <small>Chunking configuration</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="rbl-form-grid">
+                <label class="rbl-field">
+                    <span>Fine-tuned baseline name</span>
+                    <input asp-for="FineTunedModelName" placeholder="optional" />
+                </label>
+
+                <label class="rbl-field">
+                    <span>Fine-tuned endpoint</span>
+                    <input asp-for="FineTunedEndpoint" placeholder="http://localhost:8000/answer" />
+                </label>
+            </div>
+
+            <label class="rbl-field">
+                <span>Benchmark questions</span>
+                <textarea asp-for="QuestionsText" rows="8" placeholder="Question | Expected answer / ground truth"></textarea>
+                <small>Mỗi dòng một câu hỏi. Dùng dấu | để tách câu hỏi và ground truth.</small>
+                <small><span asp-validation-for="QuestionsText"></span></small>
+            </label>
+
+            <div class="rbl-form-actions">
+                <button type="submit" class="rbl-submit-button">
+                    <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                    Create experiment
+                </button>
+                <a asp-action="Index" class="rbl-secondary-button">Cancel</a>
+            </div>
+        </section>
+
+        <aside class="rbl-panel rbl-progress-preview">
+            <span class="rbl-section-label">Trạng thái hệ thống</span>
+            <h2>Benchmark lifecycle</h2>
+            <div class="rbl-progress-ring" aria-hidden="true">
+                <span>RBL</span>
+            </div>
+            <ol class="rbl-run-steps">
+                <li><strong>1. Pending</strong><span>Tạo run matrix từ model x strategy.</span></li>
+                <li><strong>2. Running</strong><span>Re-chunk, embed, retrieve, generate answer.</span></li>
+                <li><strong>3. Scored</strong><span>Lưu RAGAS metrics vào database.</span></li>
+            </ol>
+        </aside>
+    </form>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

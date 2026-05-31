@@ -1,31 +1,19 @@
 @model PresentationLayer.Models.ChatIndexViewModel
 @{
-    ViewData["Title"] = "Document chat";
-    ViewData["BodyClass"] = "chat-body";
+    ViewData["Title"] = "Chatbot";
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "chat";
+    ViewData["ShellTitle"] = "Chatbot tài liệu";
     ViewData["HideAssistantLauncher"] = true;
+
     var suggestedQuestions = new[]
     {
-        new
-        {
-            En = "How many credits does DBA103 have?",
-            Vi = "M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?"
-        },
-        new
-        {
-            En = "What is DBA103 about?",
-            Vi = "DBA103 l\u00e0 m\u00f4n g\u00ec?"
-        },
-        new
-        {
-            En = "What should students learn in DBA103?",
-            Vi = "Sinh vi\u00ean s\u1ebd h\u1ecdc nh\u1eefng g\u00ec trong DBA103?"
-        },
-        new
-        {
-            En = "What is the time allocation of DBA103?",
-            Vi = "Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 bao nhi\u00eau?"
-        }
+        new { En = "How many credits does DBA103 have?", Vi = "Môn DBA103 có bao nhiêu tín chỉ?" },
+        new { En = "What is DBA103 about?", Vi = "DBA103 là môn gì?" },
+        new { En = "What should students learn in DBA103?", Vi = "Sinh viên sẽ học những gì trong DBA103?" },
+        new { En = "What is the time allocation of DBA103?", Vi = "Thời lượng học của DBA103 là bao nhiêu?" }
     };
+
     var primaryDocument = Model.Documents
         .OrderByDescending(document =>
             document.FileName.StartsWith("FLM-", StringComparison.OrdinalIgnoreCase)
@@ -37,32 +25,86 @@
                     : 1)
         .ThenByDescending(document => document.UploadedAt)
         .FirstOrDefault();
-    var primarySubject = primaryDocument?.Subject;
-    var primaryChapter = primaryDocument?.Chapter;
-    var subjectLabel = string.IsNullOrWhiteSpace(primarySubject) ? "this course" : primarySubject;
-    var chapterLabel = string.IsNullOrWhiteSpace(primaryChapter) ? "the current chapter" : primaryChapter;
+    var primarySubject = string.IsNullOrWhiteSpace(primaryDocument?.Subject) ? "this course" : primaryDocument.Subject;
+    var primaryChapter = string.IsNullOrWhiteSpace(primaryDocument?.Chapter) ? "the current chapter" : primaryDocument.Chapter;
     var relatedQuestions = primaryDocument is null
         ? Array.Empty<(string En, string Vi)>()
         : new[]
         {
-            ($"What is {subjectLabel} about?", $"{subjectLabel} là môn gì?"),
-            ($"How many credits does {subjectLabel} have?", $"{subjectLabel} có bao nhiêu tín chỉ?"),
-            ($"What are the main contents of {subjectLabel}?", $"Nội dung chính của {subjectLabel} gồm những gì?"),
-            ($"What should students practice in {chapterLabel}?", $"Sinh viên cần luyện tập gì trong {chapterLabel}?")
+            ($"What is {primarySubject} about?", $"{primarySubject} là môn gì?"),
+            ($"How many credits does {primarySubject} have?", $"{primarySubject} có bao nhiêu tín chỉ?"),
+            ($"What are the main contents of {primarySubject}?", $"Nội dung chính của {primarySubject} gồm những gì?"),
+            ($"What should students practice in {primaryChapter}?", $"Sinh viên cần luyện tập gì trong {primaryChapter}?")
         };
 }
 
-<section class="chat-page-shell">
-    <aside class="codex-session-sidebar" aria-label="Chat session history" data-i18n-aria-label="chat.sessionsAria">
-        <div class="codex-sidebar-top">
-            <a class="btn btn-outline-secondary" asp-controller="Home" asp-action="Index" data-i18n="chat.documents">Documents</a>
-            <button id="newSessionButton" type="button" class="btn btn-primary" data-i18n="chat.newSession">New session</button>
+<section class="rbl-chat-page">
+    <main class="rbl-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
+        <header class="rbl-chat-header">
+            <div>
+                <span class="rbl-section-label">Course assistant</span>
+                <h1>Nhập môn AI</h1>
+                <p>Hỏi đáp dựa trên tài liệu đã index. Nếu dữ liệu không đủ, chatbot phải báo thiếu nguồn thay vì đoán.</p>
+            </div>
+            <span class="rbl-status is-success">@Model.Documents.Count tài liệu sẵn sàng</span>
+        </header>
+
+        <div id="chatMessages" class="chat-messages codex-chat-messages rbl-chat-messages">
+            <div class="chat-empty-state rbl-chat-empty">
+                <span class="rbl-bot-mark">AI</span>
+                <h3 data-i18n="chat.emptyTitle">Bắt đầu bằng một câu hỏi cụ thể</h3>
+                <p data-i18n="chat.emptyText">Chọn gợi ý bên dưới hoặc nhập câu hỏi về tài liệu môn học.</p>
+                <div class="suggestion-grid rbl-suggestion-grid" aria-label="Question suggestions" data-i18n-aria-label="chat.suggestionsAria">
+                    @foreach (var question in suggestedQuestions)
+                    {
+                        <button type="button" class="suggestion-chip" data-question="@question.En" data-question-en="@question.En" data-question-vi="@question.Vi">@question.En</button>
+                    }
+                </div>
+            </div>
+            <div class="message assistant">
+                <div class="bubble" data-i18n="chat.welcome">Bạn có thể hỏi về nội dung tài liệu đã upload. Câu trả lời sẽ ưu tiên ngắn gọn và có nguồn.</div>
+            </div>
         </div>
-        <div class="session-sidebar-header">
-            <strong data-i18n="chat.history">Session history</strong>
-            <span><span id="sessionCount">@Model.ChatSessions.Count</span> <span data-i18n="chat.sessionsUnit">sessions</span></span>
+
+        <form id="chatForm" class="chat-form codex-chat-form rbl-chat-form">
+            @if (relatedQuestions.Length > 0)
+            {
+                <div class="chat-related-strip rbl-related-strip" aria-label="Related questions" data-i18n-aria-label="chat.relatedAria">
+                    <span data-i18n="chat.relatedLabel">Related questions</span>
+                    <div class="chat-related-list">
+                        @foreach (var question in relatedQuestions)
+                        {
+                            <button type="button" class="related-question-chip" data-question="@question.Item1" data-question-en="@question.Item1" data-question-vi="@question.Item2">@question.Item1</button>
+                        }
+                    </div>
+                </div>
+            }
+            <textarea id="questionInput" rows="2" placeholder="Example: How many credits does DBA103 have?" data-i18n-placeholder="chat.placeholder"></textarea>
+            <button type="submit" class="rbl-submit-button" data-i18n="chat.send">
+                <span class="material-symbols-outlined" aria-hidden="true">send</span>
+                Send
+            </button>
+        </form>
+    </main>
+
+    <aside class="rbl-session-panel" aria-label="Chat session history" data-i18n-aria-label="chat.sessionsAria">
+        <div class="rbl-session-actions">
+            <a class="rbl-secondary-button" asp-controller="Home" asp-action="Index" data-i18n="chat.documents">
+                <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
+                Documents
+            </a>
+            <button id="newSessionButton" type="button" class="rbl-submit-button" data-i18n="chat.newSession">
+                <span class="material-symbols-outlined" aria-hidden="true">add</span>
+                New session
+            </button>
         </div>
-        <div id="chatSessionList" class="chat-session-list">
+
+        <div class="rbl-session-header">
+            <strong data-i18n="chat.history">Lịch sử hội thoại</strong>
+            <span><span id="sessionCount">@Model.ChatSessions.Count</span> sessions</span>
+        </div>
+
+        <div id="chatSessionList" class="chat-session-list rbl-session-list">
             @if (Model.ChatSessions.Count == 0)
             {
                 <p class="session-empty" data-i18n="chat.noSessions">No sessions yet.</p>
@@ -78,53 +120,18 @@
 
                     <button type="button" class="chat-session-item" data-session-id="@session.Id">
                         <span>@title</span>
-                        <small>@session.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") / @session.Messages.Count <span data-i18n="chat.messagesUnit">messages</span></small>
+                        <small>@session.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") / @session.Messages.Count messages</small>
                     </button>
                 }
             }
         </div>
-    </aside>
 
-    <main class="codex-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
-        <header class="codex-chat-header">
-            <div>
-                <h1 data-i18n="chat.title">Document chat</h1>
-                <p data-i18n="chat.subtitle">Ask questions based on indexed documents. Questions outside the document scope will be marked as insufficient data.</p>
-            </div>
-        </header>
-
-        <div id="chatMessages" class="chat-messages codex-chat-messages">
-            <div class="chat-empty-state">
-                <span class="empty-state-mark">AI</span>
-                <h3 data-i18n="chat.emptyTitle">Start with a specific question</h3>
-                <p data-i18n="chat.emptyText">Choose a suggestion below or type your question. If the documents do not contain enough data, the chatbot will say so instead of guessing.</p>
-                <div class="suggestion-grid" aria-label="Question suggestions" data-i18n-aria-label="chat.suggestionsAria">
-                    @foreach (var question in suggestedQuestions)
-                    {
-                        <button type="button" class="suggestion-chip" data-question="@question.En" data-question-en="@question.En" data-question-vi="@question.Vi">@question.En</button>
-                    }
-                </div>
-            </div>
-            <div class="message assistant">
-                <div class="bubble" data-i18n="chat.welcome">You can ask about uploaded document content. I will answer concisely when there is enough data.</div>
+        <div class="rbl-session-storage">
+            <span>Storage</span>
+            <strong>@Model.Documents.Sum(item => item.ChunkCount) chunks</strong>
+            <div class="rbl-meter">
+                <span style="width:@Math.Min(100, Model.Documents.Count * 4)%"></span>
             </div>
         </div>
-
-        <form id="chatForm" class="chat-form codex-chat-form">
-            @if (relatedQuestions.Length > 0)
-            {
-                <div class="chat-related-strip" aria-label="Related questions" data-i18n-aria-label="chat.relatedAria">
-                    <span data-i18n="chat.relatedLabel">Related questions</span>
-                    <div class="chat-related-list">
-                        @foreach (var question in relatedQuestions)
-                        {
-                            <button type="button" class="related-question-chip" data-question="@question.Item1" data-question-en="@question.Item1" data-question-vi="@question.Item2">@question.Item1</button>
-                        }
-                    </div>
-                </div>
-            }
-            <textarea id="questionInput" rows="2" placeholder="Example: How many credits does DBA103 have?" data-i18n-placeholder="chat.placeholder"></textarea>
-            <button type="submit" class="btn btn-primary" data-i18n="chat.send">Send</button>
-        </form>
-    </main>
+    </aside>
 </section>

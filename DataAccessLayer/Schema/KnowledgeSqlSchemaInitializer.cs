@@ -1,5 +1,5 @@
 using DataAccessLayer.Context;
-using Microsoft.EntityFrameworkCore;
+using DataAccessLayer.Entities;
 
 namespace DataAccessLayer.Schema;
 
@@ -7,79 +7,133 @@ internal static class KnowledgeSqlSchemaInitializer
 {
     public static void EnsureTablesCreated(KnowledgeSqlDbContext context)
     {
-        context.Database.ExecuteSqlRaw("""
-            IF OBJECT_ID(N'[dbo].[rag_documents]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [dbo].[rag_documents] (
-                    [Id] uniqueidentifier NOT NULL CONSTRAINT [PK_rag_documents] PRIMARY KEY,
-                    [FileName] nvarchar(255) NOT NULL,
-                    [StoredPath] nvarchar(1000) NOT NULL,
-                    [Subject] nvarchar(255) NOT NULL,
-                    [Chapter] nvarchar(255) NOT NULL,
-                    [ContentType] nvarchar(100) NOT NULL,
-                    [UploadedAt] datetimeoffset NOT NULL,
-                    [ChunkCount] int NOT NULL
-                );
-                CREATE INDEX [IX_rag_documents_FileName] ON [dbo].[rag_documents] ([FileName]);
-            END
+        context.Database.EnsureCreated();
+        SeedResearchCatalog(context);
+    }
 
-            IF OBJECT_ID(N'[dbo].[rag_chunks]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [dbo].[rag_chunks] (
-                    [Id] uniqueidentifier NOT NULL CONSTRAINT [PK_rag_chunks] PRIMARY KEY,
-                    [DocumentId] uniqueidentifier NOT NULL,
-                    [FileName] nvarchar(255) NOT NULL,
-                    [Subject] nvarchar(255) NOT NULL,
-                    [Chapter] nvarchar(255) NOT NULL,
-                    [ChunkIndex] int NOT NULL,
-                    [Text] nvarchar(max) NOT NULL,
-                    [EmbeddingJson] nvarchar(max) NOT NULL,
-                    CONSTRAINT [FK_rag_chunks_rag_documents_DocumentId]
-                        FOREIGN KEY ([DocumentId]) REFERENCES [dbo].[rag_documents] ([Id]) ON DELETE CASCADE
-                );
-                CREATE UNIQUE INDEX [IX_rag_chunks_DocumentId_ChunkIndex] ON [dbo].[rag_chunks] ([DocumentId], [ChunkIndex]);
-            END
+    private static void SeedResearchCatalog(KnowledgeSqlDbContext context)
+    {
+        var changed = false;
 
-            IF OBJECT_ID(N'[dbo].[rag_chat_sessions]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [dbo].[rag_chat_sessions] (
-                    [Id] uniqueidentifier NOT NULL CONSTRAINT [PK_rag_chat_sessions] PRIMARY KEY,
-                    [CreatedAt] datetimeoffset NOT NULL,
-                    [UpdatedAt] datetimeoffset NOT NULL
-                );
-                CREATE INDEX [IX_rag_chat_sessions_UpdatedAt] ON [dbo].[rag_chat_sessions] ([UpdatedAt]);
-            END
+        changed |= AddEmbeddingModelIfMissing(
+            context,
+            name: "hashing-baseline",
+            provider: "Hashing",
+            modelId: "hashing-baseline",
+            dimensions: 512,
+            configJson: "{}");
 
-            IF OBJECT_ID(N'[dbo].[rag_chat_messages]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [dbo].[rag_chat_messages] (
-                    [Id] uniqueidentifier NOT NULL CONSTRAINT [PK_rag_chat_messages] PRIMARY KEY,
-                    [SessionId] uniqueidentifier NOT NULL,
-                    [Role] nvarchar(32) NOT NULL,
-                    [Content] nvarchar(max) NOT NULL,
-                    [CreatedAt] datetimeoffset NOT NULL,
-                    CONSTRAINT [FK_rag_chat_messages_rag_chat_sessions_SessionId]
-                        FOREIGN KEY ([SessionId]) REFERENCES [dbo].[rag_chat_sessions] ([Id]) ON DELETE CASCADE
-                );
-                CREATE INDEX [IX_rag_chat_messages_SessionId_CreatedAt] ON [dbo].[rag_chat_messages] ([SessionId], [CreatedAt]);
-            END
+        changed |= AddEmbeddingModelIfMissing(
+            context,
+            name: "bge-m3",
+            provider: "Ollama",
+            modelId: "bge-m3",
+            dimensions: 1024,
+            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
 
-            IF OBJECT_ID(N'[dbo].[rag_citations]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [dbo].[rag_citations] (
-                    [Id] uniqueidentifier NOT NULL CONSTRAINT [PK_rag_citations] PRIMARY KEY,
-                    [MessageId] uniqueidentifier NOT NULL,
-                    [DocumentId] uniqueidentifier NOT NULL,
-                    [FileName] nvarchar(255) NOT NULL,
-                    [Subject] nvarchar(255) NOT NULL,
-                    [Chapter] nvarchar(255) NOT NULL,
-                    [ChunkIndex] int NOT NULL,
-                    [Score] float NOT NULL,
-                    [Excerpt] nvarchar(max) NOT NULL,
-                    CONSTRAINT [FK_rag_citations_rag_chat_messages_MessageId]
-                        FOREIGN KEY ([MessageId]) REFERENCES [dbo].[rag_chat_messages] ([Id]) ON DELETE CASCADE
-                );
-            END
-            """);
+        changed |= AddEmbeddingModelIfMissing(
+            context,
+            name: "multilingual-e5-base",
+            provider: "Ollama",
+            modelId: "multilingual-e5-base",
+            dimensions: 768,
+            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
+
+        changed |= AddEmbeddingModelIfMissing(
+            context,
+            name: "phobert-base",
+            provider: "Ollama",
+            modelId: "phobert-base",
+            dimensions: 768,
+            configJson: "{\"baseUrl\":\"http://localhost:11434\"}");
+
+        changed |= AddChunkingStrategyIfMissing(
+            context,
+            name: "fixed-950",
+            chunkSize: 950,
+            overlap: 0,
+            method: "Fixed",
+            description: "Fixed length chunks without overlap.");
+
+        changed |= AddChunkingStrategyIfMissing(
+            context,
+            name: "sliding-950-160",
+            chunkSize: 950,
+            overlap: 160,
+            method: "SlidingWindow",
+            description: "Sliding windows with 160 character overlap.");
+
+        changed |= AddChunkingStrategyIfMissing(
+            context,
+            name: "paragraph",
+            chunkSize: 1200,
+            overlap: 120,
+            method: "Paragraph",
+            description: "Prefer paragraph boundaries.");
+
+        changed |= AddChunkingStrategyIfMissing(
+            context,
+            name: "semantic-lite",
+            chunkSize: 1400,
+            overlap: 120,
+            method: "SemanticLite",
+            description: "Group nearby paragraphs using headings and sentence boundaries.");
+
+        if (changed)
+        {
+            context.SaveChanges();
+        }
+    }
+
+    private static bool AddEmbeddingModelIfMissing(
+        KnowledgeSqlDbContext context,
+        string name,
+        string provider,
+        string modelId,
+        int dimensions,
+        string configJson)
+    {
+        if (context.ResearchEmbeddingModels.Any(item => item.Name == name))
+        {
+            return false;
+        }
+
+        context.ResearchEmbeddingModels.Add(new KnowledgeSqlResearchEmbeddingModel
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Provider = provider,
+            ModelId = modelId,
+            Dimensions = dimensions,
+            IsActive = true,
+            ConfigJson = configJson
+        });
+        return true;
+    }
+
+    private static bool AddChunkingStrategyIfMissing(
+        KnowledgeSqlDbContext context,
+        string name,
+        int chunkSize,
+        int overlap,
+        string method,
+        string description)
+    {
+        if (context.ResearchChunkingStrategies.Any(item => item.Name == name))
+        {
+            return false;
+        }
+
+        context.ResearchChunkingStrategies.Add(new KnowledgeSqlResearchChunkingStrategy
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            ChunkSize = chunkSize,
+            Overlap = overlap,
+            Method = method,
+            Description = description,
+            IsActive = true
+        });
+        return true;
     }
 }

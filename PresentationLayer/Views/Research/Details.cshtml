@@ -1,0 +1,192 @@
+@model PresentationLayer.Models.ResearchDetailViewModel
+@using DataAccessLayer
+@{
+    ViewData["Title"] = Model.Experiment.Name;
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "dashboard";
+    ViewData["ShellTitle"] = "RBL Experiment Detail";
+
+    var runs = Model.Experiment.Runs.OrderBy(item => item.RunKind).ThenBy(item => item.RunName).ToList();
+    var ragRuns = runs.Where(item => item.RunKind.Equals("Rag", StringComparison.OrdinalIgnoreCase)).ToList();
+    var fineTunedRuns = runs.Where(item => item.RunKind.Equals("FineTuned", StringComparison.OrdinalIgnoreCase)).ToList();
+    var bestRun = runs.Where(item => item.AverageRagasScore.HasValue).OrderByDescending(item => item.AverageRagasScore).FirstOrDefault();
+
+    double? AverageMetric(IEnumerable<ResearchRunSummary> source, Func<ResearchRunSummary, double?> selector)
+    {
+        var values = source.Select(selector).Where(item => item.HasValue).Select(item => item!.Value).ToList();
+        return values.Count == 0 ? null : values.Average();
+    }
+
+    string StatusClass(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "done" => "is-success",
+            "completed" => "is-success",
+            "error" => "is-error",
+            "failed" => "is-error",
+            "running" => "is-running",
+            _ => "is-muted"
+        };
+    }
+}
+
+<section class="rbl-detail-page">
+    <div class="rbl-hero-panel">
+        <div>
+            <a asp-action="Index" class="rbl-back-link">
+                <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+                Back to experiments
+            </a>
+            <h1>@Model.Experiment.Name</h1>
+            <p>@Model.Experiment.Subject - @Model.Experiment.QuestionCount questions - @Model.Experiment.RunCount runs</p>
+        </div>
+        <form asp-action="Run" asp-route-id="@Model.Experiment.Id" method="post">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="rbl-submit-button">
+                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                Run benchmark
+            </button>
+        </form>
+    </div>
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="rbl-alert is-success">@success</div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="rbl-alert is-error">@error</div>
+    }
+
+    <div class="rbl-metric-grid">
+        <article class="rbl-metric-card">
+            <span>Status</span>
+            <strong>@Model.Experiment.Status</strong>
+        </article>
+        <article class="rbl-metric-card">
+            <span>Average RAGAS</span>
+            <strong>@(Model.Experiment.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
+        </article>
+        <article class="rbl-metric-card">
+            <span>Best run</span>
+            <strong>@(bestRun?.RunName ?? "-")</strong>
+        </article>
+        <article class="rbl-metric-card">
+            <span>Completed</span>
+            <strong>@(Model.Experiment.EndedAt?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "-")</strong>
+        </article>
+    </div>
+
+    <div class="rbl-bento-grid">
+        <section class="rbl-panel rbl-chart-panel">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">RAG vs Fine-tuned</span>
+                    <h2>Điểm trung bình theo nhóm run</h2>
+                </div>
+            </div>
+            <div class="rbl-comparison-bars">
+                @{
+                    var metrics = new[]
+                    {
+                        new { Label = "Faithfulness", Rag = AverageMetric(ragRuns, item => item.AverageFaithfulness), Fine = AverageMetric(fineTunedRuns, item => item.AverageFaithfulness) },
+                        new { Label = "Relevancy", Rag = AverageMetric(ragRuns, item => item.AverageAnswerRelevancy), Fine = AverageMetric(fineTunedRuns, item => item.AverageAnswerRelevancy) },
+                        new { Label = "Precision", Rag = AverageMetric(ragRuns, item => item.AverageContextPrecision), Fine = AverageMetric(fineTunedRuns, item => item.AverageContextPrecision) },
+                        new { Label = "Recall", Rag = AverageMetric(ragRuns, item => item.AverageContextRecall), Fine = AverageMetric(fineTunedRuns, item => item.AverageContextRecall) },
+                        new { Label = "RAGAS", Rag = AverageMetric(ragRuns, item => item.AverageRagasScore), Fine = AverageMetric(fineTunedRuns, item => item.AverageRagasScore) }
+                    };
+                }
+                @foreach (var metric in metrics)
+                {
+                    var ragHeight = Math.Max(5, (int)Math.Round((metric.Rag ?? 0) * 100));
+                    var fineHeight = Math.Max(5, (int)Math.Round((metric.Fine ?? 0) * 100));
+                    <article>
+                        <div>
+                            <span class="rbl-bar-primary" style="--bar-height:@ragHeight%"></span>
+                            <span class="rbl-bar-secondary" style="--bar-height:@fineHeight%"></span>
+                        </div>
+                        <strong>@metric.Label</strong>
+                        <small>RAG @(metric.Rag?.ToString("0.00") ?? "-") / FT @(metric.Fine?.ToString("0.00") ?? "-")</small>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <aside class="rbl-panel rbl-best-panel">
+            <span class="rbl-section-label">Best performer</span>
+            <h2>@(bestRun?.RunName ?? "No scored run")</h2>
+            <strong class="rbl-score-large">@(bestRun?.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
+            <p>@(bestRun?.RunKind ?? "Run benchmark để có baseline so sánh.")</p>
+            <div class="rbl-meter">
+                <span style="width:@(bestRun?.AverageRagasScore is double score ? Math.Round(score * 100) : 0)%"></span>
+            </div>
+        </aside>
+
+        <section class="rbl-panel rbl-wide-panel">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">Runs</span>
+                    <h2>Kết quả từng cấu hình</h2>
+                </div>
+            </div>
+            <div class="rbl-table-wrap">
+                <table class="rbl-table">
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Latency</th>
+                            <th>Faith</th>
+                            <th>Relevant</th>
+                            <th>Ctx P</th>
+                            <th>Ctx R</th>
+                            <th>RAGAS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var run in runs)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@run.RunName</strong>
+                                @if (!string.IsNullOrWhiteSpace(run.ErrorMessage))
+                                {
+                                    <span class="rbl-error-text">@run.ErrorMessage</span>
+                                }
+                            </td>
+                            <td>@run.RunKind</td>
+                            <td><span class="rbl-status @StatusClass(run.Status)">@run.Status</span></td>
+                            <td>@(run.AverageLatencyMs?.ToString("0") ?? "-") ms</td>
+                            <td>@(run.AverageFaithfulness?.ToString("0.000") ?? "-")</td>
+                            <td>@(run.AverageAnswerRelevancy?.ToString("0.000") ?? "-")</td>
+                            <td>@(run.AverageContextPrecision?.ToString("0.000") ?? "-")</td>
+                            <td>@(run.AverageContextRecall?.ToString("0.000") ?? "-")</td>
+                            <td class="rbl-mono">@(run.AverageRagasScore?.ToString("0.000") ?? "-")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rbl-panel rbl-wide-panel">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">Test questions</span>
+                    <h2>Bộ câu hỏi đánh giá</h2>
+                </div>
+            </div>
+            <div class="rbl-question-list">
+                @foreach (var question in Model.Experiment.Questions)
+                {
+                    <article>
+                        <strong>@question.Question</strong>
+                        <span>@question.GroundTruth</span>
+                    </article>
+                }
+            </div>
+        </section>
+    </div>
+</section>

@@ -1,0 +1,171 @@
+@model PresentationLayer.Models.ResearchIndexViewModel
+@{
+    ViewData["Title"] = "Research Benchmark Lab";
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "dashboard";
+    ViewData["ShellTitle"] = "EdTech AI Research";
+
+    var experiments = Model.Experiments.OrderByDescending(item => item.CreatedAt).ToList();
+    var totalExperiments = experiments.Count;
+    var totalRuns = experiments.Sum(item => item.RunCount);
+    var totalQuestions = experiments.Sum(item => item.QuestionCount);
+    var scoredExperiments = experiments.Where(item => item.AverageRagasScore.HasValue).ToList();
+    double? averageScore = scoredExperiments.Count == 0 ? null : scoredExperiments.Average(item => item.AverageRagasScore!.Value);
+    var bestExperiment = scoredExperiments.OrderByDescending(item => item.AverageRagasScore).FirstOrDefault();
+    var chartExperiments = experiments.Take(6).ToList();
+
+    string StatusClass(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "completed" => "is-success",
+            "done" => "is-success",
+            "failed" => "is-error",
+            "error" => "is-error",
+            "running" => "is-running",
+            _ => "is-muted"
+        };
+    }
+}
+
+<section class="rbl-dashboard">
+    <div class="rbl-hero-panel">
+        <div>
+            <span class="rbl-kicker">Active Research</span>
+            <h1>Phân tích hiệu năng RAG trong giáo dục</h1>
+            <p>Theo dõi benchmark theo embedding model, chunking strategy và fine-tuned baseline trên dữ liệu thật của hệ thống.</p>
+        </div>
+        <div class="rbl-hero-stats" aria-label="Research summary">
+            <article>
+                <span>Thực nghiệm</span>
+                <strong>@totalExperiments</strong>
+            </article>
+            <article>
+                <span>Runs</span>
+                <strong>@totalRuns</strong>
+            </article>
+            <article>
+                <span>Avg RAGAS</span>
+                <strong>@(averageScore?.ToString("0.000") ?? "-")</strong>
+            </article>
+        </div>
+    </div>
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="rbl-alert is-success">@success</div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="rbl-alert is-error">@error</div>
+    }
+
+    <div class="rbl-bento-grid">
+        <section class="rbl-panel rbl-chart-panel">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">RBL Dashboard</span>
+                    <h2>RAGAS theo thực nghiệm</h2>
+                </div>
+                <a class="rbl-link-button" asp-action="Create">
+                    <span class="material-symbols-outlined" aria-hidden="true">add</span>
+                    Tạo mới
+                </a>
+            </div>
+
+            @if (chartExperiments.Count == 0)
+            {
+                <div class="rbl-empty-state">
+                    <span class="material-symbols-outlined" aria-hidden="true">experiment</span>
+                    <strong>Chưa có thực nghiệm</strong>
+                    <p>Tạo experiment đầu tiên để bắt đầu benchmark RAG.</p>
+                </div>
+            }
+            else
+            {
+                <div class="rbl-chart" aria-label="Average RAGAS score by experiment">
+                    @foreach (var experiment in chartExperiments)
+                    {
+                        var height = experiment.AverageRagasScore.HasValue
+                            ? Math.Max(8, (int)Math.Round(experiment.AverageRagasScore.Value * 100))
+                            : 8;
+                        <article class="rbl-chart-item">
+                            <div class="rbl-chart-track">
+                                <span class="rbl-chart-bar" style="--bar-height:@height%"></span>
+                            </div>
+                            <strong>@(experiment.AverageRagasScore?.ToString("0.00") ?? "-")</strong>
+                            <span title="@experiment.Name">@experiment.Name</span>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        <aside class="rbl-panel rbl-best-panel">
+            <span class="rbl-section-label">Best performer</span>
+            <h2>@(bestExperiment?.Name ?? "Chưa có điểm")</h2>
+            <strong class="rbl-score-large">@(bestExperiment?.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
+            <p>@(bestExperiment is null ? "Chạy benchmark để có dữ liệu so sánh." : $"{bestExperiment.Subject} - {bestExperiment.RunCount} runs, {bestExperiment.QuestionCount} câu hỏi.")</p>
+            <div class="rbl-meter">
+                <span style="width:@(bestExperiment?.AverageRagasScore is double score ? Math.Round(score * 100) : 0)%"></span>
+            </div>
+        </aside>
+
+        <section class="rbl-panel rbl-wide-panel">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">Chi tiết thực nghiệm</span>
+                    <h2>Danh sách RBL experiments</h2>
+                </div>
+                <span class="rbl-table-meta">@totalQuestions câu hỏi benchmark</span>
+            </div>
+
+            @if (experiments.Count == 0)
+            {
+                <div class="rbl-empty-state compact">
+                    <strong>Không có dữ liệu.</strong>
+                    <p>Nhấn “Tạo mới” để cấu hình embedding model và chunking strategy.</p>
+                </div>
+            }
+            else
+            {
+                <div class="rbl-table-wrap">
+                    <table class="rbl-table">
+                        <thead>
+                            <tr>
+                                <th>Experiment</th>
+                                <th>Subject</th>
+                                <th>Status</th>
+                                <th>Runs</th>
+                                <th>Questions</th>
+                                <th>Avg RAGAS</th>
+                                <th>Created</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var experiment in experiments)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@experiment.Name</strong>
+                                    <span>#@experiment.Id.ToString()[..8]</span>
+                                </td>
+                                <td>@experiment.Subject</td>
+                                <td><span class="rbl-status @StatusClass(experiment.Status)">@experiment.Status</span></td>
+                                <td>@experiment.RunCount</td>
+                                <td>@experiment.QuestionCount</td>
+                                <td class="rbl-mono">@(experiment.AverageRagasScore?.ToString("0.000") ?? "-")</td>
+                                <td>@experiment.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="rbl-table-actions">
+                                    <a class="rbl-small-button" asp-action="Details" asp-route-id="@experiment.Id">Open</a>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    </div>
+</section>

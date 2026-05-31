@@ -14,17 +14,9 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
 
     public SqlKnowledgeRepository(string connectionString)
     {
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException("DefaultConnection is not configured.");
-        }
-
-        _options = new DbContextOptionsBuilder<KnowledgeSqlDbContext>()
-            .UseSqlServer(connectionString)
-            .Options;
+        _options = KnowledgeSqlDbContextOptionsFactory.Create(connectionString);
 
         using var context = CreateContext();
-        context.Database.EnsureCreated();
         KnowledgeSqlSchemaInitializer.EnsureTablesCreated(context);
     }
 
