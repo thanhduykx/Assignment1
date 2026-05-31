@@ -4,7 +4,7 @@ internal sealed class KnowledgeSqlResearchEmbeddingModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
-    public string Provider { get; set; } = "Ollama";
+    public string Provider { get; set; } = "Gemini";
     public string ModelId { get; set; } = string.Empty;
     public int Dimensions { get; set; }
     public bool IsActive { get; set; } = true;

@@ -92,6 +92,8 @@ public sealed class ResearchReportPdfService : IResearchReportPdfService
                     columns.RelativeColumn();
                     columns.RelativeColumn();
                     columns.RelativeColumn();
+                    columns.RelativeColumn();
+                    columns.RelativeColumn();
                 });
 
                 Header(table, "Run");
@@ -100,6 +102,8 @@ public sealed class ResearchReportPdfService : IResearchReportPdfService
                 Header(table, "Latency");
                 Header(table, "Faith");
                 Header(table, "Relevant");
+                Header(table, "Ctx P");
+                Header(table, "Ctx R");
                 Header(table, "RAGAS");
 
                 foreach (var run in runs)
@@ -110,6 +114,8 @@ public sealed class ResearchReportPdfService : IResearchReportPdfService
                     Cell(table, run.AverageLatencyMs?.ToString("0") ?? "-");
                     Cell(table, run.AverageFaithfulness?.ToString("0.000") ?? "-");
                     Cell(table, run.AverageAnswerRelevancy?.ToString("0.000") ?? "-");
+                    Cell(table, run.AverageContextPrecision?.ToString("0.000") ?? "-");
+                    Cell(table, run.AverageContextRecall?.ToString("0.000") ?? "-");
                     Cell(table, run.AverageRagasScore?.ToString("0.000") ?? "-");
                 }
             });

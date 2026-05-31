@@ -203,7 +203,6 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
 
     private readonly HttpClient _httpClient;
     private readonly GeminiApiOptions _options;
-    private readonly HashingEmbeddingService _similarity = new();
 
     public GeminiEmbeddingService(HttpClient httpClient, GeminiApiOptions options)
     {
@@ -253,7 +252,14 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
 
     public double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)
     {
-        return _similarity.CosineSimilarity(left, right);
+        if (left.Count == 0 || right.Count == 0)
+        {
+            return 0;
+        }
+
+        var smaller = left.Count < right.Count ? left : right;
+        var larger = ReferenceEquals(smaller, left) ? right : left;
+        return smaller.Sum(item => larger.TryGetValue(item.Key, out var value) ? item.Value * value : 0);
     }
 
     internal static Dictionary<int, double> NormalizeDenseEmbedding(IReadOnlyList<double> embedding)

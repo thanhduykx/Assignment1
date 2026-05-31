@@ -13,15 +13,18 @@ public sealed class ResearchController : Controller
 {
     private readonly IResearchBenchmarkService _researchService;
     private readonly IResearchReportPdfService _reportPdfService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ResearchController> _logger;
 
     public ResearchController(
         IResearchBenchmarkService researchService,
         IResearchReportPdfService reportPdfService,
+        IServiceScopeFactory scopeFactory,
         ILogger<ResearchController> logger)
     {
         _researchService = researchService;
         _reportPdfService = reportPdfService;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -123,18 +126,40 @@ public sealed class ResearchController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Run(Guid id, CancellationToken cancellationToken)
     {
-        try
+        var experiment = await _researchService.GetExperimentAsync(id, cancellationToken);
+        if (experiment is null)
         {
-            await _researchService.RunExperimentAsync(id, cancellationToken);
-            TempData["Success"] = "Benchmark completed.";
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Research benchmark failed");
-            TempData["Error"] = ex.Message;
+            return NotFound();
         }
 
+        if (experiment.Status.Equals("Running", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["Success"] = "Benchmark is already running. You can leave this page and come back later.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        QueueBenchmark(id);
+        TempData["Success"] = "Benchmark started in background. You can leave this page and continue working.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    private void QueueBenchmark(Guid experimentId)
+    {
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var service = scope.ServiceProvider.GetRequiredService<IResearchBenchmarkService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<ResearchController>>();
+
+            try
+            {
+                await service.RunExperimentAsync(experimentId, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Background research benchmark failed for experiment {ExperimentId}", experimentId);
+            }
+        });
     }
 
     private async Task<ResearchCreateViewModel> BuildCreateViewModelAsync(ResearchCreateViewModel model, CancellationToken cancellationToken)

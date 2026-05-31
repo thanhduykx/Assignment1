@@ -5,6 +5,7 @@
     ViewData["UseRblShell"] = true;
     ViewData["ActiveNav"] = "dashboard";
     ViewData["ShellTitle"] = "RBL Experiment Detail";
+    ViewData["ShellTitleI18n"] = "detail.shellTitle";
 
     var runs = Model.Experiment.Runs.OrderBy(item => item.RunKind).ThenBy(item => item.RunName).ToList();
     var ragRuns = runs.Where(item => item.RunKind.Equals("Rag", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -37,7 +38,7 @@
         <div>
             <a asp-action="Index" class="rbl-back-link">
                 <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
-                Back to experiments
+                <span data-i18n="detail.back">Back to experiments</span>
             </a>
             <h1>@Model.Experiment.Name</h1>
             <p>@Model.Experiment.Subject - @Model.Experiment.QuestionCount questions - @Model.Experiment.RunCount runs</p>
@@ -47,14 +48,14 @@
             {
                 <a class="rbl-secondary-button" asp-action="ReportPdf" asp-route-id="@Model.Experiment.Id">
                     <span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
-                    Download PDF
+                    <span data-i18n="detail.downloadPdf">Download PDF</span>
                 </a>
             }
             <form asp-action="Run" asp-route-id="@Model.Experiment.Id" method="post">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="rbl-submit-button">
                     <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                    Run benchmark
+                    <span data-i18n="detail.runBenchmark">Run benchmark</span>
                 </button>
             </form>
         </div>
@@ -71,19 +72,19 @@
 
     <div class="rbl-metric-grid">
         <article class="rbl-metric-card">
-            <span>Status</span>
+            <span data-i18n="detail.status">Status</span>
             <strong>@Model.Experiment.Status</strong>
         </article>
         <article class="rbl-metric-card">
-            <span>Average RAGAS</span>
+            <span data-i18n="detail.averageRagas">Average RAGAS</span>
             <strong>@(Model.Experiment.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
         </article>
         <article class="rbl-metric-card">
-            <span>Best run</span>
+            <span data-i18n="detail.bestRun">Best run</span>
             <strong>@(bestRun?.RunName ?? "-")</strong>
         </article>
         <article class="rbl-metric-card">
-            <span>Completed</span>
+            <span data-i18n="detail.completed">Completed</span>
             <strong>@(Model.Experiment.EndedAt?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "-")</strong>
         </article>
     </div>
@@ -92,8 +93,8 @@
         <section class="rbl-panel rbl-chart-panel">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">RAG vs Fine-tuned</span>
-                    <h2>Điểm trung bình theo nhóm run</h2>
+                    <span class="rbl-section-label" data-i18n="detail.ragVsFt">RAG vs Fine-tuned</span>
+                    <h2 data-i18n="detail.averageByRunGroup">Điểm trung bình theo nhóm run</h2>
                 </div>
             </div>
             <div class="rbl-comparison-bars">
@@ -124,10 +125,24 @@
         </section>
 
         <aside class="rbl-panel rbl-best-panel">
-            <span class="rbl-section-label">Best performer</span>
-            <h2>@(bestRun?.RunName ?? "No scored run")</h2>
+            <span class="rbl-section-label" data-i18n="research.bestPerformer">Best performer</span>
+            @if (bestRun is null)
+            {
+                <h2 data-i18n="detail.noScoredRun">No scored run</h2>
+            }
+            else
+            {
+                <h2>@bestRun.RunName</h2>
+            }
             <strong class="rbl-score-large">@(bestRun?.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
-            <p>@(bestRun?.RunKind ?? "Run benchmark để có baseline so sánh.")</p>
+            @if (bestRun is null)
+            {
+                <p data-i18n="detail.runForBaseline">Run benchmark để có baseline so sánh.</p>
+            }
+            else
+            {
+                <p>@bestRun.RunKind</p>
+            }
             <div class="rbl-meter">
                 <span style="width:@(bestRun?.AverageRagasScore is double score ? Math.Round(score * 100) : 0)%"></span>
             </div>
@@ -136,8 +151,8 @@
         <section class="rbl-panel rbl-wide-panel">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">Runs</span>
-                    <h2>Kết quả từng cấu hình</h2>
+                    <span class="rbl-section-label" data-i18n="detail.runs">Runs</span>
+                    <h2 data-i18n="detail.runResults">Kết quả từng cấu hình</h2>
                 </div>
             </div>
             <div class="rbl-table-wrap">
@@ -184,8 +199,8 @@
         <section class="rbl-panel rbl-wide-panel">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">Test questions</span>
-                    <h2>Bộ câu hỏi đánh giá</h2>
+                    <span class="rbl-section-label" data-i18n="detail.testQuestions">Test questions</span>
+                    <h2 data-i18n="detail.evaluationQuestions">Bộ câu hỏi đánh giá</h2>
                 </div>
             </div>
             <div class="rbl-question-list">
@@ -200,3 +215,12 @@
         </section>
     </div>
 </section>
+
+@section Scripts {
+    @if (Model.Experiment.Status.Equals("Running", StringComparison.OrdinalIgnoreCase))
+    {
+        <script>
+            window.setTimeout(() => window.location.reload(), 7000);
+        </script>
+    }
+}

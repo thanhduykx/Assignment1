@@ -1,5 +1,6 @@
 using DataAccessLayer.Context;
 using DataAccessLayer.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace DataAccessLayer.Schema;
 
@@ -8,7 +9,39 @@ internal static class KnowledgeSqlSchemaInitializer
     public static void EnsureTablesCreated(KnowledgeSqlDbContext context)
     {
         context.Database.EnsureCreated();
+        EnsureDocumentFileSizeColumn(context);
+        BackfillDocumentFileSizes(context);
         SeedResearchCatalog(context);
+    }
+
+    private static void EnsureDocumentFileSizeColumn(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'FileSizeBytes') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD FileSizeBytes BIGINT NOT NULL CONSTRAINT DF_rag_documents_FileSizeBytes DEFAULT 0
+            END
+            """);
+    }
+
+    private static void BackfillDocumentFileSizes(KnowledgeSqlDbContext context)
+    {
+        var changed = false;
+        foreach (var document in context.Documents.Where(item => item.FileSizeBytes <= 0).ToList())
+        {
+            if (!File.Exists(document.StoredPath))
+            {
+                continue;
+            }
+
+            document.FileSizeBytes = new FileInfo(document.StoredPath).Length;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            context.SaveChanges();
+        }
     }
 
     private static void SeedResearchCatalog(KnowledgeSqlDbContext context)
@@ -31,6 +64,22 @@ internal static class KnowledgeSqlSchemaInitializer
             modelId: "gemini-embedding-001",
             dimensions: 768,
             configJson: "{\"outputDimensionality\":768}");
+
+        changed |= UpsertEmbeddingModel(
+            context,
+            name: "gemini-embedding-001-1536d",
+            provider: "Gemini",
+            modelId: "gemini-embedding-001",
+            dimensions: 1536,
+            configJson: "{\"outputDimensionality\":1536}");
+
+        changed |= UpsertEmbeddingModel(
+            context,
+            name: "gemini-embedding-001-3072d",
+            provider: "Gemini",
+            modelId: "gemini-embedding-001",
+            dimensions: 3072,
+            configJson: "{\"outputDimensionality\":3072}");
 
         changed |= AddChunkingStrategyIfMissing(
             context,

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -210,45 +209,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private async Task<Dictionary<int, double>> EmbedAsync(ResearchRunSummary run, string text, CancellationToken cancellationToken)
     {
-        if (run.EmbeddingProvider?.Equals("Hashing", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return HashEmbedding(text);
-        }
-
         if (run.EmbeddingProvider?.Equals("Gemini", StringComparison.OrdinalIgnoreCase) == true)
         {
             return await EmbedWithGeminiAsync(run, text, cancellationToken);
         }
 
-        if (!string.IsNullOrWhiteSpace(run.EmbeddingProvider)
-            && !run.EmbeddingProvider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Only Gemini embeddings are enabled.");
-        }
-
-        var config = string.IsNullOrWhiteSpace(run.EmbeddingConfigJson)
-            ? new Dictionary<string, string>()
-            : JsonSerializer.Deserialize<Dictionary<string, string>>(run.EmbeddingConfigJson, JsonOptions) ?? new Dictionary<string, string>();
-        var baseUrl = config.GetValueOrDefault("baseUrl") ?? "http://localhost:11434";
-        var endpoint = $"{baseUrl.TrimEnd('/')}/api/embeddings";
-        using var response = await _httpClient.PostAsJsonAsync(
-            endpoint,
-            new OllamaEmbeddingRequest(run.EmbeddingModelIdValue ?? run.EmbeddingModelName ?? string.Empty, text),
-            JsonOptions,
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException($"{run.EmbeddingModelName} embedding runtime is unavailable.");
-        }
-
-        var payload = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(JsonOptions, cancellationToken);
-        if (payload?.Embedding is not { Count: > 0 })
-        {
-            throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty embedding.");
-        }
-
-        return Normalize(payload.Embedding);
+        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Only Gemini embeddings are enabled.");
     }
 
     private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
@@ -261,13 +227,11 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             throw new InvalidOperationException("Gemini API key is required for RBL embeddings.");
         }
 
-        var config = string.IsNullOrWhiteSpace(run.EmbeddingConfigJson)
-            ? new Dictionary<string, string>()
-            : JsonSerializer.Deserialize<Dictionary<string, string>>(run.EmbeddingConfigJson, JsonOptions) ?? new Dictionary<string, string>();
         var model = run.EmbeddingModelIdValue ?? _geminiOptions.EmbeddingModel;
-        var outputDimensionality = int.TryParse(config.GetValueOrDefault("outputDimensionality"), out var parsedDimensions)
-            ? parsedDimensions
-            : _geminiOptions.EmbeddingOutputDimensionality;
+        var outputDimensionality = ReadIntConfigValue(
+            run.EmbeddingConfigJson,
+            "outputDimensionality",
+            _geminiOptions.EmbeddingOutputDimensionality);
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
@@ -293,6 +257,34 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         return GeminiEmbeddingService.NormalizeDenseEmbedding(values);
+    }
+
+    private static int ReadIntConfigValue(string? configJson, string key, int fallback)
+    {
+        if (string.IsNullOrWhiteSpace(configJson))
+        {
+            return fallback;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(configJson);
+            if (!document.RootElement.TryGetProperty(key, out var value))
+            {
+                return fallback;
+            }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.Number when value.TryGetInt32(out var numberValue) => numberValue,
+                JsonValueKind.String when int.TryParse(value.GetString(), out var stringValue) => stringValue,
+                _ => fallback
+            };
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
     }
 
     private static List<DocumentChunk> Rechunk(IReadOnlyList<DocumentChunk> originalChunks, ResearchRunSummary run)
@@ -451,52 +443,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return left.Count(item => right.Contains(item)) / (double)left.Count;
     }
 
-    private static Dictionary<int, double> HashEmbedding(string text)
-    {
-        var vector = new Dictionary<int, double>();
-        foreach (var term in ExtractTerms(text))
-        {
-            var hash = BitConverter.ToUInt32(SHA256.HashData(Encoding.UTF8.GetBytes(term)), 0);
-            var index = (int)(hash % 512);
-            vector[index] = vector.GetValueOrDefault(index) + 1;
-        }
-
-        return Normalize(vector);
-    }
-
-    private static Dictionary<int, double> Normalize(IReadOnlyList<double> values)
-    {
-        var norm = Math.Sqrt(values.Sum(value => value * value));
-        if (norm == 0)
-        {
-            return new Dictionary<int, double>();
-        }
-
-        var vector = new Dictionary<int, double>(values.Count);
-        for (var index = 0; index < values.Count; index++)
-        {
-            vector[index] = values[index] / norm;
-        }
-
-        return vector;
-    }
-
-    private static Dictionary<int, double> Normalize(Dictionary<int, double> vector)
-    {
-        var norm = Math.Sqrt(vector.Values.Sum(value => value * value));
-        if (norm == 0)
-        {
-            return vector;
-        }
-
-        foreach (var key in vector.Keys.ToList())
-        {
-            vector[key] /= norm;
-        }
-
-        return vector;
-    }
-
     private static double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)
     {
         var smaller = left.Count < right.Count ? left : right;
@@ -524,13 +470,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         "the", "and", "that", "this", "with", "from", "for", "you", "your", "are", "was", "were",
         "mot", "cac", "nhung", "duoc", "trong", "ngoai", "theo", "cua", "cho", "voi", "khong", "la", "va"
     };
-
-    private sealed record OllamaEmbeddingRequest(
-        [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("prompt")] string Prompt);
-
-    private sealed record OllamaEmbeddingResponse(
-        [property: JsonPropertyName("embedding")] List<double> Embedding);
 
     private sealed record GeminiEmbeddingRequest(
         [property: JsonPropertyName("model")] string Model,

@@ -29,6 +29,7 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.Property(item => item.Subject).HasMaxLength(255).IsRequired();
             entity.Property(item => item.Chapter).HasMaxLength(255).IsRequired();
             entity.Property(item => item.ContentType).HasMaxLength(100).IsRequired();
+            entity.Property(item => item.FileSizeBytes).HasDefaultValue(0L);
             entity.HasIndex(item => item.FileName);
         });
 

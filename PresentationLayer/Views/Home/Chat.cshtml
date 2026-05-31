@@ -4,6 +4,7 @@
     ViewData["UseRblShell"] = true;
     ViewData["ActiveNav"] = "chat";
     ViewData["ShellTitle"] = "Chatbot tài liệu";
+    ViewData["ShellTitleI18n"] = "chat.title";
     ViewData["HideAssistantLauncher"] = true;
 
     var suggestedQuestions = new[]
@@ -36,19 +37,26 @@
             ($"What are the main contents of {primarySubject}?", $"Nội dung chính của {primarySubject} gồm những gì?"),
             ($"What should students practice in {primaryChapter}?", $"Sinh viên cần luyện tập gì trong {primaryChapter}?")
         };
+    var totalUploadedBytes = Model.Documents.Sum(item => item.FileSizeBytes);
+
+    string FormatBytes(long bytes)
+    {
+        var units = new[] { "B", "KB", "MB", "GB", "TB" };
+        var size = Math.Max(0, bytes);
+        var unitIndex = 0;
+        var value = (double)size;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0 ? $"{size} {units[unitIndex]}" : $"{value:0.##} {units[unitIndex]}";
+    }
 }
 
 <section class="rbl-chat-page">
     <main class="rbl-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
-        <header class="rbl-chat-header">
-            <div>
-                <span class="rbl-section-label">Course assistant</span>
-                <h1>Nhập môn AI</h1>
-                <p>Hỏi đáp dựa trên tài liệu đã index. Nếu dữ liệu không đủ, chatbot phải báo thiếu nguồn thay vì đoán.</p>
-            </div>
-            <span class="rbl-status is-success">@Model.Documents.Count tài liệu sẵn sàng</span>
-        </header>
-
         <div id="chatMessages" class="chat-messages codex-chat-messages rbl-chat-messages">
             <div class="chat-empty-state rbl-chat-empty">
                 <span class="rbl-bot-mark">AI</span>
@@ -97,7 +105,7 @@
 
         <div class="rbl-session-header">
             <strong data-i18n="chat.history">Lịch sử hội thoại</strong>
-            <span><span id="sessionCount">@Model.ChatSessions.Count</span> sessions</span>
+            <span><span id="sessionCount">@Model.ChatSessions.Count</span> <span data-i18n="chat.sessionsUnit">sessions</span></span>
         </div>
 
         <div id="chatSessionList" class="chat-session-list rbl-session-list">
@@ -123,11 +131,8 @@
         </div>
 
         <div class="rbl-session-storage">
-            <span>Storage</span>
-            <strong>@Model.Documents.Sum(item => item.ChunkCount) chunks</strong>
-            <div class="rbl-meter">
-                <span style="width:@Math.Min(100, Model.Documents.Count * 4)%"></span>
-            </div>
+            <span data-i18n="documents.uploadedSize">Dung lượng đã upload</span>
+            <strong>@FormatBytes(totalUploadedBytes)</strong>
         </div>
     </aside>
 </section>

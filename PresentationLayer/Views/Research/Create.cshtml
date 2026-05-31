@@ -4,6 +4,7 @@
     ViewData["UseRblShell"] = true;
     ViewData["ActiveNav"] = "config";
     ViewData["ShellTitle"] = "Cấu hình thực nghiệm";
+    ViewData["ShellTitleI18n"] = "config.shellTitle";
 }
 
 <section class="rbl-config-page">
@@ -11,10 +12,10 @@
         <div>
             <a asp-action="Index" class="rbl-back-link">
                 <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
-                Back to dashboard
+                <span data-i18n="config.back">Back to dashboard</span>
             </a>
-            <h1>Trình cấu hình thực nghiệm</h1>
-            <p>Thiết lập ma trận benchmark RAG theo Gemini embedding, nhiều chunking strategy và fine-tuned baseline.</p>
+            <h1 data-i18n="config.title">Trình cấu hình thực nghiệm</h1>
+            <p data-i18n="config.subtitle">Thiết lập ma trận benchmark RAG theo Gemini embedding và nhiều chunking strategy.</p>
         </div>
     </div>
 
@@ -24,7 +25,7 @@
         <section class="rbl-panel rbl-config-form">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">Thông số phiên mới</span>
+                    <span class="rbl-section-label" data-i18n="config.sessionParams">Thông số phiên mới</span>
                     <h2>Benchmark setup</h2>
                 </div>
             </div>
@@ -33,13 +34,13 @@
 
             <div class="rbl-form-grid">
                 <label class="rbl-field">
-                    <span>Experiment name</span>
-                    <input asp-for="Name" placeholder="DBA103 RAG vs fine-tuned baseline" />
+                    <span data-i18n="config.experimentName">Experiment name</span>
+                    <input asp-for="Name" placeholder="DBA103 RAG benchmark" />
                     <small><span asp-validation-for="Name"></span></small>
                 </label>
 
                 <label class="rbl-field">
-                    <span>Subject filter</span>
+                    <span data-i18n="config.subjectFilter">Subject filter</span>
                     <input asp-for="Subject" placeholder="DBA103" />
                     <small><span asp-validation-for="Subject"></span></small>
                 </label>
@@ -47,8 +48,7 @@
 
             <div class="rbl-choice-section">
                 <div>
-                    <h3>Mô hình Embedding</h3>
-                    <p>Hệ thống chỉ dùng Gemini embedding model cho bản RBL này.</p>
+                    <h3 data-i18n="config.embeddingModels">Mô hình Embedding</h3>
                 </div>
                 <div class="rbl-choice-grid">
                     @foreach (var item in Model.EmbeddingModels)
@@ -57,7 +57,7 @@
                             <input type="checkbox" name="EmbeddingModelIds" value="@item.Value" checked="@item.Selected" />
                             <span>
                                 <strong>@item.Text</strong>
-                                <small>Gemini embedding runner</small>
+                                <small data-i18n="config.embeddingRunner">Gemini embedding runner</small>
                             </span>
                         </label>
                     }
@@ -66,8 +66,7 @@
 
             <div class="rbl-choice-section">
                 <div>
-                    <h3>Chunking strategies</h3>
-                    <p>Benchmark nhiều cách chia tài liệu, không fallback âm thầm.</p>
+                    <h3 data-i18n="config.chunkingStrategies">Chunking strategies</h3>
                 </div>
                 <div class="rbl-choice-grid">
                     @foreach (var item in Model.ChunkingStrategies)
@@ -76,51 +75,39 @@
                             <input type="checkbox" name="ChunkingStrategyIds" value="@item.Value" checked="@item.Selected" />
                             <span>
                                 <strong>@item.Text</strong>
-                                <small>Chunking configuration</small>
+                                <small data-i18n="config.chunkingConfiguration">Chunking configuration</small>
                             </span>
                         </label>
                     }
                 </div>
             </div>
 
-            <div class="rbl-form-grid">
-                <label class="rbl-field">
-                    <span>Fine-tuned baseline name</span>
-                    <input asp-for="FineTunedModelName" placeholder="optional" />
-                </label>
-
-                <label class="rbl-field">
-                    <span>Fine-tuned endpoint</span>
-                    <input asp-for="FineTunedEndpoint" placeholder="http://localhost:8000/answer" />
-                </label>
-            </div>
-
             <label class="rbl-field">
-                <span>Benchmark questions</span>
+                <span data-i18n="config.benchmarkQuestions">Benchmark questions</span>
                 <textarea asp-for="QuestionsText" rows="8" placeholder="Question | Expected answer / ground truth"></textarea>
-                <small>Mỗi dòng một câu hỏi. Dùng dấu | để tách câu hỏi và ground truth.</small>
+                <small data-i18n="config.questionsHint">Mỗi dòng một câu hỏi. Dùng dấu | để tách câu hỏi và ground truth.</small>
                 <small><span asp-validation-for="QuestionsText"></span></small>
             </label>
 
             <div class="rbl-form-actions">
                 <button type="submit" class="rbl-submit-button">
                     <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                    Create experiment
+                    <span data-i18n="config.createExperiment">Create experiment</span>
                 </button>
-                <a asp-action="Index" class="rbl-secondary-button">Cancel</a>
+                <a asp-action="Index" class="rbl-secondary-button" data-i18n="config.cancel">Cancel</a>
             </div>
         </section>
 
         <aside class="rbl-panel rbl-progress-preview">
-            <span class="rbl-section-label">Trạng thái hệ thống</span>
-            <h2>Benchmark lifecycle</h2>
+            <span class="rbl-section-label" data-i18n="config.systemStatus">Trạng thái hệ thống</span>
+            <h2 data-i18n="config.lifecycle">Benchmark lifecycle</h2>
             <div class="rbl-progress-ring" aria-hidden="true">
                 <span>RBL</span>
             </div>
             <ol class="rbl-run-steps">
-                <li><strong>1. Pending</strong><span>Tạo run matrix từ model x strategy.</span></li>
-                <li><strong>2. Running</strong><span>Re-chunk, embed, retrieve, generate answer.</span></li>
-                <li><strong>3. Scored</strong><span>Lưu RAGAS metrics vào database.</span></li>
+                <li><strong>1. Pending</strong><span data-i18n="config.stepPending">Tạo run matrix từ model x strategy.</span></li>
+                <li><strong>2. Running</strong><span data-i18n="config.stepRunning">Re-chunk, embed, retrieve, generate answer.</span></li>
+                <li><strong>3. Scored</strong><span data-i18n="config.stepScored">Lưu RAGAS metrics vào database.</span></li>
             </ol>
         </aside>
     </form>

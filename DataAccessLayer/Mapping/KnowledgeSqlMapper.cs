@@ -18,7 +18,8 @@ internal static class KnowledgeSqlMapper
             Chapter = document.Chapter,
             ContentType = document.ContentType,
             UploadedAt = document.UploadedAt,
-            ChunkCount = document.ChunkCount
+            ChunkCount = document.ChunkCount,
+            FileSizeBytes = document.FileSizeBytes
         };
     }
 
@@ -33,7 +34,8 @@ internal static class KnowledgeSqlMapper
             Chapter = document.Chapter,
             ContentType = document.ContentType,
             UploadedAt = document.UploadedAt,
-            ChunkCount = document.ChunkCount
+            ChunkCount = document.ChunkCount,
+            FileSizeBytes = document.FileSizeBytes
         };
     }
 

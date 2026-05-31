@@ -4,6 +4,7 @@
     ViewData["UseRblShell"] = true;
     ViewData["ActiveNav"] = "dashboard";
     ViewData["ShellTitle"] = "EdTech AI Research";
+    ViewData["ShellTitleI18n"] = "research.shellTitle";
 
     var experiments = Model.Experiments.OrderByDescending(item => item.CreatedAt).ToList();
     var totalExperiments = experiments.Count;
@@ -31,21 +32,21 @@
 <section class="rbl-dashboard">
     <div class="rbl-hero-panel">
         <div>
-            <span class="rbl-kicker">Active Research</span>
-            <h1>Phân tích hiệu năng RAG trong giáo dục</h1>
-            <p>Theo dõi benchmark theo embedding model, chunking strategy và fine-tuned baseline trên dữ liệu thật của hệ thống.</p>
+            <span class="rbl-kicker" data-i18n="research.heroKicker">Active Research</span>
+            <h1 data-i18n="research.heroTitle">Phân tích hiệu năng RAG trong giáo dục</h1>
+            <p data-i18n="research.heroText">Theo dõi benchmark theo embedding model, chunking strategy và fine-tuned baseline trên dữ liệu thật của hệ thống.</p>
         </div>
         <div class="rbl-hero-stats" aria-label="Research summary">
             <article>
-                <span>Thực nghiệm</span>
+                <span data-i18n="research.experiments">Thực nghiệm</span>
                 <strong>@totalExperiments</strong>
             </article>
             <article>
-                <span>Runs</span>
+                <span data-i18n="research.runs">Runs</span>
                 <strong>@totalRuns</strong>
             </article>
             <article>
-                <span>Avg RAGAS</span>
+                <span data-i18n="research.avgRagas">Avg RAGAS</span>
                 <strong>@(averageScore?.ToString("0.000") ?? "-")</strong>
             </article>
         </div>
@@ -64,12 +65,12 @@
         <section class="rbl-panel rbl-chart-panel">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">RBL Dashboard</span>
-                    <h2>RAGAS theo thực nghiệm</h2>
+                    <span class="rbl-section-label" data-i18n="research.dashboard">RBL Dashboard</span>
+                    <h2 data-i18n="research.ragasByExperiment">RAGAS theo thực nghiệm</h2>
                 </div>
                 <a class="rbl-link-button" asp-action="Create">
                     <span class="material-symbols-outlined" aria-hidden="true">add</span>
-                    Tạo mới
+                    <span data-i18n="research.create">Tạo mới</span>
                 </a>
             </div>
 
@@ -77,8 +78,8 @@
             {
                 <div class="rbl-empty-state">
                     <span class="material-symbols-outlined" aria-hidden="true">experiment</span>
-                    <strong>Chưa có thực nghiệm</strong>
-                    <p>Tạo experiment đầu tiên để bắt đầu benchmark RAG.</p>
+                    <strong data-i18n="research.noExperimentTitle">Chưa có thực nghiệm</strong>
+                    <p data-i18n="research.noExperimentText">Tạo experiment đầu tiên để bắt đầu benchmark RAG.</p>
                 </div>
             }
             else
@@ -102,10 +103,24 @@
         </section>
 
         <aside class="rbl-panel rbl-best-panel">
-            <span class="rbl-section-label">Best performer</span>
-            <h2>@(bestExperiment?.Name ?? "Chưa có điểm")</h2>
+            <span class="rbl-section-label" data-i18n="research.bestPerformer">Best performer</span>
+            @if (bestExperiment is null)
+            {
+                <h2 data-i18n="research.noScore">Chưa có điểm</h2>
+            }
+            else
+            {
+                <h2>@bestExperiment.Name</h2>
+            }
             <strong class="rbl-score-large">@(bestExperiment?.AverageRagasScore?.ToString("0.000") ?? "-")</strong>
-            <p>@(bestExperiment is null ? "Chạy benchmark để có dữ liệu so sánh." : $"{bestExperiment.Subject} - {bestExperiment.RunCount} runs, {bestExperiment.QuestionCount} câu hỏi.")</p>
+            @if (bestExperiment is null)
+            {
+                <p data-i18n="research.runBenchmarkHint">Chạy benchmark để có dữ liệu so sánh.</p>
+            }
+            else
+            {
+                <p>@bestExperiment.Subject - @bestExperiment.RunCount runs, @bestExperiment.QuestionCount questions</p>
+            }
             <div class="rbl-meter">
                 <span style="width:@(bestExperiment?.AverageRagasScore is double score ? Math.Round(score * 100) : 0)%"></span>
             </div>
@@ -114,17 +129,17 @@
         <section class="rbl-panel rbl-wide-panel">
             <div class="rbl-panel-header">
                 <div>
-                    <span class="rbl-section-label">Chi tiết thực nghiệm</span>
-                    <h2>Danh sách RBL experiments</h2>
+                    <span class="rbl-section-label" data-i18n="research.detailsLabel">Chi tiết thực nghiệm</span>
+                    <h2 data-i18n="research.experimentList">Danh sách RBL experiments</h2>
                 </div>
-                <span class="rbl-table-meta">@totalQuestions câu hỏi benchmark</span>
+                <span class="rbl-table-meta">@totalQuestions <span data-i18n="research.benchmarkQuestionsUnit">câu hỏi benchmark</span></span>
             </div>
 
             @if (experiments.Count == 0)
             {
                 <div class="rbl-empty-state compact">
-                    <strong>Không có dữ liệu.</strong>
-                    <p>Nhấn “Tạo mới” để cấu hình embedding model và chunking strategy.</p>
+                    <strong data-i18n="research.noData">Không có dữ liệu.</strong>
+                    <p data-i18n="research.createFirstHint">Nhấn “Tạo mới” để cấu hình embedding model và chunking strategy.</p>
                 </div>
             }
             else
@@ -158,7 +173,7 @@
                                 <td class="rbl-mono">@(experiment.AverageRagasScore?.ToString("0.000") ?? "-")</td>
                                 <td>@experiment.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                                 <td class="rbl-table-actions">
-                                    <a class="rbl-small-button" asp-action="Details" asp-route-id="@experiment.Id">Open</a>
+                                    <a class="rbl-small-button" asp-action="Details" asp-route-id="@experiment.Id" data-i18n="research.open">Open</a>
                                 </td>
                             </tr>
                         }

@@ -10,6 +10,7 @@ public sealed class IndexedDocument
     public string ContentType { get; set; } = string.Empty;
     public DateTimeOffset UploadedAt { get; set; } = DateTimeOffset.UtcNow;
     public int ChunkCount { get; set; }
+    public long FileSizeBytes { get; set; }
 }
 
 public sealed class DocumentChunk
