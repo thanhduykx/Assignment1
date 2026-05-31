@@ -24,6 +24,9 @@ public interface IResearchBenchmarkService
 
 public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 {
+    private const int MaxGeminiRetryAttempts = 6;
+    private const int GeminiEmbeddingBatchSize = 8;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -178,7 +181,15 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                 cancellationToken) ?? "Không tạo được câu trả lời từ RAG.";
             stopwatch.Stop();
 
-            results.Add(Score(question, answer, retrieved.Select(item => item.Chunk).ToList(), stopwatch.Elapsed.TotalMilliseconds));
+            var answerEmbedding = await EmbedAsync(run, answer, cancellationToken);
+            var result = Score(
+                question,
+                answer,
+                retrieved.Select(item => item.Chunk).ToList(),
+                stopwatch.Elapsed.TotalMilliseconds,
+                answerEmbedding,
+                queryEmbedding);
+            results.Add(result);
             await _researchRepository.SaveBenchmarkResultsAsync(run.Id, results, cancellationToken);
         }
 
@@ -259,21 +270,23 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             "outputDimensionality",
             _geminiOptions.EmbeddingOutputDimensionality);
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent");
-        request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
-        request.Content = JsonContent.Create(
-            new GeminiEmbeddingRequest(
-                $"models/{model}",
-                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
-                Math.Max(1, outputDimensionality)),
-            options: JsonOptions);
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendGeminiWithRetryAsync(() =>
+        {
+            var retryRequest = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent");
+            retryRequest.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
+            retryRequest.Content = JsonContent.Create(
+                new GeminiEmbeddingRequest(
+                    $"models/{model}",
+                    new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                    Math.Max(1, outputDimensionality)),
+                options: JsonOptions);
+            return retryRequest;
+        }, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"{run.EmbeddingModelName} Gemini embedding runtime returned HTTP {(int)response.StatusCode}.");
+            throw BuildGeminiRuntimeException(run.EmbeddingModelName, "embedding", response);
         }
 
         var payload = await response.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
@@ -295,7 +308,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             throw new InvalidOperationException("Gemini API key is required for RBL embeddings.");
         }
 
-        const int batchSize = 20;
         var model = run.EmbeddingModelIdValue ?? _geminiOptions.EmbeddingModel;
         var outputDimensionality = ReadIntConfigValue(
             run.EmbeddingConfigJson,
@@ -303,25 +315,14 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             _geminiOptions.EmbeddingOutputDimensionality);
         var results = new List<Dictionary<int, double>>(texts.Count);
 
-        foreach (var batch in texts.Chunk(batchSize))
+        foreach (var batch in texts.Chunk(GeminiEmbeddingBatchSize))
         {
-            using var request = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents");
-            request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
-            request.Content = JsonContent.Create(
-                new GeminiBatchEmbeddingRequest(
-                    batch.Select(text => new GeminiEmbeddingRequest(
-                            $"models/{model}",
-                            new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
-                            Math.Max(1, outputDimensionality)))
-                        .ToList()),
-                options: JsonOptions);
-
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            using var response = await SendGeminiWithRetryAsync(
+                () => CreateGeminiBatchEmbeddingRequest(model, outputDimensionality, batch),
+                cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw new InvalidOperationException($"{run.EmbeddingModelName} Gemini batch embedding runtime returned HTTP {(int)response.StatusCode}.");
+                throw BuildGeminiRuntimeException(run.EmbeddingModelName, "batch embedding", response);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<GeminiBatchEmbeddingResponse>(JsonOptions, cancellationToken);
@@ -339,9 +340,106 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
                 return GeminiEmbeddingService.NormalizeDenseEmbedding(values);
             }));
+
+            if (results.Count < texts.Count)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+            }
         }
 
         return results;
+    }
+
+    private HttpRequestMessage CreateGeminiBatchEmbeddingRequest(
+        string model,
+        int outputDimensionality,
+        IReadOnlyList<string> batch)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents");
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
+        request.Content = JsonContent.Create(
+            new GeminiBatchEmbeddingRequest(
+                batch.Select(text => new GeminiEmbeddingRequest(
+                        $"models/{model}",
+                        new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                        Math.Max(1, outputDimensionality)))
+                    .ToList()),
+            options: JsonOptions);
+        return request;
+    }
+
+    private async Task<HttpResponseMessage> SendGeminiWithRetryAsync(
+        Func<HttpRequestMessage> createRequest,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaxGeminiRetryAttempts; attempt++)
+        {
+            HttpResponseMessage? response = null;
+            try
+            {
+                response = await _httpClient.SendAsync(createRequest(), cancellationToken);
+                if (response.IsSuccessStatusCode || !IsRetryable(response) || attempt == MaxGeminiRetryAttempts)
+                {
+                    return response;
+                }
+
+                var delay = GetRetryDelay(response, attempt);
+                response.Dispose();
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch
+            {
+                response?.Dispose();
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("Gemini request could not be sent.");
+    }
+
+    private static bool IsRetryable(HttpResponseMessage response)
+    {
+        var statusCode = (int)response.StatusCode;
+        return statusCode is 429 or 500 or 502 or 503 or 504;
+    }
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage? response, int attempt)
+    {
+        var retryAfter = response?.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta && delta > TimeSpan.Zero)
+        {
+            return delta <= TimeSpan.FromSeconds(60) ? delta : TimeSpan.FromSeconds(60);
+        }
+
+        if (retryAfter?.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+            {
+                return wait <= TimeSpan.FromSeconds(60) ? wait : TimeSpan.FromSeconds(60);
+            }
+        }
+
+        var seconds = Math.Min(60, Math.Pow(2, attempt + 1));
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static InvalidOperationException BuildGeminiRuntimeException(
+        string? modelName,
+        string operation,
+        HttpResponseMessage response)
+    {
+        var name = string.IsNullOrWhiteSpace(modelName) ? "Gemini" : modelName;
+        return (int)response.StatusCode == 429
+            ? new InvalidOperationException($"{name} {operation} đang bị giới hạn quota/rate limit Gemini (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số chunking strategy trong lần chạy.")
+            : new InvalidOperationException($"{name} Gemini {operation} runtime returned HTTP {(int)response.StatusCode}.");
     }
 
     private static int ReadIntConfigValue(string? configJson, string key, int fallback)
@@ -473,14 +571,35 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         IReadOnlyList<DocumentChunk> retrievedChunks,
         double latencyMs)
     {
+        return Score(question, answer, retrievedChunks, latencyMs, null, null);
+    }
+
+    private static ResearchBenchmarkResult Score(
+        ResearchTestQuestion question,
+        string answer,
+        IReadOnlyList<DocumentChunk> retrievedChunks,
+        double latencyMs,
+        IReadOnlyDictionary<int, double>? answerEmbedding,
+        IReadOnlyDictionary<int, double>? questionEmbedding)
+    {
         var groundTruthTerms = ExtractTerms(question.GroundTruth);
         var answerTerms = ExtractTerms(answer);
         var contextTerms = ExtractTerms(string.Join(" ", retrievedChunks.Select(item => item.Text)));
 
-        var answerRelevancy = Overlap(answerTerms, groundTruthTerms);
-        var contextRecall = groundTruthTerms.Count == 0 ? 0 : Overlap(contextTerms, groundTruthTerms);
-        var contextPrecision = contextTerms.Count == 0 ? (retrievedChunks.Count == 0 ? 0 : 0.5) : Overlap(groundTruthTerms, contextTerms);
-        var faithfulness = retrievedChunks.Count == 0 ? answerRelevancy : Overlap(answerTerms, contextTerms);
+        var answerGroundTruthOverlap = BalancedOverlap(answerTerms, groundTruthTerms);
+        var answerQuestionOverlap = BalancedOverlap(answerTerms, ExtractTerms(question.Question));
+        var answerSemanticSimilarity = answerEmbedding is not null && questionEmbedding is not null
+            ? NormalizeCosine(CosineSimilarity(answerEmbedding, questionEmbedding))
+            : answerGroundTruthOverlap;
+        var answerRelevancy = Clamp01((answerGroundTruthOverlap * 0.55) + (answerSemanticSimilarity * 0.30) + (answerQuestionOverlap * 0.15));
+
+        var contextRecall = groundTruthTerms.Count == 0 ? 0 : BalancedOverlap(contextTerms, groundTruthTerms);
+        var contextPrecision = contextTerms.Count == 0
+            ? 0
+            : Math.Max(BalancedOverlap(groundTruthTerms, contextTerms), BalancedOverlap(answerTerms, contextTerms));
+        var faithfulness = retrievedChunks.Count == 0
+            ? answerRelevancy
+            : Clamp01((BalancedOverlap(answerTerms, contextTerms) * 0.75) + (contextRecall * 0.25));
         var ragas = (faithfulness * 0.35) + (answerRelevancy * 0.25) + (contextPrecision * 0.20) + (contextRecall * 0.20);
 
         return new ResearchBenchmarkResult
@@ -514,6 +633,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     {
         return Regex.Matches(RemoveDiacritics(text).ToLowerInvariant(), @"[\p{L}\p{N}]{2,}")
             .Select(match => match.Value)
+            .Select(NormalizeTerm)
             .Where(term => !StopWords.Contains(term))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
@@ -526,6 +646,60 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         return left.Count(item => right.Contains(item)) / (double)left.Count;
+    }
+
+    private static double BalancedOverlap(IReadOnlySet<string> left, IReadOnlySet<string> right)
+    {
+        if (left.Count == 0 || right.Count == 0)
+        {
+            return 0;
+        }
+
+        var leftHit = left.Count(item => right.Any(other => TermsMatch(item, other))) / (double)left.Count;
+        var rightHit = right.Count(item => left.Any(other => TermsMatch(item, other))) / (double)right.Count;
+        return (leftHit + rightHit) / 2d;
+    }
+
+    private static bool TermsMatch(string left, string right)
+    {
+        if (left.Equals(right, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return left.Length >= 4
+               && right.Length >= 4
+               && (left.StartsWith(right, StringComparison.OrdinalIgnoreCase)
+                   || right.StartsWith(left, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeTerm(string term)
+    {
+        var value = term.Trim();
+        foreach (var suffix in new[] { "ing", "tion", "ment", "ness", "ed", "s" })
+        {
+            if (value.Length > suffix.Length + 3 && value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                return value[..^suffix.Length];
+            }
+        }
+
+        return value;
+    }
+
+    private static double NormalizeCosine(double cosine)
+    {
+        return Clamp01((cosine + 1d) / 2d);
+    }
+
+    private static double Clamp01(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return 0;
+        }
+
+        return Math.Max(0, Math.Min(1, value));
     }
 
     private static double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)

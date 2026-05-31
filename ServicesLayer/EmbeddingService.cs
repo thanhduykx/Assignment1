@@ -196,6 +196,8 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
 
 public sealed class GeminiEmbeddingService : IEmbeddingService
 {
+    private const int MaxGeminiRetryAttempts = 4;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -226,19 +228,12 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
             ? "gemini-embedding-001"
             : _options.EmbeddingModel.Trim();
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{model}:embedContent");
-        request.Headers.TryAddWithoutValidation("x-goog-api-key", _options.ApiKey);
-        request.Content = JsonContent.Create(
-            new GeminiEmbeddingRequest(
-                $"models/{model}",
-                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
-                Math.Max(1, _options.EmbeddingOutputDimensionality)),
-            options: JsonOptions);
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendGeminiWithRetryAsync(
+            () => CreateEmbeddingRequest(model, text),
+            cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Gemini embedding request failed with HTTP {(int)response.StatusCode}.");
+            throw BuildGeminiEmbeddingException(response);
         }
 
         var payload = await response.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
@@ -248,6 +243,87 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
         }
 
         return NormalizeDenseEmbedding(values);
+    }
+
+    private HttpRequestMessage CreateEmbeddingRequest(string model, string text)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{model}:embedContent");
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", _options.ApiKey);
+        request.Content = JsonContent.Create(
+            new GeminiEmbeddingRequest(
+                $"models/{model}",
+                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                Math.Max(1, _options.EmbeddingOutputDimensionality)),
+            options: JsonOptions);
+        return request;
+    }
+
+    private async Task<HttpResponseMessage> SendGeminiWithRetryAsync(
+        Func<HttpRequestMessage> createRequest,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaxGeminiRetryAttempts; attempt++)
+        {
+            HttpResponseMessage? response = null;
+            try
+            {
+                response = await _httpClient.SendAsync(createRequest(), cancellationToken);
+                if (response.IsSuccessStatusCode || !IsRetryable(response) || attempt == MaxGeminiRetryAttempts)
+                {
+                    return response;
+                }
+
+                var delay = GetRetryDelay(response, attempt);
+                response.Dispose();
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch
+            {
+                response?.Dispose();
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("Gemini embedding request could not be sent.");
+    }
+
+    private static bool IsRetryable(HttpResponseMessage response)
+    {
+        var statusCode = (int)response.StatusCode;
+        return statusCode is 429 or 500 or 502 or 503 or 504;
+    }
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage? response, int attempt)
+    {
+        var retryAfter = response?.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta && delta > TimeSpan.Zero)
+        {
+            return delta <= TimeSpan.FromSeconds(60) ? delta : TimeSpan.FromSeconds(60);
+        }
+
+        if (retryAfter?.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+            {
+                return wait <= TimeSpan.FromSeconds(60) ? wait : TimeSpan.FromSeconds(60);
+            }
+        }
+
+        var seconds = Math.Min(60, Math.Pow(2, attempt + 1));
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static InvalidOperationException BuildGeminiEmbeddingException(HttpResponseMessage response)
+    {
+        return (int)response.StatusCode == 429
+            ? new InvalidOperationException("Gemini embedding đang bị giới hạn quota/rate limit (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số tài liệu trong lần chạy.")
+            : new InvalidOperationException($"Gemini embedding request failed with HTTP {(int)response.StatusCode}.");
     }
 
     public double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)
