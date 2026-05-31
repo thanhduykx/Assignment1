@@ -139,16 +139,26 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         var chunks = Rechunk(originalChunks, run);
-        foreach (var chunk in chunks)
+        var chunkEmbeddings = await EmbedBatchAsync(
+            run,
+            chunks.Select(chunk => chunk.Text).ToList(),
+            cancellationToken);
+        for (var index = 0; index < chunks.Count; index++)
         {
-            chunk.Embedding = await EmbedAsync(run, chunk.Text, cancellationToken);
+            chunks[index].Embedding = chunkEmbeddings[index];
         }
 
+        var queryEmbeddings = await EmbedBatchAsync(
+            run,
+            experiment.Questions.Select(question => question.Question).ToList(),
+            cancellationToken);
+
         var results = new List<ResearchBenchmarkResult>();
-        foreach (var question in experiment.Questions)
+        for (var questionIndex = 0; questionIndex < experiment.Questions.Count; questionIndex++)
         {
+            var question = experiment.Questions[questionIndex];
             var stopwatch = Stopwatch.StartNew();
-            var queryEmbedding = await EmbedAsync(run, question.Question, cancellationToken);
+            var queryEmbedding = queryEmbeddings[questionIndex];
             var retrieved = chunks
                 .Select(chunk => new
                 {
@@ -169,6 +179,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             stopwatch.Stop();
 
             results.Add(Score(question, answer, retrieved.Select(item => item.Chunk).ToList(), stopwatch.Elapsed.TotalMilliseconds));
+            await _researchRepository.SaveBenchmarkResultsAsync(run.Id, results, cancellationToken);
         }
 
         return results;
@@ -202,6 +213,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             var answer = payload?.Answer ?? payload?.Text ?? string.Empty;
             stopwatch.Stop();
             results.Add(Score(question, answer, Array.Empty<DocumentChunk>(), stopwatch.Elapsed.TotalMilliseconds));
+            await _researchRepository.SaveBenchmarkResultsAsync(run.Id, results, cancellationToken);
         }
 
         return results;
@@ -209,9 +221,23 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private async Task<Dictionary<int, double>> EmbedAsync(ResearchRunSummary run, string text, CancellationToken cancellationToken)
     {
+        var embeddings = await EmbedBatchAsync(run, new[] { text }, cancellationToken);
+        return embeddings[0];
+    }
+
+    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedBatchAsync(
+        ResearchRunSummary run,
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken)
+    {
+        if (texts.Count == 0)
+        {
+            return Array.Empty<Dictionary<int, double>>();
+        }
+
         if (run.EmbeddingProvider?.Equals("Gemini", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return await EmbedWithGeminiAsync(run, text, cancellationToken);
+            return await EmbedWithGeminiBatchAsync(run, texts, cancellationToken);
         }
 
         throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Only Gemini embeddings are enabled.");
@@ -257,6 +283,65 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         return GeminiEmbeddingService.NormalizeDenseEmbedding(values);
+    }
+
+    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedWithGeminiBatchAsync(
+        ResearchRunSummary run,
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken)
+    {
+        if (!_geminiOptions.Enabled || string.IsNullOrWhiteSpace(_geminiOptions.ApiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is required for RBL embeddings.");
+        }
+
+        const int batchSize = 20;
+        var model = run.EmbeddingModelIdValue ?? _geminiOptions.EmbeddingModel;
+        var outputDimensionality = ReadIntConfigValue(
+            run.EmbeddingConfigJson,
+            "outputDimensionality",
+            _geminiOptions.EmbeddingOutputDimensionality);
+        var results = new List<Dictionary<int, double>>(texts.Count);
+
+        foreach (var batch in texts.Chunk(batchSize))
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents");
+            request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
+            request.Content = JsonContent.Create(
+                new GeminiBatchEmbeddingRequest(
+                    batch.Select(text => new GeminiEmbeddingRequest(
+                            $"models/{model}",
+                            new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                            Math.Max(1, outputDimensionality)))
+                        .ToList()),
+                options: JsonOptions);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"{run.EmbeddingModelName} Gemini batch embedding runtime returned HTTP {(int)response.StatusCode}.");
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<GeminiBatchEmbeddingResponse>(JsonOptions, cancellationToken);
+            if (payload?.Embeddings is not { Count: > 0 } embeddings || embeddings.Count != batch.Length)
+            {
+                throw new InvalidOperationException($"{run.EmbeddingModelName} returned an invalid Gemini batch embedding response.");
+            }
+
+            results.AddRange(embeddings.Select(embedding =>
+            {
+                if (embedding.Values is not { Count: > 0 } values)
+                {
+                    throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty Gemini embedding.");
+                }
+
+                return GeminiEmbeddingService.NormalizeDenseEmbedding(values);
+            }));
+        }
+
+        return results;
     }
 
     private static int ReadIntConfigValue(string? configJson, string key, int fallback)
@@ -484,6 +569,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private sealed record GeminiEmbeddingResponse(
         [property: JsonPropertyName("embedding")] GeminiEmbedding? Embedding);
+
+    private sealed record GeminiBatchEmbeddingRequest(
+        [property: JsonPropertyName("requests")] IReadOnlyList<GeminiEmbeddingRequest> Requests);
+
+    private sealed record GeminiBatchEmbeddingResponse(
+        [property: JsonPropertyName("embeddings")] List<GeminiEmbedding>? Embeddings);
 
     private sealed record GeminiEmbedding(
         [property: JsonPropertyName("values")] List<double>? Values);

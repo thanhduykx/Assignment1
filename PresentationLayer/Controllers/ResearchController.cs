@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using DataAccessLayer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,8 @@ namespace PresentationLayer.Controllers;
 [Authorize]
 public sealed class ResearchController : Controller
 {
+    private static readonly ConcurrentDictionary<Guid, byte> RunningBenchmarks = new();
+
     private readonly IResearchBenchmarkService _researchService;
     private readonly IResearchReportPdfService _reportPdfService;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -132,7 +135,7 @@ public sealed class ResearchController : Controller
             return NotFound();
         }
 
-        if (experiment.Status.Equals("Running", StringComparison.OrdinalIgnoreCase))
+        if (!RunningBenchmarks.TryAdd(id, 0))
         {
             TempData["Success"] = "Benchmark is already running. You can leave this page and come back later.";
             return RedirectToAction(nameof(Details), new { id });
@@ -158,6 +161,10 @@ public sealed class ResearchController : Controller
             catch (Exception ex)
             {
                 logger.LogError(ex, "Background research benchmark failed for experiment {ExperimentId}", experimentId);
+            }
+            finally
+            {
+                RunningBenchmarks.TryRemove(experimentId, out _);
             }
         });
     }

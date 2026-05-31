@@ -15,6 +15,7 @@ public interface IRagChatService
 public sealed class RagChatService : IRagChatService
 {
     private const int TopK = 5;
+    private const int MaxBatchQuestions = 50;
     private const double MinimumScore = 0.7;
     private const string OutOfScopeAnswer = "Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này.";
 
@@ -112,23 +113,65 @@ public sealed class RagChatService : IRagChatService
             return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
         }
 
-        if (IsBotIdentityQuestion(trimmedQuestion))
+        var questionBatch = SplitQuestionBatch(trimmedQuestion);
+        if (questionBatch.Count > 1)
         {
-            return await SaveAssistantAnswer(sessionId, BuildBotIdentityAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            var scopedChunks = await GetScopedChunksAsync(cancellationToken);
+            var questionsToAnswer = questionBatch.Take(MaxBatchQuestions).ToList();
+            var answers = new List<SingleQuestionAnswer>(questionsToAnswer.Count);
+
+            foreach (var batchQuestion in questionsToAnswer)
+            {
+                answers.Add(await BuildSingleQuestionAnswerAsync(
+                    batchQuestion,
+                    historyBeforeQuestion,
+                    userDisplayName,
+                    responseLanguage,
+                    scopedChunks,
+                    cancellationToken));
+            }
+
+            var answerText = FormatBatchAnswer(answers, questionBatch.Count - questionsToAnswer.Count, responseLanguage);
+            var citations = MergeCitations(answers.SelectMany(item => item.Citations));
+            return await SaveAssistantAnswer(sessionId, answerText, citations, cancellationToken);
         }
 
-        if (IsUserIdentityQuestion(trimmedQuestion))
+        var singleAnswer = await BuildSingleQuestionAnswerAsync(
+            trimmedQuestion,
+            historyBeforeQuestion,
+            userDisplayName,
+            responseLanguage,
+            scopedChunks: null,
+            cancellationToken);
+
+        return await SaveAssistantAnswer(sessionId, singleAnswer.Answer, singleAnswer.Citations, cancellationToken);
+    }
+
+    private async Task<SingleQuestionAnswer> BuildSingleQuestionAnswerAsync(
+        string question,
+        IReadOnlyList<ChatMessage> historyBeforeQuestion,
+        string? userDisplayName,
+        string responseLanguage,
+        IReadOnlyList<DocumentChunk>? scopedChunks,
+        CancellationToken cancellationToken)
+    {
+        if (IsBotIdentityQuestion(question))
         {
-            return await SaveAssistantAnswer(sessionId, BuildUserIdentityAnswer(userDisplayName, responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return new SingleQuestionAnswer(question, BuildBotIdentityAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
-        if (IsCasualChat(trimmedQuestion))
+        if (IsUserIdentityQuestion(question))
         {
-            return await SaveAssistantAnswer(sessionId, BuildCasualChatAnswer(trimmedQuestion, responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return new SingleQuestionAnswer(question, BuildUserIdentityAnswer(userDisplayName, responseLanguage), Array.Empty<SourceCitation>());
+        }
+
+        if (IsCasualChat(question))
+        {
+            return new SingleQuestionAnswer(question, BuildCasualChatAnswer(question, responseLanguage), Array.Empty<SourceCitation>());
         }
 
         var rewrittenQuestion = await _chatCompletionService.RewriteQuestionAsync(
-            trimmedQuestion,
+            question,
             historyBeforeQuestion,
             cancellationToken);
         var resolvedQuestion = ResolveKnownCourseAliases(rewrittenQuestion);
@@ -136,74 +179,72 @@ public sealed class RagChatService : IRagChatService
             ? string.Empty
             : BuildAliasCorrectionPrefix(responseLanguage);
 
-        var allChunks = await _repository.GetChunksAsync(cancellationToken);
-        if (allChunks.Count == 0)
+        scopedChunks ??= await GetScopedChunksAsync(cancellationToken);
+        if (scopedChunks.Count == 0)
         {
-            return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
-        var flmChunks = allChunks.Where(IsFlmChunk).ToList();
-        var scopedChunks = flmChunks.Count > 0 ? flmChunks : allChunks;
         var queryTerms = ExtractTerms(resolvedQuestion);
 
         if (TryBuildCreditAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var creditAnswer, out var creditCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + creditAnswer, new[] { creditCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + creditAnswer, new[] { creditCitation });
         }
 
         if (TryBuildCourseOverviewAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var overviewAnswer, out var overviewCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + overviewAnswer, new[] { overviewCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + overviewAnswer, new[] { overviewCitation });
         }
 
         if (TryBuildPrerequisiteAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var prerequisiteAnswer, out var prerequisiteCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + prerequisiteAnswer, new[] { prerequisiteCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + prerequisiteAnswer, new[] { prerequisiteCitation });
         }
 
         if (TryBuildTimeAllocationAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var timeAnswer, out var timeCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + timeAnswer, new[] { timeCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + timeAnswer, new[] { timeCitation });
         }
 
         if (TryBuildAssignmentWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var assignmentAnswer, out var assignmentCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + assignmentAnswer, new[] { assignmentCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + assignmentAnswer, new[] { assignmentCitation });
         }
 
         if (TryBuildAssessmentAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var assessmentAnswer, out var assessmentCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + assessmentAnswer, new[] { assessmentCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + assessmentAnswer, new[] { assessmentCitation });
         }
 
         if (TryBuildMainContentAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var mainContentAnswer, out var mainContentCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + mainContentAnswer, new[] { mainContentCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + mainContentAnswer, new[] { mainContentCitation });
         }
 
         if (TryBuildKnowledgeAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var knowledgeAnswer, out var knowledgeCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + knowledgeAnswer, new[] { knowledgeCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + knowledgeAnswer, new[] { knowledgeCitation });
         }
 
         if (TryBuildSkillsAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var skillsAnswer, out var skillsCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + skillsAnswer, new[] { skillsCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + skillsAnswer, new[] { skillsCitation });
         }
 
         if (TryBuildSongsAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var songsAnswer, out var songsCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + songsAnswer, new[] { songsCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + songsAnswer, new[] { songsCitation });
         }
 
         if (TryBuildOnlineResourcesAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var onlineAnswer, out var onlineCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + onlineAnswer, new[] { onlineCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + onlineAnswer, new[] { onlineCitation });
         }
 
         if (TryBuildFinalExamAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var finalExamAnswer, out var finalExamCitation))
         {
-            return await SaveAssistantAnswer(sessionId, correctionPrefix + finalExamAnswer, new[] { finalExamCitation }, cancellationToken);
+            return new SingleQuestionAnswer(question, correctionPrefix + finalExamAnswer, new[] { finalExamCitation });
         }
 
         var minimumSharedTerms = queryTerms.Count >= 4 ? 2 : 1;
@@ -242,7 +283,7 @@ public sealed class RagChatService : IRagChatService
 
         if (matches.Count == 0)
         {
-            return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
         var citations = matches.Select(item => new SourceCitation
@@ -268,11 +309,125 @@ public sealed class RagChatService : IRagChatService
 
         if (IsInsufficientDataAnswer(answer))
         {
-            return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
-        return await SaveAssistantAnswer(sessionId, correctionPrefix + answer, citations, cancellationToken);
+        return new SingleQuestionAnswer(question, correctionPrefix + answer, citations);
     }
+
+    private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(CancellationToken cancellationToken)
+    {
+        var allChunks = await _repository.GetChunksAsync(cancellationToken);
+        if (allChunks.Count == 0)
+        {
+            return Array.Empty<DocumentChunk>();
+        }
+
+        var flmChunks = allChunks.Where(IsFlmChunk).ToList();
+        return flmChunks.Count > 0 ? flmChunks : allChunks;
+    }
+
+    private static IReadOnlyList<string> SplitQuestionBatch(string input)
+    {
+        var lines = input
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(CleanQuestionLine)
+            .Where(IsLikelyQuestion)
+            .ToList();
+
+        if (lines.Count > 1)
+        {
+            return lines;
+        }
+
+        var inlineQuestions = Regex.Matches(input, @"[^?？！]+[?？！]")
+            .Select(match => CleanQuestionLine(match.Value))
+            .Where(IsLikelyQuestion)
+            .ToList();
+
+        return inlineQuestions.Count > 1 ? inlineQuestions : Array.Empty<string>();
+    }
+
+    private static string CleanQuestionLine(string line)
+    {
+        var cleaned = Regex.Replace(line.Trim(), @"^\s*(?:[-*•]|\d+[\).\:-])\s*", string.Empty);
+        var pipeIndex = cleaned.IndexOf('|', StringComparison.Ordinal);
+        if (pipeIndex > 0)
+        {
+            cleaned = cleaned[..pipeIndex].Trim();
+        }
+
+        return cleaned.Trim();
+    }
+
+    private static bool IsLikelyQuestion(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (value.EndsWith('?') || value.EndsWith('？') || value.EndsWith('!'))
+        {
+            return true;
+        }
+
+        var normalized = NormalizeQuestion(value);
+        return normalized.Contains(" la gi", StringComparison.Ordinal)
+               || normalized.Contains("bao nhieu", StringComparison.Ordinal)
+               || normalized.Contains("nhu the nao", StringComparison.Ordinal)
+               || normalized.Contains("noi dung nao", StringComparison.Ordinal)
+               || normalized.Contains("yeu cau", StringComparison.Ordinal)
+               || normalized.Contains("what", StringComparison.Ordinal)
+               || normalized.Contains("how", StringComparison.Ordinal)
+               || normalized.Contains("which", StringComparison.Ordinal);
+    }
+
+    private static string FormatBatchAnswer(
+        IReadOnlyList<SingleQuestionAnswer> answers,
+        int skippedQuestionCount,
+        string language)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(language == "vi"
+            ? $"Mình nhận {answers.Count} câu hỏi. Trả lời lần lượt:"
+            : $"I received {answers.Count} questions. Here are the answers in order:");
+        builder.AppendLine();
+
+        for (var index = 0; index < answers.Count; index++)
+        {
+            var item = answers[index];
+            builder.AppendLine($"{index + 1}. {item.Question}");
+            builder.AppendLine(item.Answer.Trim());
+            builder.AppendLine();
+        }
+
+        if (skippedQuestionCount > 0)
+        {
+            builder.AppendLine(language == "vi"
+                ? $"Mình chỉ xử lý tối đa {MaxBatchQuestions} câu mỗi lần, còn {skippedQuestionCount} câu chưa xử lý. Hãy gửi tiếp phần còn lại ở tin nhắn sau."
+                : $"I only process up to {MaxBatchQuestions} questions per message. {skippedQuestionCount} questions were not processed; send them in the next message.");
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static IReadOnlyList<SourceCitation> MergeCitations(IEnumerable<SourceCitation> citations)
+    {
+        return citations
+            .GroupBy(item => new { item.DocumentId, item.ChunkIndex })
+            .Select(group => group.First())
+            .OrderByDescending(item => item.Score)
+            .Take(20)
+            .ToList();
+    }
+
+    private sealed record SingleQuestionAnswer(
+        string Question,
+        string Answer,
+        IReadOnlyList<SourceCitation> Citations);
 
     private async Task<ChatAnswer> SaveAssistantAnswer(
         Guid sessionId,

@@ -162,6 +162,7 @@
                             <th>Run</th>
                             <th>Type</th>
                             <th>Status</th>
+                            <th>Progress</th>
                             <th>Latency</th>
                             <th>Faith</th>
                             <th>Relevant</th>
@@ -183,6 +184,7 @@
                             </td>
                             <td>@run.RunKind</td>
                             <td><span class="rbl-status @StatusClass(run.Status)">@run.Status</span></td>
+                            <td>@run.ResultCount/@Model.Experiment.QuestionCount</td>
                             <td>@(run.AverageLatencyMs?.ToString("0") ?? "-") ms</td>
                             <td>@(run.AverageFaithfulness?.ToString("0.000") ?? "-")</td>
                             <td>@(run.AverageAnswerRelevancy?.ToString("0.000") ?? "-")</td>
