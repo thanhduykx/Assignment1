@@ -212,6 +212,16 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, correctionPrefix + assignmentAnswer, new[] { assignmentCitation });
         }
 
+        if (TryBuildParticipationWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var participationAnswer, out var participationCitation))
+        {
+            return new SingleQuestionAnswer(question, correctionPrefix + participationAnswer, new[] { participationCitation });
+        }
+
+        if (TryBuildFinalExamWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var finalWeightAnswer, out var finalWeightCitation))
+        {
+            return new SingleQuestionAnswer(question, correctionPrefix + finalWeightAnswer, new[] { finalWeightCitation });
+        }
+
         if (TryBuildAssessmentAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var assessmentAnswer, out var assessmentCitation))
         {
             return new SingleQuestionAnswer(question, correctionPrefix + assessmentAnswer, new[] { assessmentCitation });
@@ -516,9 +526,9 @@ public sealed class RagChatService : IRagChatService
         return normalized.Contains("credit", StringComparison.Ordinal)
                || normalized.Contains("nocredit", StringComparison.Ordinal)
                || normalized.Contains("tin chi", StringComparison.Ordinal)
-               || (normalized.Contains("bao nhieu", StringComparison.Ordinal)
-                   && (normalized.Contains("tin", StringComparison.Ordinal)
-                       || normalized.Contains("chi", StringComparison.Ordinal)));
+               || normalized.Contains("so tin", StringComparison.Ordinal)
+               || normalized.Contains("may tin", StringComparison.Ordinal)
+               || normalized.Contains("bao nhieu tin", StringComparison.Ordinal);
     }
 
     private static bool TryBuildCourseOverviewAnswer(
@@ -701,6 +711,68 @@ public sealed class RagChatService : IRagChatService
         answer = language == "vi"
             ? $"B\u00e0i t\u1eadp trong DBA103 chi\u1ebfm {weight} t\u1ed5ng \u0111i\u1ec3m."
             : $"The assignment component in DBA103 accounts for {weight} of the total grade.";
+        citation = BuildCitation(chunk, 1);
+        return true;
+    }
+
+    private static bool TryBuildParticipationWeightAnswer(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
+        out string answer,
+        out SourceCitation citation)
+    {
+        answer = string.Empty;
+        citation = new SourceCitation();
+
+        if (!IsParticipationWeightQuestion(question))
+        {
+            return false;
+        }
+
+        var chunk = chunks.FirstOrDefault(item =>
+            item.Text.Contains("Participation:", StringComparison.OrdinalIgnoreCase)
+            || item.Text.Contains("tham gia", StringComparison.OrdinalIgnoreCase) && item.Text.Contains("15%", StringComparison.OrdinalIgnoreCase));
+
+        if (chunk is null)
+        {
+            return false;
+        }
+
+        answer = language == "vi"
+            ? "\u0110i\u1ec3m \u00fd th\u1ee9c tham gia l\u1edbp h\u1ecdc trong DBA103 chi\u1ebfm 15% t\u1ed5ng \u0111i\u1ec3m."
+            : "The participation component in DBA103 accounts for 15% of the total grade.";
+        citation = BuildCitation(chunk, 1);
+        return true;
+    }
+
+    private static bool TryBuildFinalExamWeightAnswer(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
+        out string answer,
+        out SourceCitation citation)
+    {
+        answer = string.Empty;
+        citation = new SourceCitation();
+
+        if (!IsFinalExamWeightQuestion(question))
+        {
+            return false;
+        }
+
+        var chunk = chunks.FirstOrDefault(item =>
+            item.Text.Contains("Final exam:", StringComparison.OrdinalIgnoreCase)
+            || item.Text.Contains("Thi", StringComparison.OrdinalIgnoreCase) && item.Text.Contains("70%", StringComparison.OrdinalIgnoreCase));
+
+        if (chunk is null)
+        {
+            return false;
+        }
+
+        answer = language == "vi"
+            ? "Thi cu\u1ed1i m\u00f4n DBA103 chi\u1ebfm 70% t\u1ed5ng \u0111i\u1ec3m."
+            : "The final exam in DBA103 accounts for 70% of the total grade.";
         citation = BuildCitation(chunk, 1);
         return true;
     }
@@ -945,6 +1017,31 @@ public sealed class RagChatService : IRagChatService
         return normalized.Contains("dba103", StringComparison.Ordinal)
                && (normalized.Contains("bai tap", StringComparison.Ordinal)
                    || normalized.Contains("assignment", StringComparison.Ordinal))
+               && (normalized.Contains("phan tram", StringComparison.Ordinal)
+                   || normalized.Contains("chiem", StringComparison.Ordinal)
+                   || normalized.Contains("weight", StringComparison.Ordinal)
+                   || normalized.Contains("%", StringComparison.Ordinal));
+    }
+
+    private static bool IsParticipationWeightQuestion(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        return normalized.Contains("dba103", StringComparison.Ordinal)
+               && (normalized.Contains("tham gia", StringComparison.Ordinal)
+                   || normalized.Contains("y thuc", StringComparison.Ordinal)
+                   || normalized.Contains("participation", StringComparison.Ordinal))
+               && (normalized.Contains("phan tram", StringComparison.Ordinal)
+                   || normalized.Contains("chiem", StringComparison.Ordinal)
+                   || normalized.Contains("weight", StringComparison.Ordinal)
+                   || normalized.Contains("%", StringComparison.Ordinal));
+    }
+
+    private static bool IsFinalExamWeightQuestion(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        return normalized.Contains("dba103", StringComparison.Ordinal)
+               && (normalized.Contains("thi cuoi", StringComparison.Ordinal)
+                   || normalized.Contains("final exam", StringComparison.Ordinal))
                && (normalized.Contains("phan tram", StringComparison.Ordinal)
                    || normalized.Contains("chiem", StringComparison.Ordinal)
                    || normalized.Contains("weight", StringComparison.Ordinal)
