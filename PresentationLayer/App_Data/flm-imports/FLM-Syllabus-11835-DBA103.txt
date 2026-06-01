@@ -1,0 +1,263 @@
+Nguon: FLM Syllabus 11835
+URL: https://flm.fpt.edu.vn/gui/role/student/SyllabusDetails?sylID=11835
+Tieu de trang: FPT University Learning Materials
+Ngay lay: 2026-05-28T09:08:03.858Z
+
+===== NOI DUNG SYLLABUS =====
+Home
+FPT University Learning Materials
+Syllabus Details
+
+Syllabus ID: 11835
+Syllabus Name: Nhạc cụ truyền thống - Đàn Bầu
+Syllabus English: Traditional musical instrument
+Subject Code: DBA103
+NoCredit: 3
+Degree Level: Sơ cấp Beginner
+Time Allocation: Giảng dạy trên lớp 30 slot; 90 phút/slot
+In class: 30 slots; 90 minutes/slot
+Pre-Requisite: Không None
+Description: 1. Kiến thức/ Knowledge:
+- Nắm được những nét đặc trưng về lịch sử phát triển và cấu trúc Đàn Bầu
+Understand specific characteristics of the historical development and structure of Dan Bau.
+- Làm quen với nhạc lý và những kỹ thuật cơ bản của Đàn Bầu
+Familiarize students with music theory and basic techniques of Dan Bau
+
+2. Kỹ năng/ Skills:
+- Đánh được tối thiểu 3 bài trong đó có 1 bài nhạc nước ngoài ở mức thông dụng vận dụng được đúng các kỹ thuật cơ bản.
+- Be able to play at least 3 songs including 1 common foreign song and properly apply basic techniques.
+
+- Môn học sẽ được triển khai theo đơn vị lớp cỡ khoảng 15 sinh viên/lớp.
+There will be about 15 students/class.
+Trong quá trình học, sinh viên sẽ được giới thiệu, hướng dẫn tìm hiểu và thực hành về các nội dung sau:
+In the course, students will learn:
+- Lịch sử phát triển của đàn Bầu ở Việt Nam
+Historical development of Dan Bau in Vietnam
+- Cấu trúc và đặc điểm của đàn Bầu
+Structure and characteristics of Dan Bau
+- Tư thế đánh đàn
+Postures when playing Dan Bau
+- Nhạc lý và kỹ thuật cơ bản gồm:
+Music theory and basic techniques, including:
++ Gảy dây buông
+Plucking strings
++ nhấn lên xuống quãng 2
+Raise or lower the pitch to play the major second interval
+- Luyện tập đánh bài Việt Nam: Cò lả, lý cây đa (hòa tấu)
+Practice playing Vietnamese songs: Co la, ly cay da (ensemble performance)
+Bài quốc tế: Auld lang syne dân ca Scotland
+Foreign songs: Auld lang syne (Scottish folk song)
+
+* Sử dụng CNTT trong học phần/ Apply IT in the course
+a) Cung cấp thông tin, tài nguyên lên mạng : Cung cấp địa chỉ các Website, clip nhạc truyền thống.
+Update information and resources on the internet: Provide web addresses and traditional music clips.
+b) Sử dụng các tài nguyên trên mạng: Giảng viên sử dụng có chọn lọc trên nguyên tắc của học phần rồi cung cấp cho sinh viên. Hướng dẫn sinh viên tìm thông tin theo các chủ đề nhất định trên mạng Internet.
+Use of online resources: Lecturers use resources selectively based on course regulations and then provide them to students. Instruct students to find information on certain topics on the Internet.
+
+* Phát triển kỹ năng mềm và phát triển cá nhân trong học phần/ Soft skills development and personal development
+- Rèn luyện tính kiên trì cho sinh viên, giúp sinh viên tự tin hơn trước đám đông
+Improve students' perseverance and help them become more confident in front of the crowd "
+- Phát triển kỹ năng làm việc theo nhóm, kỹ năng hoạt động độc lập của sinh viên thông quan các nhiệm vụ mà giảng viên giao.
+Develop students' ability to work in groups and work independently through the tasks assigned by the lecturer.
+StudentTasks: - Tham dự tối thiểu 80% thời lượng môn học trở lên để đủ điều kiện thi cuối môn học.
+Attend at least 80% of class hours to be eligible for the final exam.
+- Thái độ học tập nghiêm túc.
+Study seriously.
+- Ôn tập bài cũ và tìm hiểu tài liệu bài học mới trước khi đến lớp.
+Review previous lessons and study materials for new lessons in advance.
+- Luyện tập, thực hành trên lớp và ở nhà.
+Practice in class and at home.
+- Tích cực tham gia hoạt động giảng viên yêu cầu trên trong lớp (phát biểu, hỏi đáp, trao đổi, làm việc nhóm, thực hành...) và làm Portfolio cho môn học.
+Actively participate in class activities required by the lecturer (express ideas, raise questions, discuss, work in groups, practice...) and make a Portfolio for the subject.
+Tools: Nhạc cụ cho từng sinh viên
+Musical instruments for each student
+Scoring Scale: 10
+DecisionNo MM/dd/yyyy: 862/QĐ-ĐHFPT dated 08/16/2024
+IsApproved: True
+Note: Bài tập: 15%
+Assignment: 15%
+Điểm ý thức tham gia lớp học: 15%
+Participation: 15%
+Thi cuối môn học: Điểm thực hành chơi nhạc cụ theo yêu cầu: 70% (=>4 điểm)
+Final exam: Playing musical instruments as required: 70% (=>4 points)
+Tổng điểm FE: =>5
+Final Result: >=5
+MinAvgMarkToPass: 5
+IsActive: True
+ApprovedDate: 8/16/2024
+
+3 material(s)
+
+MaterialDescription Author Publisher PublishedDate Edition ISBN IsMainMaterial IsHardCopy IsOnline Note
+Sách học Đàn Bầu
+"Sách học Đàn Bầu" Tác giả Nguyễn Thanh Tâm, Trần Quốc LộcAuthors: Nguyen Thanh Tam, Tran Quoc Loc Học viên Âm nhạc quốc gia VNVietnam National Academy of Music N/A    
+Bài tập luyện kỹ thuật đàn Bầu
+Exercises to practice techniques of Dan Bau          
+Danh mục các bài nhạc có thể sử dụng trong học phần:
+1. Bắc Kim Thang (Dân ca Nam Bộ)
+2. Inh lả ơi (Dân ca Thái)
+3. Xòe hoa (Dân ca Thái)
+4. Lý cây đa (Dân ca Bắc Bộ)
+5. Trống cơm (Dân ca Bắc Bộ)
+6. Đội kèn tí hon (Sáng tác: Phan Huỳnh Điểu)
+7. Auld lang syne (Dân ca Scotland)
+8. Chờ người nơi ấy (Sáng tác: Huy Tuấn)
+9. Độ ta không độ nàng (Nhạc Hoa)
+10. Futari No Kimochi (Nhạc Nhật)
+11. Thằng Cuội (Sáng tác: Lê Thương)
+12. Từ đó (Sáng tác: Phan Mạnh Quỳnh)          
+
+2 LO(s)
+CLO Name CLO Details LO Details
+1 CLO1 Hiểu biết cơ bản về lịch sử, sự phát triển hình thành của nền âm nhạc truyền thống Việt Nam. Understand the history and development of Vietnamese traditional music.
+2 CLO2 Chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài. Be able to play some simple Vietnamese and foreign traditional songs.
+View mapping of CLOs to PLOs
+
+Download All Student Material 30 sessions (45'/session)
+Session Topic Learning-Teaching Type LO ITU Student Materials S-Download Student's Tasks URLs
+1 Phần Lý thuyết/Theory section
+1. Tìm hiểu về lịch sử, tên gọi của nhạc cụ
+Learn about the history and names of the musical instrument
+2. Cấu tạo cây đàn
+Structure of Dan Bau
+3. Tư thế ngồi chơi đàn
+The playing posture
+4. Cách gảy đàn (tư thế tay phải, tư thế tay trái)
+How to pluck strings (posture of right hand, posture of left hand)
+
+Phần thực hành/Practice section:
+1. Giáo viên làm mẫu kỹ thuật đầu tiên
+Lecturer models the first technique
+2. Hướng dẫn SV cách cầm que đàn, cách tạo ra âm thanh
+Instruct students how to hold the plectrum and how to produce sounds
+3. Thực hành kỹ thuật đầu tiên gảy ở tay phải
+Practice the first technique of right hand plucking
+4. Chỉnh sửa tay cho SV
+Correct hand posture for students Offline         Đọc cuốn sáng học đàn phần hướng dẫn tư thế chơi đàn, tư thế tay
+Read the section on the playing posture and posture of hands in the textbook  
+2 1. Luyện tập tư thế gảy tay phải
+Practice posture of right-hand plucking
+2. Nốt nhạc ứng với điểm đàn
+Musical notes coresponding to hand positions on the Dan Bau
+3. Luyện tập tư thế gảy tay phải, GV chỉnh sửa
+Practice posture of right-hand plucking and corect students' mistakes Offline            
+3 1. Luyện gảy dây buông
+Practice plucking strings
+2. Cách tìm điểm đàn.
+How to find hand positions Offline         Đọc cuốn sách học đàn phần tư thế và cách gảy.
+Read the section on postures and how to pluck in the textbook.  
+4 1. Ôn lại kỹ thuật gảy dây buông
+Review technique of phucking strings
+2. Kết hợp tiết tấu với bài luyện dây buông
+Pluck strings with rhythm
+3. Học kỹ thuật nhấn lên quãng 2
+Learn major second up technique Offline         Đọc cuốn sách học đàn phần tư thế và cách gảy ngón.
+Read the section on postures and how to pluck in the textbook.  
+5 1. Học hệ thống nốt nhạc mới
+Learn new system of musical notes
+2. Học một số âm hình tiết tấu thường gặp
+Learn some common rhythmic syllables
+3. Kỹ thuật nhấn lên quãng 2.
+Major second up technique. Offline         Học cách nhận biết nốt nhạc.
+Learn to recognize musical notes.  
+6 1. Luyện tập đọc nốt nhạc, kết hợp ứng với những nốt trên đàn
+Practice reading musical notes and notes on Dan Bau
+2. Ôn lại thực hành các kỹ thuật
+Review and practice techniques Offline            
+7 1. Luyện nhớ nốt nhạc trên đàn bằng việc vừa đọc vừa gảy dây
+Read musical notes and pluck strings at the same time to remember notes
+2. Luyện ngón nhấn lên quãng 2
+Practice playing the major second up
+3. Bắt đầu đi vào học bài đầu tiên: Đội kèn tý hon
+Learn the first song: Doi ken ty hon Offline         Đọc thuộc giai điệu, nốt nhạc bài Đội kèn tý hon
+Memorize melody and musical notes of the song Doi ken ty hon  
+8 1. Học thuộc lòng từng câu bài Đội kèn tý hon
+Memorize lyrics of Doi ken ty hon song
+2. Sau đó tìm nốt nhạc tương ứng trên đàn và bắt đầu đi vào từng câu trong bài.
+Identify corresponding musical notes and pluck strings Offline            
+9 1. Luyện kỹ thuật nhấn xuống
+Practice technique for lower the pitch
+2. Học bài mới : Lý cây đa
+Learn new song: Ly cay da Offline            
+10 Đọc thuộc bài Lý cây đa sau đó thực hành vào đàn
+Memorize lyrics of Ly cay da and practice playing Offline            
+11 Thưc hành bài Lý cây đa vào đàn
+Practice plucking Ly cay da Offline            
+12 Tập luyện bài lý cây đa
+Practice plucking Ly ca da Offline         Đọc thuộc giai điệu, nốt nhạc bài Lý cây đa
+Memorize musical notes and melody of the song Ly cay da  
+13 Luyện tập 2 bài Lý cây đa và đội kèn tí hon
+Practice Ly cay da and Doi ken ti hon song Offline            
+14 Thực hành 2 bài đã học để chuẩn bị kiểm tra giữa kỳ
+Review 2 songs, preparing for mid-term test Offline            
+15 Kiểm tra giữa kỳ 2 bài Lý cây đa và đội kèn tí hon
+Mid-term test: playing Ly cay da and Doi ken ti hon Offline            
+16 Tiếp tục luyện nhấn bài Lý cây đa
+Practice pressing when playing Ly cay da song Offline            
+17 Áp dụng kỹ thuật nhấn xuống và lên vào bài Cò lả
+Apply technique for raising or lowering the pitch when playing Co la song Offline         Nghe giai điệu trên you tube
+Listen to the song on youtube  
+18 Luyện kỹ thuật nhấn xuống và thực hành vào bài Cò lả
+Practice technique for lowering the pitch and apply in Co la song Offline         Nghe giai điệu trên you tube
+Listen to the song on youtube  
+19 Học hết bài Cò lả
+Complete Co la song Offline         Nghe giai điệu trên you tube
+Listen to the song on youtube  
+20 Học bài nước ngoài: Auld lang syne( dân ca Scotland)
+Learning foreign song: Auld lang syne (Scottish folk song)
+- GV chơi mẫu sau đó chép bài lên bảng, phân chia bài thành 4 câu, cho SV học ca miệng từng câu, chú ý cần đúng tiết tấu.
+Lecturer plays the song and then writes lyrics on the board, divides the song into 4 sentences and lets students sing each sentence, proper rhythm should be noticed.
+- Thực hành vào đàn 2 câu đầu.
+Practice plucking the first 2 sentences. Offline         Nghe giai điệu trên you tube
+Listen to the song on the internet  
+21 Ôn tập 2 câu đã học và thực hành 2 câu còn lại
+Review the first 2 sentences and practice the remaining 2 sentences
+Luyện tập nối các câu hoàn chỉnh bài
+Practice playing full song Offline         Học thuộc nốt nhạc và giai điệu của tác phẩm
+Memorize melody and musical notes and the song  
+22 Luyện bài nước ngoài, nối các câu cho liền mạch, GV sửa cao độ tay nhấn
+Practice playing the whole foreign song smoothly, lecturer corrects the pitch for students Offline            
+23 Cho SV luyện chơi 1 mình trước lớp bài nước ngoài
+Students practice playing solo the foreign song in front of the class Offline            
+24 Luyện tập bài lý cây đa cùng hòa tấu với các nhạc cụ khác
+Practice playing Ly cay da in ensemble with other musical instruments Offline         Nghe và học thuộc giai điệu
+Listen and memorize the melody of the song  
+25 Hòa tấu lý cây đa, Cò lả cùng các lớp khác
+Practice playing Ly cay da, Co la in ensemble with students of other classes Offline            
+26 Hòa tấu lý cây đa, Cò lả cùng các lớp khác
+Practice playing Ly cay da, Co la in ensemble with students of other classes Offline            
+27 Hòa tấu lý cây đa, Cò lả cùng các lớp khác
+Practice playing Ly cay da, Co la in ensemble with students of other classes Offline            
+28 1. Hòa tấu lý cây đa, Cò lả cùng các lớp khác
+Practice playing Ly cay da, Co la in ensemble with students of other classes
+2. Thu bài luận
+Submit essays Offline            
+29 Tổ chức thi kết thúc khóa học
+Final exam Offline            
+30 Tổ chức thi kết thúc khóa học
+Final exam Offline            
+
+0 Constructive question(s)
+
+3 assessment(s)
+Category Type Part Weight Completion Criteria Duration CLO Question Type No Question Knowledge and Skill Grading Guide Note
+Bài tập (Assignment) on-going 1 15.0% >0     Thầy cô có thể tổ chức các hoạt động, VD: thuyết trình, làm workshop, viết luận, v.v. Sản phẩm chấm điểm có thể là: bài thuyết trình, slides, bài luận, v.v. Lecturers could organise these activities, for e.g: presentation, workshop, essay writing, etc. The outputs for marking could be: presentation speech, slides, essays, etc. 1 Kiến thức về loại nhạc cụ sinh viên học.Knowledge of musical instrument introduced in this course. Giáo viên chấm thang điểm 10
+Scoring scale: 10  
+Tham gia trên lớpParticipation on-going 1 15.0% >0           Ghi nhận của GV v/v sinh viên tích cực tham gia các hoạt động, đi học đầy đủ, có bài luận.
+Lecturer's recognition of student's active participation in class activities, full attendance of the course and submission of the essay.
+Thang điểm 10
+Scoring scale: 10  
+Thi cuối kỳ
+Final exam Final exam 1 70.0% 4 5phút/SV
+5 min/students   thực hành
+practice 3 bài (2 bài hòa tấu, 1 bài độc tấu)
+3 songs (2 ensemble performance, 1 solo song)   Sinh viên lựa chọn 3 bài trong đó 2 bài dân ca Việt Nam và 1 bài quốc tế
+Students play 3 songs, including 2 Vietnamese folk songs and 1 foreign song
+(Bài dân ca hòa tấu với các nhạc cụ khác)
+(The folk songs are performed in ensemble with other musical instruments)
+
+===== LIEN KET TREN TRANG =====
+- Home: https://flm.fpt.edu.vn/Home
+- (no text): https://flm.fpt.edu.vn/gui/role/student/SyllabusDetails?sylID=11835#
+- Sign out FLM: javascript:__doPostBack('ctl00$lbtnSignOut','')
+- View mapping of CLOs to PLOs: https://flm.fpt.edu.vn/CLOMapping/View?syllabusID=11835
