@@ -3468,6 +3468,171 @@ body.rbl-body {
   background: var(--rbl-secondary);
 }
 
+.rbl-catalog-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.rbl-catalog-header {
+  margin-bottom: 0;
+}
+
+.rbl-catalog-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.rbl-catalog-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #d8deee;
+  border-radius: var(--rbl-radius);
+  background: var(--rbl-surface-low);
+}
+
+.rbl-catalog-form-header {
+  display: grid;
+  gap: 3px;
+}
+
+.rbl-catalog-form-header h3,
+.rbl-catalog-subject h3 {
+  margin: 0;
+  color: var(--rbl-text);
+  font-size: 1rem;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.rbl-catalog-form-header p,
+.rbl-catalog-subject p,
+.rbl-catalog-muted {
+  margin: 0;
+  color: var(--rbl-muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.rbl-catalog-fields,
+.rbl-catalog-edit,
+.rbl-chapter-edit {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+}
+
+.rbl-catalog-fields--subject,
+.rbl-catalog-edit {
+  grid-template-columns: 120px minmax(220px, 1.2fr) minmax(220px, 1fr) auto;
+}
+
+.rbl-catalog-fields--chapter {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1fr) 96px auto;
+}
+
+.rbl-catalog-list {
+  display: grid;
+  gap: 14px;
+}
+
+.rbl-catalog-subject {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #d8deee;
+  border-radius: var(--rbl-radius);
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(11, 28, 48, 0.04);
+}
+
+.rbl-catalog-subject-head,
+.rbl-chapter-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.rbl-catalog-subject-head > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rbl-catalog-code {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--rbl-primary-soft);
+  color: var(--rbl-primary);
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.rbl-catalog-delete,
+.rbl-chapter-delete {
+  margin: 0;
+}
+
+.rbl-catalog-edit {
+  padding: 14px;
+  border: 1px solid #e2e7f3;
+  border-radius: var(--rbl-radius);
+  background: #fbfdff;
+}
+
+.rbl-catalog-panel .rbl-field {
+  gap: 5px;
+  font-size: 0.78rem;
+}
+
+.rbl-catalog-panel .rbl-field input,
+.rbl-catalog-panel .rbl-field select {
+  font-weight: 750;
+}
+
+.rbl-chapter-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e7f3;
+}
+
+.rbl-chapter-section-head span {
+  color: var(--rbl-muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rbl-chapter-section-head strong {
+  color: var(--rbl-primary);
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+
+.rbl-chapter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #e2e7f3;
+  border-radius: var(--rbl-radius);
+  background: var(--rbl-surface-low);
+}
+
+.rbl-chapter-edit {
+  grid-template-columns: minmax(220px, 1fr) 96px auto;
+}
+
 .rbl-table-wrap {
   overflow-x: auto;
 }
@@ -3597,6 +3762,18 @@ body.rbl-body {
   padding: 6px 10px;
 }
 
+.rbl-small-button--primary {
+  border-color: transparent;
+  background: var(--rbl-primary);
+  color: #fff;
+}
+
+.rbl-small-button--danger {
+  border-color: #f3b8b3;
+  background: #fff7f7;
+  color: #93000a;
+}
+
 .rbl-submit-button {
   min-height: 44px;
   padding: 10px 16px;
@@ -3652,7 +3829,8 @@ body.rbl-body {
 }
 
 .rbl-field input,
-.rbl-field textarea {
+.rbl-field textarea,
+.rbl-field select {
   width: 100%;
   min-height: 42px;
   padding: 10px 12px;
@@ -3661,6 +3839,17 @@ body.rbl-body {
   background: #fbfdff;
   color: var(--rbl-text);
   font: inherit;
+}
+
+.rbl-field select {
+  appearance: auto;
+}
+
+.rbl-field input:focus,
+.rbl-field textarea:focus,
+.rbl-field select:focus {
+  border-color: var(--rbl-primary);
+  outline: 3px solid rgba(0, 35, 111, 0.12);
 }
 
 .rbl-field textarea {
@@ -4152,6 +4341,20 @@ body.rbl-body {
     height: auto;
   }
 
+  .rbl-catalog-create-grid,
+  .rbl-catalog-fields--subject,
+  .rbl-catalog-fields--chapter,
+  .rbl-catalog-edit,
+  .rbl-chapter-edit {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rbl-catalog-fields .rbl-small-button,
+  .rbl-catalog-edit .rbl-small-button,
+  .rbl-chapter-edit .rbl-small-button {
+    justify-self: start;
+  }
+
   .rbl-progress-preview {
     position: static;
   }
@@ -4225,10 +4428,29 @@ body.rbl-body {
   .rbl-metric-grid,
   .rbl-storage-stats,
   .rbl-form-grid,
+  .rbl-catalog-create-grid,
+  .rbl-catalog-fields--subject,
+  .rbl-catalog-fields--chapter,
+  .rbl-catalog-edit,
+  .rbl-chapter-row,
+  .rbl-chapter-edit,
   .rbl-choice-grid,
   .rbl-comparison-bars,
   .rbl-suggestion-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rbl-catalog-subject-head,
+  .rbl-chapter-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rbl-catalog-delete,
+  .rbl-chapter-delete,
+  .rbl-catalog-delete .rbl-small-button,
+  .rbl-chapter-delete .rbl-small-button {
+    width: 100%;
   }
 
   .rbl-chat-form {
