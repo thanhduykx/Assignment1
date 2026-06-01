@@ -137,14 +137,6 @@ internal static class KnowledgeSqlSchemaInitializer
 
         changed |= UpsertEmbeddingModel(
             context,
-            name: "text-embedding-3-small",
-            provider: "OpenAI",
-            modelId: "text-embedding-3-small",
-            dimensions: 1536,
-            configJson: "{\"dimensions\":1536}");
-
-        changed |= UpsertEmbeddingModel(
-            context,
             name: "vinai/phobert-base",
             provider: "HuggingFace",
             modelId: "vinai/phobert-base",

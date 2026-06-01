@@ -3675,6 +3675,57 @@ body.rbl-body {
   text-align: right;
 }
 
+.rbl-document-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.rbl-document-actions form {
+  margin: 0;
+}
+
+.rbl-document-edit-panel,
+.rbl-document-edit-form {
+  display: grid;
+  gap: 18px;
+}
+
+.rbl-document-edit-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rbl-document-edit-summary article {
+  padding: 14px;
+  border: 1px solid var(--rbl-border);
+  border-radius: var(--rbl-radius);
+  background: var(--rbl-surface-low);
+}
+
+.rbl-document-edit-summary span,
+.rbl-document-edit-summary strong {
+  display: block;
+}
+
+.rbl-document-edit-summary span {
+  margin-bottom: 4px;
+  color: var(--rbl-muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rbl-document-edit-summary strong {
+  overflow-wrap: anywhere;
+  color: var(--rbl-primary);
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
 .rbl-mono {
   font-family: "Consolas", "JetBrains Mono", monospace;
   font-weight: 800;
@@ -4345,7 +4396,8 @@ body.rbl-body {
   .rbl-catalog-fields--subject,
   .rbl-catalog-fields--chapter,
   .rbl-catalog-edit,
-  .rbl-chapter-edit {
+  .rbl-chapter-edit,
+  .rbl-document-edit-summary {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -4434,10 +4486,15 @@ body.rbl-body {
   .rbl-catalog-edit,
   .rbl-chapter-row,
   .rbl-chapter-edit,
+  .rbl-document-edit-summary,
   .rbl-choice-grid,
   .rbl-comparison-bars,
   .rbl-suggestion-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rbl-document-actions {
+    justify-content: flex-start;
   }
 
   .rbl-catalog-subject-head,

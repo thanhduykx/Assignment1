@@ -1,0 +1,105 @@
+@model PresentationLayer.Models.DocumentEditViewModel
+@{
+    ViewData["Title"] = "Sửa tài liệu";
+    var subjectOptions = Model.CourseCatalog.Count > 0
+        ? Model.CourseCatalog.Select(subject => subject.DisplayName).ToList()
+        : new List<string> { Model.Subject };
+    var chapterOptions = Model.CourseCatalog.SelectMany(subject => subject.Chapters)
+        .OrderBy(chapter => chapter.SubjectCode)
+        .ThenBy(chapter => chapter.SortOrder)
+        .ThenBy(chapter => chapter.Title)
+        .Select(chapter => chapter.Title)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var size = (double)Math.Max(0, bytes);
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return $"{size:0.##} {units[unit]}";
+    }
+}
+
+<section class="rbl-detail-page">
+    <a class="rbl-back-link" asp-controller="Home" asp-action="Index">
+        <span class="material-symbols-outlined">arrow_back</span>
+        Quay lại kho tài liệu
+    </a>
+
+    @if (TempData["Error"] is string error)
+    {
+        <div class="rbl-alert is-error">@error</div>
+    }
+
+    <section class="rbl-panel rbl-document-edit-panel">
+        <div class="rbl-panel-header">
+            <div>
+                <span class="rbl-section-label">Document CRUD</span>
+                <h2>Sửa thông tin tài liệu</h2>
+            </div>
+            <span class="rbl-table-meta">@Model.ChunkCount chunks</span>
+        </div>
+
+        <div class="rbl-document-edit-summary">
+            <article>
+                <span>Loại file</span>
+                <strong>@Model.ContentType</strong>
+            </article>
+            <article>
+                <span>Dung lượng</span>
+                <strong>@FormatBytes(Model.FileSizeBytes)</strong>
+            </article>
+            <article>
+                <span>Ngày upload</span>
+                <strong>@Model.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</strong>
+            </article>
+        </div>
+
+        <form asp-action="EditDocument" method="post" class="rbl-document-edit-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="Id" type="hidden" />
+
+            <label class="rbl-field">
+                <span>Tên hiển thị</span>
+                <input asp-for="FileName" />
+                <small>Không đổi file vật lý; chỉ đổi tên hiển thị và citation về sau.</small>
+            </label>
+
+            <div class="rbl-form-grid">
+                <label class="rbl-field">
+                    <span>Subject</span>
+                    <input asp-for="Subject" list="editSubjectOptions" />
+                </label>
+                <label class="rbl-field">
+                    <span>Chapter</span>
+                    <input asp-for="Chapter" list="editChapterOptions" />
+                </label>
+            </div>
+
+            <datalist id="editSubjectOptions">
+                @foreach (var subject in subjectOptions)
+                {
+                    <option value="@subject"></option>
+                }
+            </datalist>
+            <datalist id="editChapterOptions">
+                @foreach (var chapter in chapterOptions)
+                {
+                    <option value="@chapter"></option>
+                }
+            </datalist>
+
+            <div class="rbl-form-actions">
+                <button type="submit" class="rbl-submit-button">Lưu thay đổi</button>
+                <a class="rbl-secondary-button" asp-controller="Home" asp-action="ViewDocument" asp-route-id="@Model.Id" target="_blank" rel="noopener">Xem tài liệu</a>
+            </div>
+        </form>
+    </section>
+</section>

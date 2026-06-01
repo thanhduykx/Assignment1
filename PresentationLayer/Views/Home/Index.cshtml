@@ -340,8 +340,14 @@
                             <td>@document.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                             <td class="rbl-mono">@FormatBytes(document.FileSizeBytes)</td>
                             <td class="rbl-mono">@document.ChunkCount</td>
-                            <td class="rbl-table-actions">
-                                <a class="rbl-small-button" asp-controller="Home" asp-action="ViewDocument" asp-route-id="@document.Id" target="_blank" rel="noopener" data-i18n="documents.view">View</a>
+                            <td class="rbl-table-actions rbl-document-actions">
+                                <a class="rbl-small-button" asp-controller="Home" asp-action="ViewDocument" asp-route-id="@document.Id" target="_blank" rel="noopener" data-i18n="documents.view">Xem</a>
+                                <a class="rbl-small-button" asp-controller="Home" asp-action="EditDocument" asp-route-id="@document.Id">Sửa</a>
+                                <form asp-action="DeleteDocument" method="post" onsubmit="return confirm('Xóa tài liệu này khỏi kho index?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@document.Id" />
+                                    <button type="submit" class="rbl-small-button rbl-small-button--danger">Xóa</button>
+                                </form>
                             </td>
                         </tr>
                     }

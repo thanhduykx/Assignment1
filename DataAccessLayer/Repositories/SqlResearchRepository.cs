@@ -90,7 +90,8 @@ public sealed class SqlResearchRepository : IResearchRepository
         await using var context = CreateContext();
         return await context.ResearchEmbeddingModels
             .AsNoTracking()
-            .Where(item => item.IsActive)
+            .Where(item => item.IsActive
+                && (item.Provider == "Gemini" || item.Provider == "HuggingFace"))
             .OrderBy(item => item.Name)
             .Select(item => new ResearchOption
             {
@@ -128,7 +129,7 @@ public sealed class SqlResearchRepository : IResearchRepository
         var embeddings = await context.ResearchEmbeddingModels
             .Where(item => request.EmbeddingModelIds.Contains(item.Id)
                 && item.IsActive
-                && (item.Provider == "Gemini" || item.Provider == "OpenAI" || item.Provider == "HuggingFace"))
+                && (item.Provider == "Gemini" || item.Provider == "HuggingFace"))
             .ToListAsync(cancellationToken);
         var strategies = await context.ResearchChunkingStrategies
             .Where(item => request.ChunkingStrategyIds.Contains(item.Id) && item.IsActive)

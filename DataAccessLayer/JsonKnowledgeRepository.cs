@@ -75,6 +75,59 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
+    public async Task<IndexedDocument> UpdateDocumentMetadataAsync(
+        Guid documentId,
+        string fileName,
+        string subject,
+        string chapter,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var document = store.Documents.FirstOrDefault(item => item.Id == documentId)
+                ?? throw new InvalidOperationException("Document not found.");
+            var normalizedFileName = NormalizeFileName(fileName);
+            var normalizedSubject = NormalizeRequiredText(subject, "Subject is required.");
+            var normalizedChapter = NormalizeRequiredText(chapter, "Chapter is required.");
+
+            document.FileName = normalizedFileName;
+            document.Subject = normalizedSubject;
+            document.Chapter = normalizedChapter;
+
+            foreach (var chunk in store.Chunks.Where(item => item.DocumentId == documentId))
+            {
+                chunk.FileName = normalizedFileName;
+                chunk.Subject = normalizedSubject;
+                chunk.Chapter = normalizedChapter;
+            }
+
+            await SaveAsync(store, cancellationToken);
+            return document;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task DeleteDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            store.Documents.RemoveAll(item => item.Id == documentId);
+            store.Chunks.RemoveAll(item => item.DocumentId == documentId);
+            await SaveAsync(store, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<CourseSubject>> GetCourseCatalogAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -315,5 +368,27 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
     private static string NormalizeCode(string code)
     {
         return string.Join(string.Empty, (code ?? string.Empty).Trim().ToUpperInvariant().Where(character => !char.IsWhiteSpace(character)));
+    }
+
+    private static string NormalizeFileName(string fileName)
+    {
+        var normalized = Path.GetFileName((fileName ?? string.Empty).Trim());
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeRequiredText(string value, string errorMessage)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        return normalized;
     }
 }

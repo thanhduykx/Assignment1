@@ -43,7 +43,7 @@ Module RBL tao experiment gom:
 
 - Bo cau hoi benchmark va ground truth.
 - Nhieu chunking strategy: fixed, sliding window, paragraph, semantic-lite.
-- Nhieu embedding model trong catalog, gom Gemini, OpenAI `text-embedding-3-small` va HuggingFace `vinai/phobert-base`.
+- Nhieu embedding model trong catalog, gom Gemini va HuggingFace `vinai/phobert-base`.
 - Fine-tuned baseline local duoc train tu QA pairs trong experiment, hoac endpoint ngoai neu co.
 
 Moi run luu:
@@ -78,7 +78,7 @@ Fine-tuned local baseline:
 | Lich su hoi thoai theo phien | Dat |
 | So sanh RAG vs fine-tuned | Dat: co RAG runs, local supervised fine-tuned baseline va endpoint ngoai tuy chon |
 | Benchmark nhieu chunking strategy | Dat |
-| Benchmark nhieu embedding model | Dat: Gemini + OpenAI `text-embedding-3-small` + HuggingFace `vinai/phobert-base`/PhoBERT-base; chua co local e5/bge-m3 |
+| Benchmark nhieu embedding model | Dat: Gemini + HuggingFace `vinai/phobert-base`/PhoBERT-base; chua co local e5/bge-m3 |
 | Dashboard/Bang RAGAS | Dat ve code/UI; so lieu that can chay benchmark voi DB/API key |
 
 ## Bo test set 50 cau DBA103
@@ -143,7 +143,6 @@ Yeu cau:
 - .NET SDK 9.x.
 - SQL Server LocalDB/Express/Developer.
 - Gemini API key neu dung upload, chat hoac RBL voi Gemini.
-- OpenAI API key neu chay RBL voi `text-embedding-3-small`.
 - HuggingFace API key neu chay RBL voi `vinai/phobert-base`/PhoBERT-base.
 
 Lenh chay nhanh:
@@ -153,7 +152,6 @@ cd C:\Assignment1
 dotnet restore
 dotnet build Group7_SE1950.sln
 dotnet user-secrets set "Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project PresentationLayer\Group07MVC.csproj
-dotnet user-secrets set "OpenAI:ApiKey" "YOUR_OPENAI_API_KEY" --project PresentationLayer\Group07MVC.csproj
 dotnet user-secrets set "HuggingFace:ApiKey" "YOUR_HUGGINGFACE_API_KEY" --project PresentationLayer\Group07MVC.csproj
 dotnet run --project PresentationLayer\Group07MVC.csproj --urls http://localhost:5097
 ```

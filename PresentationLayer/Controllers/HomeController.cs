@@ -210,6 +210,78 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
+        public async Task<IActionResult> EditDocument(Guid id, CancellationToken cancellationToken)
+        {
+            var document = await _repository.GetDocumentAsync(id, cancellationToken);
+            if (document is null)
+            {
+                return NotFound();
+            }
+
+            return View(new DocumentEditViewModel
+            {
+                Id = document.Id,
+                FileName = document.FileName,
+                Subject = document.Subject,
+                Chapter = document.Chapter,
+                ContentType = document.ContentType,
+                UploadedAt = document.UploadedAt,
+                ChunkCount = document.ChunkCount,
+                FileSizeBytes = document.FileSizeBytes,
+                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken)
+            });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditDocument(DocumentEditViewModel model, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var document = await _repository.UpdateDocumentMetadataAsync(
+                    model.Id,
+                    model.FileName,
+                    model.Subject,
+                    model.Chapter,
+                    cancellationToken);
+                TempData["Success"] = $"Đã cập nhật tài liệu {document.FileName}.";
+                return RedirectToAction(nameof(Index));
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ToVietnameseDocumentError(ex.Message);
+                var existing = await _repository.GetDocumentAsync(model.Id, cancellationToken);
+                if (existing is not null)
+                {
+                    model.ContentType = existing.ContentType;
+                    model.UploadedAt = existing.UploadedAt;
+                    model.ChunkCount = existing.ChunkCount;
+                    model.FileSizeBytes = existing.FileSizeBytes;
+                }
+
+                model.CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+                return View(model);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteDocument(Guid id, CancellationToken cancellationToken)
+        {
+            var document = await _repository.GetDocumentAsync(id, cancellationToken);
+            if (document is null)
+            {
+                TempData["Error"] = "Không tìm thấy tài liệu để xóa.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            await _repository.DeleteDocumentAsync(id, cancellationToken);
+            TryDeleteStoredFile(document);
+            TempData["Success"] = $"Đã xóa tài liệu {document.FileName}.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpGet]
         public async Task<IActionResult> ViewDocument(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -218,9 +290,8 @@ namespace PresentationLayer.Controllers
                 return NotFound();
             }
 
-            var uploadsRoot = Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "App_Data", "uploads"));
             var storedPath = Path.GetFullPath(document.StoredPath);
-            if (!storedPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(storedPath))
+            if (!IsPathUnderDirectory(storedPath, GetUploadsRoot()) || !System.IO.File.Exists(storedPath))
             {
                 return NotFound();
             }
@@ -332,6 +403,64 @@ namespace PresentationLayer.Controllers
             }
 
             return string.IsNullOrWhiteSpace(message) ? "Không thể lưu danh mục môn/chương." : message;
+        }
+
+        private static string ToVietnameseDocumentError(string message)
+        {
+            if (message.Contains("Document not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Không tìm thấy tài liệu.";
+            }
+
+            if (message.Contains("File name is required", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Tên file là bắt buộc.";
+            }
+
+            if (message.Contains("Subject is required", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Subject là bắt buộc.";
+            }
+
+            if (message.Contains("Chapter is required", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Chapter là bắt buộc.";
+            }
+
+            return string.IsNullOrWhiteSpace(message) ? "Không thể cập nhật tài liệu." : message;
+        }
+
+        private string GetUploadsRoot()
+        {
+            return Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "App_Data", "uploads"));
+        }
+
+        private void TryDeleteStoredFile(IndexedDocument document)
+        {
+            try
+            {
+                var storedPath = Path.GetFullPath(document.StoredPath);
+                if (IsPathUnderDirectory(storedPath, GetUploadsRoot()) && System.IO.File.Exists(storedPath))
+                {
+                    System.IO.File.Delete(storedPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not delete stored file for document {DocumentId}", document.Id);
+            }
+        }
+
+        private static bool IsPathUnderDirectory(string path, string directory)
+        {
+            var fullPath = Path.GetFullPath(path);
+            var fullDirectory = Path.GetFullPath(directory);
+            if (!fullDirectory.EndsWith(Path.DirectorySeparatorChar))
+            {
+                fullDirectory += Path.DirectorySeparatorChar;
+            }
+
+            return fullPath.StartsWith(fullDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolveContentType(IndexedDocument document)

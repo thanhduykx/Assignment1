@@ -62,6 +62,52 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IndexedDocument> UpdateDocumentMetadataAsync(
+        Guid documentId,
+        string fileName,
+        string subject,
+        string chapter,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedFileName = NormalizeFileName(fileName);
+        var normalizedSubject = NormalizeRequiredText(subject, "Subject is required.");
+        var normalizedChapter = NormalizeRequiredText(chapter, "Chapter is required.");
+
+        await using var context = CreateContext();
+        var document = await context.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken)
+            ?? throw new InvalidOperationException("Document not found.");
+
+        document.FileName = normalizedFileName;
+        document.Subject = normalizedSubject;
+        document.Chapter = normalizedChapter;
+
+        var chunks = await context.Chunks
+            .Where(item => item.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+        foreach (var chunk in chunks)
+        {
+            chunk.FileName = normalizedFileName;
+            chunk.Subject = normalizedSubject;
+            chunk.Chapter = normalizedChapter;
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+        return KnowledgeSqlMapper.ToModel(document);
+    }
+
+    public async Task DeleteDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        var document = await context.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+        if (document is null)
+        {
+            return;
+        }
+
+        context.Documents.Remove(document);
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<CourseSubject>> GetCourseCatalogAsync(CancellationToken cancellationToken = default)
     {
         await using var context = CreateContext();
@@ -349,5 +395,27 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
     private static string NormalizeCode(string code)
     {
         return string.Join(string.Empty, (code ?? string.Empty).Trim().ToUpperInvariant().Where(character => !char.IsWhiteSpace(character)));
+    }
+
+    private static string NormalizeFileName(string fileName)
+    {
+        var normalized = Path.GetFileName((fileName ?? string.Empty).Trim());
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeRequiredText(string value, string errorMessage)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        return normalized;
     }
 }

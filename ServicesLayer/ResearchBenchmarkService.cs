@@ -26,7 +26,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 {
     private const int MaxGeminiRetryAttempts = 6;
     private const int GeminiEmbeddingBatchSize = 8;
-    private const int OpenAiEmbeddingBatchSize = 64;
     private const int HuggingFaceEmbeddingBatchSize = 4;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -39,7 +38,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private readonly ILocalChatCompletionService _chatCompletionService;
     private readonly HttpClient _httpClient;
     private readonly GeminiApiOptions _geminiOptions;
-    private readonly OpenAiApiOptions _openAiOptions;
     private readonly HuggingFaceApiOptions _huggingFaceOptions;
 
     public ResearchBenchmarkService(
@@ -48,7 +46,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         ILocalChatCompletionService chatCompletionService,
         HttpClient httpClient,
         GeminiApiOptions geminiOptions,
-        OpenAiApiOptions openAiOptions,
         HuggingFaceApiOptions huggingFaceOptions)
     {
         _researchRepository = researchRepository;
@@ -56,7 +53,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         _chatCompletionService = chatCompletionService;
         _httpClient = httpClient;
         _geminiOptions = geminiOptions;
-        _openAiOptions = openAiOptions;
         _huggingFaceOptions = huggingFaceOptions;
     }
 
@@ -263,17 +259,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             return await EmbedWithGeminiBatchAsync(run, texts, cancellationToken);
         }
 
-        if (run.EmbeddingProvider?.Equals("OpenAI", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return await EmbedWithOpenAiBatchAsync(run, texts, cancellationToken);
-        }
-
         if (run.EmbeddingProvider?.Equals("HuggingFace", StringComparison.OrdinalIgnoreCase) == true)
         {
             return await EmbedWithHuggingFaceBatchAsync(run, texts, cancellationToken);
         }
 
-        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, OpenAI, HuggingFace.");
+        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, HuggingFace.");
     }
 
     private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
@@ -392,57 +383,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return request;
     }
 
-    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedWithOpenAiBatchAsync(
-        ResearchRunSummary run,
-        IReadOnlyList<string> texts,
-        CancellationToken cancellationToken)
-    {
-        if (!_openAiOptions.Enabled || string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
-        {
-            throw new InvalidOperationException("OpenAI API key is required for text-embedding-3-small RBL runs. Set OPENAI_API_KEY or user-secrets OpenAI:ApiKey.");
-        }
-
-        var model = run.EmbeddingModelIdValue ?? "text-embedding-3-small";
-        var dimensions = ReadIntConfigValue(run.EmbeddingConfigJson, "dimensions", 0);
-        var results = new List<Dictionary<int, double>>(texts.Count);
-
-        foreach (var batch in texts.Chunk(OpenAiEmbeddingBatchSize))
-        {
-            using var response = await SendOpenAiWithRetryAsync(
-                () => CreateOpenAiEmbeddingRequest(model, dimensions, batch),
-                cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw BuildOpenAiRuntimeException(run.EmbeddingModelName, response);
-            }
-
-            var payload = await response.Content.ReadFromJsonAsync<OpenAiEmbeddingResponse>(JsonOptions, cancellationToken);
-            if (payload?.Data is not { Count: > 0 } data || data.Count != batch.Length)
-            {
-                throw new InvalidOperationException($"{run.EmbeddingModelName} returned an invalid OpenAI embedding response.");
-            }
-
-            results.AddRange(data
-                .OrderBy(item => item.Index)
-                .Select(item =>
-                {
-                    if (item.Embedding is not { Count: > 0 } values)
-                    {
-                        throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty OpenAI embedding.");
-                    }
-
-                    return NormalizeDenseEmbedding(values);
-                }));
-
-            if (results.Count < texts.Count)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
-            }
-        }
-
-        return results;
-    }
-
     private static IReadOnlyList<ResearchBenchmarkResult> RunLocalFineTunedAsync(
         ResearchRunSummary run,
         ResearchExperimentDetail experiment)
@@ -531,85 +471,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         {
             return Array.Empty<LocalFineTunedExample>();
         }
-    }
-
-    private HttpRequestMessage CreateOpenAiEmbeddingRequest(
-        string model,
-        int dimensions,
-        IReadOnlyList<string> batch)
-    {
-        var endpoint = BuildOpenAiEndpoint("v1/embeddings");
-        var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
-        request.Content = JsonContent.Create(
-            new OpenAiEmbeddingRequest(
-                model,
-                batch,
-                dimensions > 0 ? dimensions : null),
-            options: JsonOptions);
-        return request;
-    }
-
-    private Uri BuildOpenAiEndpoint(string relativePath)
-    {
-        var baseAddress = string.IsNullOrWhiteSpace(_openAiOptions.BaseAddress)
-            ? "https://api.openai.com/"
-            : _openAiOptions.BaseAddress.Trim();
-        if (!baseAddress.EndsWith("/", StringComparison.Ordinal))
-        {
-            baseAddress += "/";
-        }
-
-        return new Uri(new Uri(baseAddress), relativePath);
-    }
-
-    private async Task<HttpResponseMessage> SendOpenAiWithRetryAsync(
-        Func<HttpRequestMessage> createRequest,
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; attempt <= MaxGeminiRetryAttempts; attempt++)
-        {
-            HttpResponseMessage? response = null;
-            try
-            {
-                response = await _httpClient.SendAsync(createRequest(), cancellationToken);
-                if (response.IsSuccessStatusCode || !IsRetryable(response) || attempt == MaxGeminiRetryAttempts)
-                {
-                    return response;
-                }
-
-                var delay = GetRetryDelay(response, attempt);
-                response.Dispose();
-                await Task.Delay(delay, cancellationToken);
-            }
-            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
-            {
-                response?.Dispose();
-                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
-            }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
-            {
-                response?.Dispose();
-                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
-            }
-            catch
-            {
-                response?.Dispose();
-                throw;
-            }
-        }
-
-        throw new InvalidOperationException("OpenAI embedding request could not be sent.");
-    }
-
-    private static InvalidOperationException BuildOpenAiRuntimeException(
-        string? modelName,
-        HttpResponseMessage response)
-    {
-        var name = string.IsNullOrWhiteSpace(modelName) ? "OpenAI embedding" : modelName;
-        return (int)response.StatusCode == 429
-            ? new InvalidOperationException($"{name} đang bị giới hạn quota/rate limit OpenAI (HTTP 429). Hãy chờ rồi chạy lại, hoặc giảm số câu hỏi/số cấu hình benchmark.")
-            : new InvalidOperationException($"{name} OpenAI embedding runtime returned HTTP {(int)response.StatusCode}.");
     }
 
     private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedWithHuggingFaceBatchAsync(
@@ -1281,18 +1142,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private sealed record GeminiEmbedding(
         [property: JsonPropertyName("values")] List<double>? Values);
-
-    private sealed record OpenAiEmbeddingRequest(
-        [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("input")] IReadOnlyList<string> Input,
-        [property: JsonPropertyName("dimensions")] int? Dimensions);
-
-    private sealed record OpenAiEmbeddingResponse(
-        [property: JsonPropertyName("data")] List<OpenAiEmbeddingData>? Data);
-
-    private sealed record OpenAiEmbeddingData(
-        [property: JsonPropertyName("index")] int Index,
-        [property: JsonPropertyName("embedding")] List<double>? Embedding);
 
     private sealed record HuggingFaceFeatureExtractionRequest(
         [property: JsonPropertyName("inputs")] object Inputs,
