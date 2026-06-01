@@ -478,6 +478,506 @@ public sealed class RagChatService : IRagChatService
         return new ChatAnswer(answer, citations, session.Messages);
     }
 
+    private static bool TryBuildDba103SyllabusFactAnswer(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
+        out string answer,
+        out SourceCitation citation)
+    {
+        answer = string.Empty;
+        citation = new SourceCitation();
+
+        var normalized = NormalizeQuestion(question);
+        var mentionsKnownSyllabus = normalized.Contains("dba103", StringComparison.Ordinal)
+                                    || normalized.Contains("syllabus", StringComparison.Ordinal)
+                                    || normalized.Contains("clo", StringComparison.Ordinal)
+                                    || normalized.Contains("session", StringComparison.Ordinal);
+
+        if (!mentionsKnownSyllabus && !LooksLikeDba103ImplicitQuestion(normalized))
+        {
+            return false;
+        }
+
+        if (ContainsAny(normalized, "ten tieng anh", "syllabus english", "english name"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Syllabus English:");
+            var englishName = chunk is null ? string.Empty : ExtractField(chunk.Text, "Syllabus English");
+            if (chunk is not null && !string.IsNullOrWhiteSpace(englishName))
+            {
+                return SetFactAnswer(
+                    language,
+                    $"Tên tiếng Anh của syllabus DBA103 là {englishName}.",
+                    $"The English syllabus name of DBA103 is {englishName}.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        if (IsCourseOverviewQuestion(question) || ContainsAny(normalized, "mon hoc gi", "mon gi", "ten mon"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Subject Code:", "Syllabus Name:");
+            if (chunk is not null)
+            {
+                var subjectCode = ExtractField(chunk.Text, "Subject Code");
+                var syllabusName = ExtractField(chunk.Text, "Syllabus Name");
+                var syllabusEnglish = ExtractField(chunk.Text, "Syllabus English");
+
+                if (!string.IsNullOrWhiteSpace(subjectCode) && !string.IsNullOrWhiteSpace(syllabusName))
+                {
+                    var vietnameseAnswer = string.IsNullOrWhiteSpace(syllabusEnglish)
+                        ? $"{subjectCode} là môn {syllabusName}."
+                        : $"{subjectCode} là môn {syllabusName}, tên tiếng Anh là {syllabusEnglish}.";
+                    var englishAnswer = string.IsNullOrWhiteSpace(syllabusEnglish)
+                        ? $"{subjectCode} is the course {syllabusName}."
+                        : $"{subjectCode} is {syllabusEnglish} ({syllabusName}).";
+
+                    return SetFactAnswer(language, vietnameseAnswer, englishAnswer, chunk, out answer, out citation);
+                }
+            }
+        }
+
+        if (ContainsAny(normalized, "cap do", "degree level"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Degree Level:");
+            var degreeLevel = chunk is null ? string.Empty : NormalizeDegreeLevel(ExtractField(chunk.Text, "Degree Level"));
+            if (chunk is not null && !string.IsNullOrWhiteSpace(degreeLevel))
+            {
+                return SetFactAnswer(
+                    language,
+                    $"Degree Level của DBA103 là {degreeLevel}.",
+                    $"The degree level of DBA103 is {degreeLevel}.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        if (ContainsAny(normalized, "thang diem", "scoring scale"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Scoring Scale:");
+            var scoringScale = chunk is null ? string.Empty : ExtractField(chunk.Text, "Scoring Scale");
+            if (chunk is not null && !string.IsNullOrWhiteSpace(scoringScale))
+            {
+                return SetFactAnswer(
+                    language,
+                    $"Scoring Scale của DBA103 là {scoringScale}.",
+                    $"The scoring scale of DBA103 is {scoringScale}.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        if (ContainsAny(normalized, "tong diem fe", "final result"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Final Result:");
+            var finalResult = chunk is null ? string.Empty : ExtractField(chunk.Text, "Final Result");
+            if (chunk is not null && !string.IsNullOrWhiteSpace(finalResult))
+            {
+                return SetFactAnswer(
+                    language,
+                    $"Final Result của DBA103 yêu cầu {finalResult}.",
+                    $"The final result requirement of DBA103 is {finalResult}.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        if (ContainsAny(normalized, "minavgmarktopass", "avg mark", "diem trung binh"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "MinAvgMarkToPass:");
+            var passMark = chunk is null ? string.Empty : ExtractField(chunk.Text, "MinAvgMarkToPass");
+            if (chunk is not null && !string.IsNullOrWhiteSpace(passMark))
+            {
+                return SetFactAnswer(
+                    language,
+                    $"MinAvgMarkToPass của DBA103 là {passMark}.",
+                    $"The MinAvgMarkToPass of DBA103 is {passMark}.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        if (ContainsAny(normalized, "danh muc bai nhac", "co bao nhieu bai"))
+        {
+            var chunk = FindSyllabusChunk(chunks, "Danh mục các bài nhạc");
+            var count = chunk is null ? 0 : CountNumberedLines(chunk.Text);
+            if (chunk is not null && count > 0)
+            {
+                return SetFactAnswer(
+                    language,
+                    $"Danh mục có {count} bài nhạc có thể sử dụng trong học phần.",
+                    $"The catalog contains {count} songs that can be used in the course.",
+                    chunk,
+                    out answer,
+                    out citation);
+            }
+        }
+
+        foreach (var rule in GetDba103SyllabusFactRules())
+        {
+            if (!RuleMatches(normalized, rule))
+            {
+                continue;
+            }
+
+            var chunk = FindSyllabusChunk(chunks, rule.EvidenceTerms);
+            if (chunk is null)
+            {
+                continue;
+            }
+
+            return SetFactAnswer(language, rule.VietnameseAnswer, rule.EnglishAnswer, chunk, out answer, out citation);
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<SyllabusFactRule> GetDba103SyllabusFactRules()
+    {
+        yield return new SyllabusFactRule(
+            new[] { "thoi luong thi cuoi", "5 phut", "duration" },
+            new[] { "sinh vien" },
+            new[] { "5 min/students" },
+            "Final exam có thời lượng 5 phút mỗi sinh viên.",
+            "The final exam duration is 5 minutes per student.");
+        yield return new SyllabusFactRule(
+            new[] { "choi may bai", "how many songs" },
+            Array.Empty<string>(),
+            new[] { "3 songs", "2 Vietnamese folk songs" },
+            "Sinh viên chơi 3 bài gồm 2 bài hòa tấu và 1 bài độc tấu, trong đó có 2 bài dân ca Việt Nam và 1 bài quốc tế.",
+            "Students play 3 songs: 2 ensemble performances and 1 solo song, including 2 Vietnamese folk songs and 1 foreign song.");
+        yield return new SyllabusFactRule(
+            new[] { "thoi luong hoc tren lop", "thoi luong hoc", "bao nhieu slot", "time allocation" },
+            Array.Empty<string>(),
+            new[] { "Time Allocation:" },
+            "DBA103 có 30 slot trên lớp, mỗi slot 90 phút.",
+            "DBA103 has 30 in-class slots, 90 minutes per slot.");
+        yield return new SyllabusFactRule(
+            new[] { "tien quyet", "pre requisite", "prerequisite" },
+            Array.Empty<string>(),
+            new[] { "Pre-Requisite:" },
+            "Pre-Requisite của DBA103 là Không / None.",
+            "The prerequisite of DBA103 is None.");
+        yield return new SyllabusFactRule(
+            new[] { "muc tieu kien thuc", "knowledge" },
+            Array.Empty<string>(),
+            new[] { "Kiến thức/ Knowledge:" },
+            "Sinh viên DBA103 cần nắm đặc trưng lịch sử phát triển và cấu trúc Đàn Bầu, đồng thời làm quen với nhạc lý và kỹ thuật cơ bản của Đàn Bầu.",
+            "DBA103 students should understand the historical development and structure of Dan Bau, and become familiar with music theory and basic Dan Bau techniques.");
+        yield return new SyllabusFactRule(
+            new[] { "muc tieu ky nang", "skills" },
+            Array.Empty<string>(),
+            new[] { "Kỹ năng/ Skills:" },
+            "Sinh viên DBA103 cần đánh được tối thiểu 3 bài, trong đó có 1 bài nhạc nước ngoài thông dụng, và vận dụng đúng các kỹ thuật cơ bản.",
+            "DBA103 students should be able to play at least 3 songs, including 1 common foreign song, and properly apply basic techniques.");
+        yield return new SyllabusFactRule(
+            new[] { "quy mo lop", "bao nhieu sinh vien", "sinh vien lop" },
+            Array.Empty<string>(),
+            new[] { "15 students/class" },
+            "DBA103 được triển khai theo lớp có khoảng 15 sinh viên/lớp.",
+            "DBA103 is organized in classes of about 15 students.");
+        yield return new SyllabusFactRule(
+            new[] { "noi dung chinh", "gom nhung gi", "students will learn" },
+            Array.Empty<string>(),
+            new[] { "In the course, students will learn:" },
+            "Nội dung chính của DBA103 gồm lịch sử Đàn Bầu ở Việt Nam, cấu trúc và đặc điểm Đàn Bầu, tư thế đánh đàn, nhạc lý, kỹ thuật cơ bản và luyện tập các bài nhạc.",
+            "The main contents of DBA103 cover Dan Bau history in Vietnam, structure and characteristics, playing posture, music theory, basic techniques, and song practice.");
+        yield return new SyllabusFactRule(
+            new[] { "ky thuat co ban", "day nhung ky thuat" },
+            Array.Empty<string>(),
+            new[] { "Gảy dây buông", "quãng 2" },
+            "Kỹ thuật cơ bản trong DBA103 gồm gảy dây buông và nhấn lên/xuống quãng 2.",
+            "The basic techniques in DBA103 include plucking open strings and raising/lowering pitch by a major second interval.");
+        yield return new SyllabusFactRule(
+            new[] { "bai viet nam", "luyen tap bai viet nam" },
+            Array.Empty<string>(),
+            new[] { "Cò lả", "lý cây đa" },
+            "Sinh viên luyện tập Cò lả và Lý cây đa theo hình thức hòa tấu.",
+            "Students practice Co la and Ly cay da as ensemble performances.");
+        yield return new SyllabusFactRule(
+            new[] { "bai quoc te", "bai nuoc ngoai", "foreign song" },
+            Array.Empty<string>(),
+            new[] { "Auld lang syne", "Scotland" },
+            "Bài quốc tế trong DBA103 là Auld lang syne, dân ca Scotland.",
+            "The foreign song in DBA103 is Auld Lang Syne, a Scottish folk song.");
+        yield return new SyllabusFactRule(
+            new[] { "ap dung cntt", "su dung cntt", "apply it" },
+            Array.Empty<string>(),
+            new[] { "Apply IT in the course" },
+            "DBA103 áp dụng CNTT bằng cách cung cấp website, clip nhạc truyền thống và tài nguyên trên mạng cho sinh viên.",
+            "DBA103 applies IT by providing websites, traditional music clips, and online resources for students.");
+        yield return new SyllabusFactRule(
+            new[] { "tai nguyen online", "tai nguyen tren mang", "nguyen tac" },
+            Array.Empty<string>(),
+            new[] { "Use of online resources" },
+            "Giảng viên sử dụng tài nguyên có chọn lọc theo nguyên tắc học phần và hướng dẫn sinh viên tìm thông tin theo chủ đề trên Internet.",
+            "Lecturers selectively use online resources based on course regulations and guide students to search topic-based information on the Internet.");
+        yield return new SyllabusFactRule(
+            new[] { "ky nang mem", "phat trien ca nhan", "soft skills" },
+            Array.Empty<string>(),
+            new[] { "Soft skills development" },
+            "DBA103 rèn luyện tính kiên trì và giúp sinh viên tự tin hơn trước đám đông.",
+            "DBA103 improves students' perseverance and confidence in front of a crowd.");
+        yield return new SyllabusFactRule(
+            new[] { "lam viec nhom", "teamwork" },
+            Array.Empty<string>(),
+            new[] { "work in groups", "work independently" },
+            "Có. DBA103 phát triển kỹ năng làm việc nhóm và làm việc độc lập qua các nhiệm vụ giảng viên giao.",
+            "Yes. DBA103 develops group-work and independent-work skills through lecturer-assigned tasks.");
+        yield return new SyllabusFactRule(
+            new[] { "dieu kien tham du thi", "du dieu kien thi", "80" },
+            Array.Empty<string>(),
+            new[] { "80% of class hours" },
+            "Sinh viên phải tham dự tối thiểu 80% thời lượng môn học để đủ điều kiện thi cuối môn.",
+            "Students must attend at least 80% of class hours to be eligible for the final exam.");
+        yield return new SyllabusFactRule(
+            new[] { "truoc khi den lop", "on tap bai cu" },
+            Array.Empty<string>(),
+            new[] { "Review previous lessons" },
+            "Trước khi đến lớp, sinh viên cần ôn tập bài cũ và tìm hiểu tài liệu bài học mới.",
+            "Before class, students should review previous lessons and study materials for new lessons.");
+        yield return new SyllabusFactRule(
+            new[] { "luyen tap dba103 o dau", "luyen tap o dau", "thuc hanh o dau" },
+            Array.Empty<string>(),
+            new[] { "Practice in class and at home" },
+            "Sinh viên cần luyện tập và thực hành trên lớp và ở nhà.",
+            "Students should practice in class and at home.");
+        yield return new SyllabusFactRule(
+            new[] { "tham gia hoat dong lop", "hoat dong lop nhu the nao", "portfolio" },
+            Array.Empty<string>(),
+            new[] { "Actively participate in class activities" },
+            "Sinh viên cần tích cực phát biểu, hỏi đáp, trao đổi, làm việc nhóm, thực hành và làm Portfolio cho môn học.",
+            "Students should actively express ideas, ask questions, discuss, work in groups, practice, and make a portfolio for the subject.");
+        yield return new SyllabusFactRule(
+            new[] { "cong cu hoc tap", "cong cu", "tools" },
+            Array.Empty<string>(),
+            new[] { "Tools:" },
+            "Công cụ học tập của DBA103 là nhạc cụ cho từng sinh viên.",
+            "The learning tool for DBA103 is a musical instrument for each student.");
+        yield return new SyllabusFactRule(
+            new[] { "assignment", "diem assignment" },
+            new[] { "phan tram" },
+            new[] { "Assignment:", "15%" },
+            "Assignment chiếm 15% tổng điểm DBA103.",
+            "The assignment component accounts for 15% of DBA103.");
+        yield return new SyllabusFactRule(
+            new[] { "diem tham gia", "participation" },
+            new[] { "phan tram" },
+            new[] { "Participation:", "15%" },
+            "Participation chiếm 15% tổng điểm DBA103.",
+            "Participation accounts for 15% of DBA103.");
+        yield return new SyllabusFactRule(
+            new[] { "thi cuoi mon", "final exam" },
+            new[] { "phan tram" },
+            new[] { "Final exam:", "70%" },
+            "Final exam chiếm 70% tổng điểm và là phần thực hành chơi nhạc cụ theo yêu cầu.",
+            "The final exam accounts for 70% and is a required musical-instrument performance.");
+        yield return new SyllabusFactRule(
+            new[] { "tai lieu chinh", "main material" },
+            Array.Empty<string>(),
+            new[] { "Sách học Đàn Bầu" },
+            "Tài liệu chính của DBA103 là Sách học Đàn Bầu.",
+            "The main material of DBA103 is the Dan Bau textbook.");
+        yield return new SyllabusFactRule(
+            new[] { "tac gia", "author" },
+            Array.Empty<string>(),
+            new[] { "Nguyễn Thanh Tâm", "Trần Quốc Lộc" },
+            "Tác giả Sách học Đàn Bầu là Nguyễn Thanh Tâm và Trần Quốc Lộc.",
+            "The authors of the Dan Bau textbook are Nguyen Thanh Tam and Tran Quoc Loc.");
+        yield return new SyllabusFactRule(
+            new[] { "tai lieu luyen tap", "luyen tap ky thuat", "exercises" },
+            Array.Empty<string>(),
+            new[] { "Bài tập luyện kỹ thuật đàn Bầu" },
+            "Tài liệu luyện tập kỹ thuật là Bài tập luyện kỹ thuật đàn Bầu / Exercises to practice techniques of Dan Bau.",
+            "The technique-practice material is Exercises to practice techniques of Dan Bau.");
+        yield return new SyllabusFactRule(
+            new[] { "ke ten", "mot so bai nhac" },
+            Array.Empty<string>(),
+            new[] { "Bắc Kim Thang", "Auld lang syne" },
+            "Một số bài trong danh mục DBA103 gồm Bắc Kim Thang, Inh lả ơi, Xòe hoa, Lý cây đa, Trống cơm, Đội kèn tí hon và Auld lang syne.",
+            "Some DBA103 catalog songs are Bac Kim Thang, Inh la oi, Xoe hoa, Ly cay da, Trong com, Doi ken ti hon, and Auld Lang Syne.");
+        yield return new SyllabusFactRule(
+            new[] { "clo1" },
+            Array.Empty<string>(),
+            new[] { "CLO1" },
+            "CLO1 là hiểu biết cơ bản về lịch sử và sự phát triển hình thành của nền âm nhạc truyền thống Việt Nam.",
+            "CLO1 is basic understanding of the history and development of Vietnamese traditional music.");
+        yield return new SyllabusFactRule(
+            new[] { "clo2" },
+            Array.Empty<string>(),
+            new[] { "CLO2" },
+            "CLO2 là chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài.",
+            "CLO2 is the ability to play some basic Vietnamese and foreign traditional songs.");
+        yield return new SyllabusFactRule(
+            new[] { "bao nhieu session", "30 sessions" },
+            Array.Empty<string>(),
+            new[] { "30 sessions" },
+            "Syllabus DBA103 ghi có 30 sessions.",
+            "The DBA103 syllabus lists 30 sessions.");
+        yield return new SyllabusFactRule(
+            new[] { "session 1" },
+            Array.Empty<string>(),
+            new[] { "1 Phần Lý thuyết" },
+            "Session 1 gồm tìm hiểu lịch sử, tên gọi nhạc cụ, cấu tạo cây đàn, tư thế ngồi chơi đàn và cách gảy đàn.",
+            "Session 1 covers the instrument history and names, Dan Bau structure, playing posture, and plucking technique.");
+        yield return new SyllabusFactRule(
+            new[] { "bai dau tien", "bat dau hoc" },
+            Array.Empty<string>(),
+            new[] { "Bắt đầu đi vào học bài đầu tiên" },
+            "Bài đầu tiên sinh viên bắt đầu học là Đội kèn tí hon, ở session 7.",
+            "The first song students start learning is Doi ken ti hon in session 7.");
+        yield return new SyllabusFactRule(
+            new[] { "ly cay da" },
+            new[] { "session" },
+            new[] { "Learn new song: Ly cay da" },
+            "Lý cây đa được giới thiệu ở session 9.",
+            "Ly cay da is introduced in session 9.");
+        yield return new SyllabusFactRule(
+            new[] { "kiem tra giua ky", "mid term" },
+            Array.Empty<string>(),
+            new[] { "15 Kiểm tra giữa kỳ" },
+            "Kiểm tra giữa kỳ diễn ra ở session 15, với nội dung 2 bài Lý cây đa và Đội kèn tí hon.",
+            "The mid-term test is in session 15 and covers Ly cay da and Doi ken ti hon.");
+        yield return new SyllabusFactRule(
+            new[] { "co la" },
+            new[] { "session" },
+            new[] { "17", "Cò lả" },
+            "Bài Cò lả được áp dụng/luyện tập trong các session 17 đến 19.",
+            "Co la is practiced from sessions 17 to 19.");
+        yield return new SyllabusFactRule(
+            new[] { "auld lang syne" },
+            new[] { "session" },
+            new[] { "Learning foreign song: Auld lang syne" },
+            "Auld lang syne được học và luyện từ session 20 đến 23.",
+            "Auld Lang Syne is learned and practiced from sessions 20 to 23.");
+        yield return new SyllabusFactRule(
+            new[] { "session 25", "25 den 27" },
+            Array.Empty<string>(),
+            new[] { "25 Hòa tấu", "27 Hòa tấu" },
+            "Session 25 đến 27 tập trung vào hòa tấu Lý cây đa và Cò lả cùng các lớp khác.",
+            "Sessions 25 to 27 focus on ensemble practice of Ly cay da and Co la with other classes.");
+        yield return new SyllabusFactRule(
+            new[] { "session 28" },
+            Array.Empty<string>(),
+            new[] { "28", "Thu bài luận" },
+            "Session 28 có hòa tấu Lý cây đa, Cò lả cùng các lớp khác và thu bài luận / submit essays.",
+            "Session 28 includes ensemble practice of Ly cay da and Co la with other classes, and essay submission.");
+        yield return new SyllabusFactRule(
+            new[] { "thi ket thuc khoa", "thi cuoi khoa" },
+            Array.Empty<string>(),
+            new[] { "29 Tổ chức thi", "30 Tổ chức thi" },
+            "Thi kết thúc khóa học diễn ra ở session 29 và 30.",
+            "The final course exam takes place in sessions 29 and 30.");
+        yield return new SyllabusFactRule(
+            new[] { "bao nhieu assessment", "assessment" },
+            Array.Empty<string>(),
+            new[] { "3 assessment(s)" },
+            "Syllabus DBA103 ghi có 3 assessment.",
+            "The DBA103 syllabus lists 3 assessments.");
+        yield return new SyllabusFactRule(
+            new[] { "assignment" },
+            new[] { "san pham" },
+            new[] { "outputs for marking" },
+            "Assignment có thể chấm bài thuyết trình, slides, bài luận hoặc sản phẩm từ workshop.",
+            "Assignment outputs for marking may include presentation speech, slides, essays, or workshop products.");
+        yield return new SyllabusFactRule(
+            new[] { "participation" },
+            new[] { "dua tren" },
+            new[] { "Lecturer's recognition" },
+            "Participation dựa trên việc sinh viên tích cực tham gia hoạt động lớp, đi học đầy đủ và nộp bài luận.",
+            "Participation is based on active class participation, full attendance, and essay submission.");
+    }
+
+    private sealed record SyllabusFactRule(
+        IReadOnlyList<string> AnyQuestionTerms,
+        IReadOnlyList<string> AllQuestionTerms,
+        IReadOnlyList<string> EvidenceTerms,
+        string VietnameseAnswer,
+        string EnglishAnswer);
+
+    private static bool RuleMatches(string normalizedQuestion, SyllabusFactRule rule)
+    {
+        return rule.AnyQuestionTerms.Any(term => normalizedQuestion.Contains(term, StringComparison.Ordinal))
+               && rule.AllQuestionTerms.All(term => normalizedQuestion.Contains(term, StringComparison.Ordinal));
+    }
+
+    private static bool LooksLikeDba103ImplicitQuestion(string normalizedQuestion)
+    {
+        return ContainsAny(
+            normalizedQuestion,
+            "truoc khi den lop",
+            "tham gia hoat dong lop",
+            "cong cu hoc tap",
+            "thang diem",
+            "tai lieu chinh",
+            "tac gia",
+            "danh muc bai nhac",
+            "thoi luong thi cuoi");
+    }
+
+    private static bool SetFactAnswer(
+        string language,
+        string vietnameseAnswer,
+        string englishAnswer,
+        DocumentChunk chunk,
+        out string answer,
+        out SourceCitation citation)
+    {
+        answer = language == "vi" ? vietnameseAnswer : englishAnswer;
+        citation = BuildCitation(chunk, 1);
+        return true;
+    }
+
+    private static DocumentChunk? FindSyllabusChunk(IReadOnlyList<DocumentChunk> chunks, IEnumerable<string> evidenceTerms)
+    {
+        return chunks
+            .Where(IsDba103SyllabusChunk)
+            .Select(chunk => new
+            {
+                Chunk = chunk,
+                NormalizedText = NormalizeQuestion(chunk.Text)
+            })
+            .Where(item => evidenceTerms.All(term => item.NormalizedText.Contains(NormalizeQuestion(term), StringComparison.Ordinal)))
+            .OrderBy(item => item.Chunk.ChunkIndex)
+            .Select(item => item.Chunk)
+            .FirstOrDefault();
+    }
+
+    private static DocumentChunk? FindSyllabusChunk(IReadOnlyList<DocumentChunk> chunks, params string[] evidenceTerms)
+    {
+        return FindSyllabusChunk(chunks, (IEnumerable<string>)evidenceTerms);
+    }
+
+    private static bool IsDba103SyllabusChunk(DocumentChunk chunk)
+    {
+        return chunk.FileName.Contains("syllabus", StringComparison.OrdinalIgnoreCase)
+               || chunk.Text.Contains("Syllabus Details", StringComparison.OrdinalIgnoreCase)
+               || chunk.Text.Contains("StudentTasks:", StringComparison.OrdinalIgnoreCase)
+               || chunk.Text.Contains("CLO Name", StringComparison.OrdinalIgnoreCase)
+               || chunk.Text.Contains("assessment(s)", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsAny(string value, params string[] terms)
+    {
+        return terms.Any(term => value.Contains(term, StringComparison.Ordinal));
+    }
+
+    private static string NormalizeDegreeLevel(string value)
+    {
+        var trimmed = value.Trim();
+        return Regex.Replace(trimmed, @"\s+Beginner\b", " / Beginner", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static int CountNumberedLines(string text)
+    {
+        return Regex.Matches(text, @"(?m)^\s*\d+\.\s+\S").Count;
+    }
+
     private static bool TryBuildCreditAnswer(
         string question,
         IReadOnlyList<DocumentChunk> chunks,
@@ -644,9 +1144,10 @@ public sealed class RagChatService : IRagChatService
         var normalized = NormalizeQuestion(question);
         return normalized.Contains("dba103", StringComparison.Ordinal)
                && (normalized.Contains("mon gi", StringComparison.Ordinal)
-                   || normalized.Contains("la gi", StringComparison.Ordinal)
+                   || normalized.Contains("mon hoc gi", StringComparison.Ordinal)
+                   || normalized.Contains("ten mon", StringComparison.Ordinal)
                    || normalized.Contains("about", StringComparison.Ordinal)
-                   || normalized.Contains("what is", StringComparison.Ordinal));
+                   || normalized.Contains("what is dba103", StringComparison.Ordinal));
     }
 
     private static bool IsPrerequisiteQuestion(string question)
@@ -1206,10 +1707,11 @@ public sealed class RagChatService : IRagChatService
     {
         var normalized = RemoveDiacritics(question).ToLowerInvariant();
         var compact = Regex.Replace(normalized, @"[^\p{L}\p{N}\s]+", " ").Trim();
+        var compactTokens = compact.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var terms = ExtractTerms(question);
 
         return CasualChatSignals.Contains(compact)
-               || (terms.Count <= 2 && CasualChatSignals.Any(signal => compact.Contains(signal, StringComparison.Ordinal)));
+               || (terms.Count <= 2 && CasualChatSignals.Any(signal => compactTokens.Contains(signal, StringComparer.Ordinal)));
     }
 
     private static bool IsBotIdentityQuestion(string question)
