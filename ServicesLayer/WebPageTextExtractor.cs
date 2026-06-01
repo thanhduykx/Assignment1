@@ -120,7 +120,8 @@ public sealed class WebPageTextExtractor : IWebPageTextExtractor
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        var html = await response.Content.ReadAsStringAsync(cancellationToken);
+        var htmlBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var html = TextEncodingHelper.Decode(htmlBytes, response.Content.Headers.ContentType?.CharSet);
         var title = ExtractTitle(html) ?? uri.Host;
         var text = ExtractTextFromHtml(html);
 

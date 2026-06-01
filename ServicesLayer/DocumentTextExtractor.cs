@@ -72,8 +72,7 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
 
     private static string ExtractPlainText(Stream stream)
     {
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
-        return reader.ReadToEnd();
+        return TextEncodingHelper.Decode(stream);
     }
 
     private static string NormalizeWhitespace(string text)
