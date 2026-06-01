@@ -92,7 +92,7 @@ namespace PresentationLayer
                     ? parsedTimeout
                     : 120;
 
-                return new ServicesLayer.GeminiEmbeddingService(
+                var geminiEmbeddingService = new ServicesLayer.GeminiEmbeddingService(
                     new HttpClient
                     {
                         BaseAddress = new Uri("https://generativelanguage.googleapis.com/"),
@@ -104,6 +104,10 @@ namespace PresentationLayer
                         geminiEmbeddingModel,
                         geminiEmbeddingDimensions,
                         geminiEnabled));
+
+                return new ServicesLayer.FallbackEmbeddingService(
+                    geminiEmbeddingService,
+                    new ServicesLayer.HashingEmbeddingService());
             });
             builder.Services.AddSingleton<ServicesLayer.ILocalChatCompletionService>(_ =>
             {

@@ -14,6 +14,45 @@ public interface IEmbeddingService
     double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right);
 }
 
+public sealed class FallbackEmbeddingService : IEmbeddingService
+{
+    private readonly IEmbeddingService _primary;
+    private readonly IEmbeddingService _fallback;
+
+    public FallbackEmbeddingService(IEmbeddingService primary, IEmbeddingService fallback)
+    {
+        _primary = primary;
+        _fallback = fallback;
+    }
+
+    public async Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _primary.EmbedAsync(text, cancellationToken);
+        }
+        catch (Exception ex) when (ShouldFallback(ex, cancellationToken))
+        {
+            return await _fallback.EmbedAsync(text, cancellationToken);
+        }
+    }
+
+    public double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)
+    {
+        return _fallback.CosineSimilarity(left, right);
+    }
+
+    private static bool ShouldFallback(Exception exception, CancellationToken cancellationToken)
+    {
+        if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        return exception is InvalidOperationException or HttpRequestException or TaskCanceledException;
+    }
+}
+
 public sealed class HashingEmbeddingService : IEmbeddingService
 {
     private const int Dimensions = 512;
@@ -338,9 +377,12 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
 
     private static InvalidOperationException BuildGeminiEmbeddingException(HttpResponseMessage response)
     {
-        return (int)response.StatusCode == 429
-            ? new InvalidOperationException("Gemini embedding đang bị giới hạn quota/rate limit (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số tài liệu trong lần chạy.")
-            : new InvalidOperationException($"Gemini embedding request failed with HTTP {(int)response.StatusCode}.");
+        return (int)response.StatusCode switch
+        {
+            403 => new InvalidOperationException("Gemini embedding bị từ chối quyền (HTTP 403). Kiểm tra Gemini API key, project đã bật Generative Language API, billing/quota và quyền dùng model embedding."),
+            429 => new InvalidOperationException("Gemini embedding đang bị giới hạn quota/rate limit (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số tài liệu trong lần chạy."),
+            _ => new InvalidOperationException($"Gemini embedding request failed with HTTP {(int)response.StatusCode}.")
+        };
     }
 
     public double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right)

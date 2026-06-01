@@ -754,9 +754,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         HttpResponseMessage response)
     {
         var name = string.IsNullOrWhiteSpace(modelName) ? "Gemini" : modelName;
-        return (int)response.StatusCode == 429
-            ? new InvalidOperationException($"{name} {operation} đang bị giới hạn quota/rate limit Gemini (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số chunking strategy trong lần chạy.")
-            : new InvalidOperationException($"{name} Gemini {operation} runtime returned HTTP {(int)response.StatusCode}.");
+        return (int)response.StatusCode switch
+        {
+            403 => new InvalidOperationException($"{name} {operation} bị Gemini từ chối quyền (HTTP 403). Kiểm tra Gemini API key, project đã bật Generative Language API, billing/quota và quyền dùng model embedding."),
+            429 => new InvalidOperationException($"{name} {operation} đang bị giới hạn quota/rate limit Gemini (HTTP 429). Hãy chờ 1-2 phút rồi chạy lại, hoặc giảm số câu hỏi/số chunking strategy trong lần chạy."),
+            _ => new InvalidOperationException($"{name} Gemini {operation} runtime returned HTTP {(int)response.StatusCode}.")
+        };
     }
 
     private static int ReadIntConfigValue(string? configJson, string key, int fallback)
