@@ -6,6 +6,12 @@ public sealed class HomeIndexViewModel
 {
     public IReadOnlyList<IndexedDocument> Documents { get; set; } = Array.Empty<IndexedDocument>();
     public IReadOnlyList<CourseSubject> CourseCatalog { get; set; } = Array.Empty<CourseSubject>();
+    public IReadOnlyList<string> DocumentSubjectOptions { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> DocumentChapterOptions { get; set; } = Array.Empty<string>();
+    public string? SubjectFilter { get; set; }
+    public int TotalDocumentCount { get; set; }
+    public int TotalChunkCount { get; set; }
+    public long TotalUploadedBytes { get; set; }
 }
 
 public sealed class ChatIndexViewModel

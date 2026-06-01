@@ -3477,6 +3477,15 @@ body.rbl-body {
   margin-bottom: 0;
 }
 
+.rbl-catalog-help {
+  max-width: 720px;
+  margin: 5px 0 0;
+  color: var(--rbl-muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
 .rbl-catalog-create-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3685,6 +3694,21 @@ body.rbl-body {
 
 .rbl-document-actions form {
   margin: 0;
+}
+
+.rbl-document-filter {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid #d8deee;
+  border-radius: var(--rbl-radius);
+  background: var(--rbl-surface-low);
+}
+
+.rbl-document-filter .rbl-field {
+  min-width: min(420px, 100%);
 }
 
 .rbl-document-edit-panel,
@@ -4495,6 +4519,11 @@ body.rbl-body {
 
   .rbl-document-actions {
     justify-content: flex-start;
+  }
+
+  .rbl-document-filter {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .rbl-catalog-subject-head,

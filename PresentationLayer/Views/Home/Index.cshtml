@@ -8,20 +8,24 @@
 
     var documents = Model.Documents.OrderByDescending(item => item.UploadedAt).ToList();
     var courseCatalog = Model.CourseCatalog.OrderBy(item => item.Code).ToList();
-    var totalDocuments = documents.Count;
-    var totalChunks = documents.Sum(item => item.ChunkCount);
-    var totalUploadedBytes = documents.Sum(item => item.FileSizeBytes);
-    var subjectOptions = courseCatalog.Count > 0
-        ? courseCatalog.Select(subject => subject.DisplayName).ToList()
-        : documents
-            .Select(document => document.Subject)
-            .Where(subject => !string.IsNullOrWhiteSpace(subject))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(subject => subject)
-            .ToList();
+    var totalDocuments = Model.TotalDocumentCount > 0 ? Model.TotalDocumentCount : documents.Count;
+    var visibleDocuments = documents.Count;
+    var totalChunks = Model.TotalChunkCount > 0 ? Model.TotalChunkCount : documents.Sum(item => item.ChunkCount);
+    var totalUploadedBytes = Model.TotalUploadedBytes > 0 ? Model.TotalUploadedBytes : documents.Sum(item => item.FileSizeBytes);
+    var documentSubjectOptions = Model.DocumentSubjectOptions
+        .Where(subject => !string.IsNullOrWhiteSpace(subject))
+        .OrderBy(subject => subject)
+        .ToList();
+    var subjectOptions = courseCatalog
+        .Select(subject => subject.DisplayName)
+        .Concat(documentSubjectOptions)
+        .Where(subject => !string.IsNullOrWhiteSpace(subject))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(subject => subject)
+        .ToList();
     var chapterOptions = courseCatalog.SelectMany(subject => subject.Chapters)
         .Select(chapter => chapter.Title)
-        .Concat(documents.Select(document => document.Chapter))
+        .Concat(Model.DocumentChapterOptions)
         .Where(chapter => !string.IsNullOrWhiteSpace(chapter))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(chapter => chapter)
@@ -150,6 +154,7 @@
             <div>
                 <span class="rbl-section-label">Danh mục môn học</span>
                 <h2>Quản lý môn học và chương</h2>
+                <p class="rbl-catalog-help">Danh mục này tự thêm môn/chương từ Subject và Chapter của tài liệu đã upload.</p>
             </div>
             <span class="rbl-table-meta">@courseCatalog.Count môn học</span>
         </div>
@@ -300,8 +305,44 @@
                 <span class="rbl-section-label">Documents</span>
                 <h2 data-i18n="documents.documentList">Danh sách tài liệu</h2>
             </div>
-            <span class="rbl-table-meta"><span data-i18n="documents.showing">Hiển thị</span> @totalDocuments <span data-i18n="documents.statsDocuments">tài liệu</span></span>
+            <span class="rbl-table-meta"><span data-i18n="documents.showing">Hiển thị</span> @visibleDocuments/@totalDocuments <span data-i18n="documents.statsDocuments">tài liệu</span></span>
         </div>
+
+        @if (documentSubjectOptions.Count > 0)
+        {
+            <form asp-action="Index" method="get" class="rbl-document-filter">
+                <label class="rbl-field">
+                    <span>Lọc theo môn</span>
+                    <select name="subjectFilter">
+                        @if (string.IsNullOrWhiteSpace(Model.SubjectFilter))
+                        {
+                            <option value="" selected>Tất cả môn</option>
+                        }
+                        else
+                        {
+                            <option value="">Tất cả môn</option>
+                        }
+
+                        @foreach (var subject in documentSubjectOptions)
+                        {
+                            if (subject.Equals(Model.SubjectFilter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@subject" selected>@subject</option>
+                            }
+                            else
+                            {
+                                <option value="@subject">@subject</option>
+                            }
+                        }
+                    </select>
+                </label>
+                <button type="submit" class="rbl-small-button rbl-small-button--primary">Lọc</button>
+                @if (!string.IsNullOrWhiteSpace(Model.SubjectFilter))
+                {
+                    <a class="rbl-small-button" asp-controller="Home" asp-action="Index">Bỏ lọc</a>
+                }
+            </form>
+        }
 
         @if (documents.Count == 0)
         {

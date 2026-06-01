@@ -194,6 +194,11 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
+        if (TryBuildDba103SyllabusFactAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var syllabusFactAnswer, out var syllabusFactCitation))
+        {
+            return new SingleQuestionAnswer(question, correctionPrefix + syllabusFactAnswer, new[] { syllabusFactCitation });
+        }
+
         var queryTerms = ExtractTerms(resolvedQuestion);
 
         if (TryBuildCreditAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var creditAnswer, out var creditCitation))

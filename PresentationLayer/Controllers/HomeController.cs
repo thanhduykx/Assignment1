@@ -35,12 +35,37 @@ namespace PresentationLayer.Controllers
             _environment = environment;
         }
 
-        public async Task<IActionResult> Index(CancellationToken cancellationToken)
+        public async Task<IActionResult> Index(string? subjectFilter, CancellationToken cancellationToken)
         {
+            var allDocuments = await _indexingService.GetDocumentsAsync(cancellationToken);
+            await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
+            var normalizedSubjectFilter = subjectFilter?.Trim();
+            var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
+                ? allDocuments
+                : allDocuments
+                    .Where(document => document.Subject.Equals(normalizedSubjectFilter, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
             var model = new HomeIndexViewModel
             {
-                Documents = await _indexingService.GetDocumentsAsync(cancellationToken),
-                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken)
+                Documents = documents,
+                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken),
+                DocumentSubjectOptions = allDocuments
+                    .Select(document => document.Subject)
+                    .Where(subject => !string.IsNullOrWhiteSpace(subject))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(subject => subject)
+                    .ToList(),
+                DocumentChapterOptions = allDocuments
+                    .Select(document => document.Chapter)
+                    .Where(chapter => !string.IsNullOrWhiteSpace(chapter))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(chapter => chapter)
+                    .ToList(),
+                SubjectFilter = normalizedSubjectFilter,
+                TotalDocumentCount = allDocuments.Count,
+                TotalChunkCount = allDocuments.Sum(document => document.ChunkCount),
+                TotalUploadedBytes = allDocuments.Sum(document => document.FileSizeBytes)
             };
 
             return View(model);
@@ -154,6 +179,12 @@ namespace PresentationLayer.Controllers
                 TempData["Success"] = isVietnamese
                     ? "Đã index tài liệu."
                     : "The document has been indexed.";
+
+                var indexedDocument = await _repository.GetDocumentAsync(result.DocumentId, cancellationToken);
+                if (indexedDocument is not null)
+                {
+                    await SyncCourseCatalogFromDocumentsAsync(new[] { indexedDocument }, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
@@ -244,6 +275,7 @@ namespace PresentationLayer.Controllers
                     model.Subject,
                     model.Chapter,
                     cancellationToken);
+                await SyncCourseCatalogFromDocumentsAsync(new[] { document }, cancellationToken);
                 TempData["Success"] = $"Đã cập nhật tài liệu {document.FileName}.";
                 return RedirectToAction(nameof(Index));
             }
@@ -378,6 +410,117 @@ namespace PresentationLayer.Controllers
             }
 
             return string.IsNullOrWhiteSpace(message) ? "Không thể xử lý tài liệu." : message;
+        }
+
+        private async Task SyncCourseCatalogFromDocumentsAsync(
+            IReadOnlyList<IndexedDocument> documents,
+            CancellationToken cancellationToken)
+        {
+            foreach (var document in documents.Where(item => !string.IsNullOrWhiteSpace(item.Subject)))
+            {
+                try
+                {
+                    await SyncCourseCatalogFromDocumentAsync(document, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Could not sync course catalog from document {DocumentId}", document.Id);
+                }
+            }
+        }
+
+        private async Task SyncCourseCatalogFromDocumentAsync(IndexedDocument document, CancellationToken cancellationToken)
+        {
+            var parsed = ParseSubjectForCatalog(document.Subject);
+            if (string.IsNullOrWhiteSpace(parsed.Code))
+            {
+                return;
+            }
+
+            var catalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+            var subject = catalog.FirstOrDefault(item =>
+                item.Code.Equals(parsed.Code, StringComparison.OrdinalIgnoreCase)
+                || item.DisplayName.Equals(document.Subject.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (subject is null)
+            {
+                subject = await _repository.UpsertSubjectAsync(
+                    subjectId: null,
+                    code: parsed.Code,
+                    name: parsed.Name,
+                    description: "Tự đồng bộ từ tài liệu đã index.",
+                    cancellationToken);
+            }
+            else if (string.IsNullOrWhiteSpace(subject.Name)
+                     || subject.Name.Equals(subject.Code, StringComparison.OrdinalIgnoreCase))
+            {
+                subject = await _repository.UpsertSubjectAsync(
+                    subject.Id,
+                    subject.Code,
+                    parsed.Name,
+                    subject.Description,
+                    cancellationToken);
+            }
+
+            var chapterTitle = document.Chapter.Trim();
+            if (string.IsNullOrWhiteSpace(chapterTitle)
+                || subject.Chapters.Any(item => item.Title.Equals(chapterTitle, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var nextSortOrder = subject.Chapters.Count == 0
+                ? 1
+                : subject.Chapters.Max(item => item.SortOrder) + 1;
+            await _repository.UpsertChapterAsync(
+                chapterId: null,
+                subject.Id,
+                chapterTitle,
+                nextSortOrder,
+                cancellationToken);
+        }
+
+        private static (string Code, string Name) ParseSubjectForCatalog(string subject)
+        {
+            var trimmed = subject.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return (string.Empty, string.Empty);
+            }
+
+            var separatorIndex = trimmed.IndexOf(" - ", StringComparison.Ordinal);
+            var separatorLength = 3;
+            if (separatorIndex < 0)
+            {
+                separatorIndex = trimmed.IndexOf('-', StringComparison.Ordinal);
+                separatorLength = 1;
+            }
+
+            if (separatorIndex > 0)
+            {
+                var codeCandidate = NormalizeCatalogCode(trimmed[..separatorIndex]);
+                var nameCandidate = trimmed[(separatorIndex + separatorLength)..].Trim();
+                if (!string.IsNullOrWhiteSpace(codeCandidate) && !string.IsNullOrWhiteSpace(nameCandidate))
+                {
+                    return (codeCandidate, nameCandidate);
+                }
+            }
+
+            var firstToken = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? trimmed;
+            var code = NormalizeCatalogCode(firstToken);
+            return string.IsNullOrWhiteSpace(code)
+                ? (string.Empty, string.Empty)
+                : (code, trimmed);
+        }
+
+        private static string NormalizeCatalogCode(string code)
+        {
+            return new string((code ?? string.Empty)
+                .Trim()
+                .ToUpperInvariant()
+                .Where(character => char.IsLetterOrDigit(character) || character is '_' or '.')
+                .Take(32)
+                .ToArray());
         }
 
         private static string ToVietnameseCatalogError(string message)
