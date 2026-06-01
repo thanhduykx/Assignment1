@@ -2,15 +2,24 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using DataAccessLayer;
 
 namespace ServicesLayer;
+
+public sealed record ChatChunkRerankResult(int CandidateNumber, double Score, string Reason);
 
 public interface ILocalChatCompletionService
 {
     Task<string> RewriteQuestionAsync(
         string question,
         IReadOnlyList<ChatMessage> history,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ChatChunkRerankResult>> RerankChunksAsync(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
         CancellationToken cancellationToken = default);
 
     Task<string?> GenerateAnswerAsync(
@@ -53,6 +62,15 @@ public sealed class OllamaChatCompletionService : ILocalChatCompletionService
         var prompt = BuildRewritePrompt(question, history);
         var rewritten = await CallChatAsync(prompt, system: null, cancellationToken);
         return string.IsNullOrWhiteSpace(rewritten) ? question : rewritten.Trim().Trim('"');
+    }
+
+    public Task<IReadOnlyList<ChatChunkRerankResult>> RerankChunksAsync(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<ChatChunkRerankResult>>(Array.Empty<ChatChunkRerankResult>());
     }
 
     public async Task<string?> GenerateAnswerAsync(
@@ -307,6 +325,29 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         return string.IsNullOrWhiteSpace(rewritten) ? question : rewritten.Trim().Trim('"');
     }
 
+    public async Task<IReadOnlyList<ChatChunkRerankResult>> RerankChunksAsync(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_enabled || string.IsNullOrWhiteSpace(question) || chunks.Count == 0)
+        {
+            return Array.Empty<ChatChunkRerankResult>();
+        }
+
+        var system = """
+            You are a strict retrieval quality judge for a document-grounded chatbot.
+            Do not answer the user's question.
+            Select only chunks that directly contain evidence needed to answer the question.
+            If a chunk is merely about the same course or topic but does not answer the question, do not select it.
+            Return only valid JSON.
+            """;
+        var prompt = BuildRerankPrompt(question, chunks, language);
+        var response = await CallGenerateContentAsync(prompt, system, cancellationToken);
+        return ParseRerankResponse(response, chunks.Count);
+    }
+
     public async Task<string?> GenerateAnswerAsync(
         string question,
         string subject,
@@ -323,6 +364,98 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         var prompt = BuildAnswerPrompt(question, history, chunks, language);
         var system = BuildSystemPrompt(subject, language);
         return await CallGenerateContentAsync(prompt, system, cancellationToken);
+    }
+
+    private static string BuildRerankPrompt(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Choose the best evidence chunks for this question.");
+        builder.AppendLine("Return JSON only in this shape:");
+        builder.AppendLine("""{"selected":[{"candidate":1,"score":0.95,"reason":"direct evidence"}]}""");
+        builder.AppendLine("Rules:");
+        builder.AppendLine("- candidate is the candidate number shown below.");
+        builder.AppendLine("- score is 0.0 to 1.0.");
+        builder.AppendLine("- Select at most 6 candidates.");
+        builder.AppendLine("- Select nothing if none of the candidates directly support an answer.");
+        builder.AppendLine("- Prefer exact facts, numbers, definitions, requirements, schedules, and assessment details.");
+        builder.AppendLine($"Answer language later will be: {language}.");
+        builder.AppendLine();
+        builder.AppendLine("Question:");
+        builder.AppendLine(question.Trim());
+        builder.AppendLine();
+        builder.AppendLine("Candidates:");
+
+        for (var index = 0; index < chunks.Count; index++)
+        {
+            var chunk = chunks[index];
+            builder.AppendLine($"Candidate {index + 1}");
+            builder.AppendLine($"File: {chunk.FileName}");
+            builder.AppendLine($"Subject: {chunk.Subject}");
+            builder.AppendLine($"Chapter: {chunk.Chapter}");
+            builder.AppendLine($"Source chunk: {chunk.ChunkIndex}");
+            builder.AppendLine("Text:");
+            builder.AppendLine(TrimForPrompt(chunk.Text, 900));
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static IReadOnlyList<ChatChunkRerankResult> ParseRerankResponse(string? response, int candidateCount)
+    {
+        if (string.IsNullOrWhiteSpace(response) || candidateCount <= 0)
+        {
+            return Array.Empty<ChatChunkRerankResult>();
+        }
+
+        var json = ExtractJsonObject(response);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return Array.Empty<ChatChunkRerankResult>();
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<GeminiRerankResponse>(json, JsonOptions);
+            return payload?.Selected?
+                       .Where(item => item.Candidate >= 1 && item.Candidate <= candidateCount)
+                       .Select(item => new ChatChunkRerankResult(
+                           item.Candidate,
+                           Math.Clamp(item.Score, 0, 1),
+                           item.Reason ?? string.Empty))
+                       .GroupBy(item => item.CandidateNumber)
+                       .Select(group => group.OrderByDescending(item => item.Score).First())
+                       .OrderByDescending(item => item.Score)
+                       .Take(6)
+                       .ToList()
+                   ?? Array.Empty<ChatChunkRerankResult>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<ChatChunkRerankResult>();
+        }
+    }
+
+    private static string ExtractJsonObject(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            trimmed = Regex.Replace(trimmed, @"^```(?:json)?\s*|\s*```$", string.Empty, RegexOptions.IgnoreCase).Trim();
+        }
+
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        return start >= 0 && end > start ? trimmed[start..(end + 1)] : string.Empty;
+    }
+
+    private static string TrimForPrompt(string text, int maxLength)
+    {
+        var compact = string.Join(" ", (text ?? string.Empty).Split(default(string[]), StringSplitOptions.RemoveEmptyEntries));
+        return compact.Length <= maxLength ? compact : compact[..maxLength] + "...";
     }
 
     private async Task<string?> CallGenerateContentAsync(
@@ -511,6 +644,14 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
     private sealed record GeminiGenerationConfig(
         [property: JsonPropertyName("temperature")] double Temperature,
         [property: JsonPropertyName("maxOutputTokens")] int MaxOutputTokens);
+
+    private sealed record GeminiRerankResponse(
+        [property: JsonPropertyName("selected")] IReadOnlyList<GeminiRerankItem>? Selected);
+
+    private sealed record GeminiRerankItem(
+        [property: JsonPropertyName("candidate")] int Candidate,
+        [property: JsonPropertyName("score")] double Score,
+        [property: JsonPropertyName("reason")] string? Reason);
 
     private sealed record GeminiGenerateContentResponse(
         [property: JsonPropertyName("candidates")] IReadOnlyList<GeminiCandidate>? Candidates);

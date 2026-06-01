@@ -15,6 +15,7 @@ public interface IRagChatService
 public sealed class RagChatService : IRagChatService
 {
     private const int TopK = 5;
+    private const int RerankCandidateK = 12;
     private const int MaxBatchQuestions = 50;
     private const double MinimumScore = 0.7;
     private const double MinimumAnswerGroundingRatio = 0.42;
@@ -276,7 +277,7 @@ public sealed class RagChatService : IRagChatService
         var minimumSharedTerms = contentTerms.Count >= 4 ? 2 : 1;
         var queryEmbedding = await _embeddingService.EmbedAsync(resolvedQuestion, cancellationToken);
 
-        var matches = scopedChunks
+        var candidateMatches = scopedChunks
             .Select(chunk => new
             {
                 Chunk = chunk,
@@ -285,10 +286,9 @@ public sealed class RagChatService : IRagChatService
                 ContentSharedTerms = CountSharedTerms(contentTerms, chunk.Text),
                 MetadataSharedTerms = CountSharedTerms(queryTerms, BuildChunkMetadataText(chunk))
             })
-            .Select(item => new
-            {
+            .Select(item => new ScoredChunk(
                 item.Chunk,
-                Score = CalculateRetrievalScore(
+                CalculateRetrievalScore(
                     item.VectorScore,
                     item.TextSharedTerms,
                     item.MetadataSharedTerms,
@@ -297,9 +297,8 @@ public sealed class RagChatService : IRagChatService
                     contentTerms.Count),
                 item.TextSharedTerms,
                 item.ContentSharedTerms,
-                SharedTerms = item.TextSharedTerms + item.MetadataSharedTerms,
-                item.MetadataSharedTerms
-            })
+                item.TextSharedTerms + item.MetadataSharedTerms,
+                item.MetadataSharedTerms))
             .Where(item => item.Score >= MinimumScore
                            && item.TextSharedTerms >= minimumSharedTerms
                            && (!needsContentEvidence || item.ContentSharedTerms > 0))
@@ -307,13 +306,15 @@ public sealed class RagChatService : IRagChatService
             .ThenByDescending(item => item.ContentSharedTerms)
             .ThenByDescending(item => item.TextSharedTerms)
             .ThenByDescending(item => item.MetadataSharedTerms)
-            .Take(TopK)
+            .Take(RerankCandidateK)
             .ToList();
 
-        if (matches.Count == 0)
+        if (candidateMatches.Count == 0)
         {
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
+
+        var matches = await RerankMatchesAsync(resolvedQuestion, candidateMatches, responseLanguage, cancellationToken);
 
         var citations = matches.Select(item => new SourceCitation
         {
@@ -357,6 +358,64 @@ public sealed class RagChatService : IRagChatService
     private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(CancellationToken cancellationToken)
     {
         return await _repository.GetChunksAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ScoredChunk>> RerankMatchesAsync(
+        string question,
+        IReadOnlyList<ScoredChunk> candidates,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var fallback = candidates.Take(TopK).ToList();
+        if (candidates.Count == 0)
+        {
+            return fallback;
+        }
+
+        IReadOnlyList<ChatChunkRerankResult> reranked;
+        try
+        {
+            reranked = await _chatCompletionService.RerankChunksAsync(
+                question,
+                candidates.Select(item => item.Chunk).ToList(),
+                language,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return fallback;
+        }
+
+        if (reranked.Count == 0)
+        {
+            return fallback;
+        }
+
+        var selected = new List<ScoredChunk>();
+        var seen = new HashSet<int>();
+        foreach (var decision in reranked.OrderByDescending(item => item.Score))
+        {
+            var candidateIndex = decision.CandidateNumber - 1;
+            if (candidateIndex < 0 || candidateIndex >= candidates.Count || !seen.Add(candidateIndex))
+            {
+                continue;
+            }
+
+            var candidate = candidates[candidateIndex];
+            var geminiConfidence = Math.Clamp(decision.Score, 0, 1);
+            var boostedScore = Math.Round(Math.Max(candidate.Score, 0.82 + (geminiConfidence * 0.18)), 3);
+            selected.Add(candidate with { Score = boostedScore });
+            if (selected.Count == TopK)
+            {
+                break;
+            }
+        }
+
+        return selected.Count == 0 ? fallback : selected;
     }
 
     private static IReadOnlyList<string> SplitQuestionBatch(string input)
@@ -460,6 +519,14 @@ public sealed class RagChatService : IRagChatService
         string Question,
         string Answer,
         IReadOnlyList<SourceCitation> Citations);
+
+    private sealed record ScoredChunk(
+        DocumentChunk Chunk,
+        double Score,
+        int TextSharedTerms,
+        int ContentSharedTerms,
+        int SharedTerms,
+        int MetadataSharedTerms);
 
     private async Task<ChatAnswer> SaveAssistantAnswer(
         Guid sessionId,
