@@ -4,6 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>01b86601-6e7e-40e1-8b95-b177cb5c0bee</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="9.0.11" />
+    <PackageReference Include="QuestPDF" Version="2026.5.0" />
   </ItemGroup>
 
 </Project>

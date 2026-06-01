@@ -82,7 +82,8 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             Chapter = string.IsNullOrWhiteSpace(chapter) ? "Uncategorized" : chapter.Trim(),
             ContentType = contentType,
             StoredPath = Path.Combine(uploadsRoot, $"{Guid.NewGuid():N}{Path.GetExtension(fileName)}"),
-            UploadedAt = DateTimeOffset.UtcNow
+            UploadedAt = DateTimeOffset.UtcNow,
+            FileSizeBytes = copy.Length
         };
 
         if (Path.GetExtension(fileName).Equals(".txt", StringComparison.OrdinalIgnoreCase))
@@ -145,7 +146,8 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             Chapter = string.IsNullOrWhiteSpace(chapter) ? "Uncategorized" : chapter.Trim(),
             ContentType = contentType,
             StoredPath = storedPath,
-            UploadedAt = DateTimeOffset.UtcNow
+            UploadedAt = DateTimeOffset.UtcNow,
+            FileSizeBytes = Encoding.UTF8.GetByteCount(text)
         };
 
         var chunkTexts = CreateChunks(text);

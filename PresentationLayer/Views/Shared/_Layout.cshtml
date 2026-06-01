@@ -1,94 +1,242 @@
 @using System.Security.Claims
+@{
+    var useRblShell = ViewData["UseRblShell"] as bool? ?? false;
+    var activeNav = (ViewData["ActiveNav"] as string ?? string.Empty).ToLowerInvariant();
+    var shellTitle = ViewData["ShellTitle"] as string ?? ViewData["Title"] as string ?? "RBL Portal";
+    var bodyClass = $"{ViewData["BodyClass"]} {(useRblShell ? "rbl-body" : string.Empty)}".Trim();
+    var displayName = User.FindFirstValue(ClaimTypes.Name)
+        ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0]
+        ?? "Account";
+    var userInitial = string.IsNullOrWhiteSpace(displayName) ? "A" : displayName[..1].ToUpperInvariant();
+    var accountEmail = User.FindFirstValue(ClaimTypes.Email) ?? "Admin Access";
+    var hideAssistantLauncher = ViewData["HideAssistantLauncher"] as bool? ?? false;
+    var shellTitleI18n = ViewData["ShellTitleI18n"] as string;
+    var dashboardNavClass = activeNav == "dashboard" ? "rbl-nav-link is-active" : "rbl-nav-link";
+    var chatNavClass = activeNav == "chat" ? "rbl-nav-link is-active" : "rbl-nav-link";
+    var documentsNavClass = activeNav == "documents" ? "rbl-nav-link is-active" : "rbl-nav-link";
+    var configNavClass = activeNav == "config" ? "rbl-nav-link is-active" : "rbl-nav-link";
+}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi" class="i18n-pending">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Course Assistant</title>
     <script type="importmap"></script>
+    <script>
+        (function () {
+            var savedLanguage = localStorage.getItem("courseAssistantLanguage");
+            document.documentElement.lang = savedLanguage === "en" ? "en" : "vi";
+            window.setTimeout(function () {
+                document.documentElement.classList.remove("i18n-pending");
+                document.documentElement.classList.add("i18n-ready");
+            }, 1800);
+        })();
+    </script>
+    <script>
+        (function () {
+            function markIconsReady() {
+                document.documentElement.classList.add("icons-ready");
+            }
+
+            if (document.fonts && document.fonts.load) {
+                document.fonts.load('24px "Material Symbols Outlined"').then(markIconsReady, markIconsReady);
+                window.setTimeout(markIconsReady, 1800);
+            } else {
+                markIconsReady();
+            }
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&amp;display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@300..700,0..1&amp;display=swap" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/PresentationLayer.styles.css" asp-append-version="true" />
 </head>
-<body class="@ViewData["BodyClass"]">
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">Course Assistant</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Chat" data-i18n="nav.chat">Chat</a>
-                        </li>
-                    </ul>
-                    <ul class="navbar-nav account-nav">
-                        <li class="nav-item">
-                            <div class="language-switch" role="group" aria-label="Language">
-                                <button type="button" class="language-option" data-language-option="en" aria-pressed="true">ENG</button>
-                                <button type="button" class="language-option" data-language-option="vi" aria-pressed="false">VN</button>
-                            </div>
-                        </li>
-                        @if (User.Identity?.IsAuthenticated == true)
+<body class="@bodyClass">
+    @if (useRblShell)
+    {
+        <div class="rbl-app-frame">
+            <aside class="rbl-sidebar" aria-label="RBL navigation">
+                <div class="rbl-brand">
+                    <span class="rbl-brand-mark">
+                        <img src="~/img/dog.gif" asp-append-version="true" alt="EdTech AI dog logo" />
+                    </span>
+                    <div>
+                        <strong>EdTech AI</strong>
+                        <span data-i18n="shell.portal">Research Portal</span>
+                    </div>
+                </div>
+
+                <nav class="rbl-nav">
+                    <a class="@dashboardNavClass" asp-controller="Research" asp-action="Index">
+                        <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
+                        <span data-i18n="shell.dashboard">Dashboard Nghiên cứu</span>
+                    </a>
+                    <a class="@chatNavClass" asp-controller="Home" asp-action="Chat">
+                        <span class="material-symbols-outlined" aria-hidden="true">chat</span>
+                        <span data-i18n="shell.chatbot">Chatbot</span>
+                    </a>
+                    <a class="@documentsNavClass" asp-controller="Home" asp-action="Index">
+                        <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
+                        <span data-i18n="shell.documents">Kho tài liệu</span>
+                    </a>
+                    <a class="@configNavClass" asp-controller="Research" asp-action="Create">
+                        <span class="material-symbols-outlined" aria-hidden="true">settings_applications</span>
+                        <span data-i18n="shell.config">Cấu hình thực nghiệm</span>
+                    </a>
+                </nav>
+
+                <a class="rbl-primary-action" asp-controller="Research" asp-action="Create">
+                    <span class="material-symbols-outlined" aria-hidden="true">add</span>
+                    <span data-i18n="shell.newResearchProject">New Research Project</span>
+                </a>
+
+                <div class="rbl-sidebar-footer">
+                    <a class="rbl-nav-link compact" asp-controller="Home" asp-action="Privacy">
+                        <span class="material-symbols-outlined" aria-hidden="true">help</span>
+                        <span data-i18n="shell.help">Help</span>
+                    </a>
+                    <div class="rbl-user-card">
+                        <span class="rbl-user-avatar">@userInitial</span>
+                        <div>
+                            <strong>@displayName</strong>
+                            <span>@accountEmail</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <div class="rbl-workspace">
+                <header class="rbl-topbar">
+                    <div class="rbl-topbar-title">
+                        @if (!string.IsNullOrWhiteSpace(shellTitleI18n))
                         {
-                            <li class="nav-item user-chip">@User.FindFirstValue(ClaimTypes.Email)</li>
-                            <li class="nav-item">
-                                <form asp-controller="Account" asp-action="Logout" method="post">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="nav-link logout-button" data-i18n="nav.logout">Logout</button>
-                                </form>
-                            </li>
+                            <span data-i18n="@shellTitleI18n">@shellTitle</span>
                         }
                         else
                         {
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Login" data-i18n="nav.login">Login</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Register" data-i18n="nav.register">Create account</a>
-                            </li>
+                            <span>@shellTitle</span>
                         }
-                    </ul>
-                </div>
+                        <label class="rbl-search">
+                            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                            <input type="search" placeholder="Tìm kiếm trong hệ thống..." data-i18n-placeholder="shell.search" />
+                        </label>
+                    </div>
+                    <div class="rbl-topbar-actions">
+                        <div class="language-switch rbl-language-switch" role="group" aria-label="Language">
+                            <button type="button" class="language-option" data-language-option="en" aria-pressed="true">ENG</button>
+                            <button type="button" class="language-option" data-language-option="vi" aria-pressed="false">VN</button>
+                        </div>
+                        <button type="button" class="rbl-icon-button" aria-label="Notifications" data-i18n-aria-label="shell.notifications">
+                            <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+                        </button>
+                        <button type="button" class="rbl-icon-button" aria-label="History" data-i18n-aria-label="shell.history">
+                            <span class="material-symbols-outlined" aria-hidden="true">history</span>
+                        </button>
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <form asp-controller="Account" asp-action="Logout" method="post" class="rbl-account-form">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="rbl-account-button">
+                                    <span class="material-symbols-outlined" aria-hidden="true">person</span>
+                                    @displayName
+                                </button>
+                            </form>
+                        }
+                        else
+                        {
+                            <a class="rbl-account-button" asp-controller="Account" asp-action="Login">
+                                <span class="material-symbols-outlined" aria-hidden="true">person</span>
+                                <span data-i18n="nav.login">Login</span>
+                            </a>
+                        }
+                    </div>
+                </header>
+
+                <main role="main" class="rbl-main">
+                    @RenderBody()
+                </main>
             </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
-
-    @{
-        var hideAssistantLauncher = ViewData["HideAssistantLauncher"] as bool? ?? false;
-    }
-
-    @if (User.Identity?.IsAuthenticated == true && !hideAssistantLauncher)
-    {
-        var displayName = User.FindFirstValue(ClaimTypes.Name)
-            ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0]
-            ?? "you";
-
-        <section class="assistant-launcher chatbot-helper" id="chatbotHelper" aria-label="Chatbot helper">
-            <a class="assistant-launcher-card chatbot-helper-card" id="chatbotHelperButton" asp-controller="Home" asp-action="Chat" aria-label="Open chat page" title="Open chat page" data-i18n-aria-label="assistant.open" data-i18n-title="assistant.open" draggable="false">
-                <img src="~/img/dog.gif" asp-append-version="true" alt="Chatbot assistant" class="chatbot-helper-avatar" draggable="false" />
-                <span class="assistant-launcher-bubble chatbot-helper-copy" data-assistant-greeting data-assistant-name="@displayName">Hi @displayName, I can help you find information faster.</span>
-                <span class="visually-hidden" data-i18n="assistant.hidden">Hi @displayName, I am your chatbot assistant for finding information faster.</span>
-            </a>
-        </section>
-    }
-
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - Course Assistant
         </div>
-    </footer>
+    }
+    else
+    {
+        <header>
+            <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+                <div class="container-fluid">
+                    <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">Course Assistant</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                            aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                        <ul class="navbar-nav flex-grow-1">
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Chat" data-i18n="nav.chat">Chat</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-controller="Research" asp-action="Index">RBL</a>
+                            </li>
+                        </ul>
+                        <ul class="navbar-nav account-nav">
+                            <li class="nav-item">
+                                <div class="language-switch" role="group" aria-label="Language">
+                                    <button type="button" class="language-option" data-language-option="en" aria-pressed="true">ENG</button>
+                                    <button type="button" class="language-option" data-language-option="vi" aria-pressed="false">VN</button>
+                                </div>
+                            </li>
+                            @if (User.Identity?.IsAuthenticated == true)
+                            {
+                                <li class="nav-item user-chip">@User.FindFirstValue(ClaimTypes.Email)</li>
+                                <li class="nav-item">
+                                    <form asp-controller="Account" asp-action="Logout" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="nav-link logout-button" data-i18n="nav.logout">Logout</button>
+                                    </form>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-controller="Account" asp-action="Login" data-i18n="nav.login">Login</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-controller="Account" asp-action="Register" data-i18n="nav.register">Create account</a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+        </header>
+        <div class="container">
+            <main role="main" class="pb-3">
+                @RenderBody()
+            </main>
+        </div>
+        @if (User.Identity?.IsAuthenticated == true && !hideAssistantLauncher)
+        {
+            <section class="assistant-launcher chatbot-helper" id="chatbotHelper" aria-label="Chatbot helper">
+                <a class="assistant-launcher-card chatbot-helper-card" id="chatbotHelperButton" asp-controller="Home" asp-action="Chat" aria-label="Open chat page" title="Open chat page" data-i18n-aria-label="assistant.open" data-i18n-title="assistant.open" draggable="false">
+                    <img src="~/img/dog.gif" asp-append-version="true" alt="Chatbot assistant" class="chatbot-helper-avatar" draggable="false" />
+                    <span class="assistant-launcher-bubble chatbot-helper-copy" data-assistant-greeting data-assistant-name="@displayName">Hi @displayName, I can help you find information faster.</span>
+                    <span class="visually-hidden" data-i18n="assistant.hidden">Hi @displayName, I am your chatbot assistant for finding information faster.</span>
+                </a>
+            </section>
+        }
+
+        <footer class="border-top footer text-muted">
+            <div class="container">
+                &copy; 2026 - Course Assistant
+            </div>
+        </footer>
+    }
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>

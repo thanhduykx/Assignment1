@@ -5,6 +5,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Entities\DatabaseEntities.cs" />
+    <Compile Remove="Entities\User.cs" />
+    <Compile Remove="Entities\Subject.cs" />
+    <Compile Remove="Entities\Document.cs" />
+    <Compile Remove="Entities\Chunk.cs" />
+    <Compile Remove="Entities\ChunkingStrategy.cs" />
+    <Compile Remove="Entities\ChatSession.cs" />
+    <Compile Remove="Entities\ChatMessage.cs" />
+    <Compile Remove="Entities\Citation.cs" />
+    <Compile Remove="Entities\Embedding.cs" />
+    <Compile Remove="Entities\EmbeddingModel.cs" />
+    <Compile Remove="Entities\Experiment.cs" />
+    <Compile Remove="Entities\ExperimentRun.cs" />
+    <Compile Remove="Entities\FineTuneModel.cs" />
+    <Compile Remove="Entities\TestQuestion.cs" />
+    <Compile Remove="EduVietRagDbContext.cs" />
+    <Compile Remove="Migrations\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.11" />
   </ItemGroup>
 </Project>

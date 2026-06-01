@@ -4,6 +4,7 @@ namespace PresentationLayer
     {
         public static void Main(string[] args)
         {
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
             var builder = WebApplication.CreateBuilder(args);
 
             builder.Services.AddControllersWithViews();
@@ -33,6 +34,30 @@ namespace PresentationLayer
                     options.SignInScheme = "External";
                     options.SaveTokens = false;
                 });
+            var geminiSection = builder.Configuration.GetSection("Gemini");
+            var geminiApiKey = geminiSection["ApiKey"]
+                ?? builder.Configuration["GEMINI_API_KEY"]
+                ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+                ?? string.Empty;
+            var geminiEnabled = !bool.TryParse(geminiSection["Enabled"], out var parsedGeminiEnabled) || parsedGeminiEnabled;
+            var geminiChatModel = geminiSection["Model"] ?? "gemini-3.5-flash";
+            var geminiEmbeddingModel = builder.Configuration["Embedding:Model"]
+                ?? geminiSection["EmbeddingModel"]
+                ?? "gemini-embedding-001";
+            var geminiEmbeddingDimensions = int.TryParse(
+                    builder.Configuration["Embedding:OutputDimensionality"] ?? geminiSection["EmbeddingOutputDimensionality"],
+                    out var parsedEmbeddingDimensions)
+                ? parsedEmbeddingDimensions
+                : 768;
+            var geminiTimeoutSeconds = int.TryParse(geminiSection["TimeoutSeconds"], out var parsedGeminiTimeout)
+                ? parsedGeminiTimeout
+                : 120;
+            builder.Services.AddSingleton(new ServicesLayer.GeminiApiOptions(
+                geminiApiKey,
+                geminiChatModel,
+                geminiEmbeddingModel,
+                geminiEmbeddingDimensions,
+                geminiEnabled));
             builder.Services.AddSingleton<DataAccessLayer.IKnowledgeRepository>(_ =>
             {
                 var repository = new DataAccessLayer.Repositories.SqlKnowledgeRepository(
@@ -41,46 +66,43 @@ namespace PresentationLayer
                     Path.Combine(builder.Environment.ContentRootPath, "App_Data", "rag-store.json")).GetAwaiter().GetResult();
                 return repository;
             });
+            builder.Services.AddSingleton<DataAccessLayer.IResearchRepository>(_ =>
+                new DataAccessLayer.Repositories.SqlResearchRepository(
+                    builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty));
             builder.Services.AddSingleton<PresentationLayer.Services.IUserAccountStore>(_ =>
                 new PresentationLayer.Services.UserAccountStore(
                     Path.Combine(builder.Environment.ContentRootPath, "App_Data", "users.json")));
             builder.Services.AddSingleton<ServicesLayer.IEmbeddingService>(_ =>
             {
                 var embedding = builder.Configuration.GetSection("Embedding");
-                var localLlm = builder.Configuration.GetSection("LocalLlm");
-                var baseUrl = embedding["BaseUrl"] ?? localLlm["BaseUrl"] ?? "http://localhost:11434";
-                var model = embedding["Model"] ?? "nomic-embed-text";
-                var enabled = !bool.TryParse(embedding["Enabled"], out var parsedEnabled) || parsedEnabled;
-                var fallbackToHashing = !bool.TryParse(embedding["FallbackToHashing"], out var parsedFallback) || parsedFallback;
                 var timeoutSeconds = int.TryParse(embedding["TimeoutSeconds"], out var parsedTimeout)
                     ? parsedTimeout
                     : 120;
 
-                var httpClient = new HttpClient
-                {
-                    BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
-                    Timeout = TimeSpan.FromSeconds(Math.Max(5, timeoutSeconds))
-                };
-
-                return new ServicesLayer.OllamaEmbeddingService(httpClient, model, enabled, fallbackToHashing);
+                return new ServicesLayer.GeminiEmbeddingService(
+                    new HttpClient
+                    {
+                        BaseAddress = new Uri("https://generativelanguage.googleapis.com/"),
+                        Timeout = TimeSpan.FromSeconds(Math.Max(5, timeoutSeconds))
+                    },
+                    new ServicesLayer.GeminiApiOptions(
+                        geminiApiKey,
+                        geminiChatModel,
+                        geminiEmbeddingModel,
+                        geminiEmbeddingDimensions,
+                        geminiEnabled));
             });
             builder.Services.AddSingleton<ServicesLayer.ILocalChatCompletionService>(_ =>
             {
-                var localLlm = builder.Configuration.GetSection("LocalLlm");
-                var baseUrl = localLlm["BaseUrl"] ?? "http://localhost:11434";
-                var model = localLlm["Model"] ?? "gemma4:latest";
-                var enabled = !bool.TryParse(localLlm["Enabled"], out var parsedEnabled) || parsedEnabled;
-                var timeoutSeconds = int.TryParse(localLlm["TimeoutSeconds"], out var parsedTimeout)
-                    ? parsedTimeout
-                    : 120;
-
-                var httpClient = new HttpClient
-                {
-                    BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
-                    Timeout = TimeSpan.FromSeconds(Math.Max(5, timeoutSeconds))
-                };
-
-                return new ServicesLayer.OllamaChatCompletionService(httpClient, model, enabled);
+                return new ServicesLayer.GeminiChatCompletionService(
+                    new HttpClient
+                    {
+                        BaseAddress = new Uri("https://generativelanguage.googleapis.com/"),
+                        Timeout = TimeSpan.FromSeconds(Math.Max(5, geminiTimeoutSeconds))
+                    },
+                    geminiChatModel,
+                    geminiApiKey,
+                    geminiEnabled);
             });
             builder.Services.AddSingleton<ServicesLayer.IDocumentTextExtractor, ServicesLayer.DocumentTextExtractor>();
             builder.Services.AddSingleton<ServicesLayer.IWebPageTextExtractor>(_ =>
@@ -88,8 +110,13 @@ namespace PresentationLayer
                 {
                     Timeout = TimeSpan.FromSeconds(35)
                 }));
+            builder.Services.AddSingleton<PresentationLayer.Services.IResearchReportPdfService, PresentationLayer.Services.ResearchReportPdfService>();
             builder.Services.AddScoped<ServicesLayer.IDocumentIndexingService, ServicesLayer.DocumentIndexingService>();
             builder.Services.AddScoped<ServicesLayer.IRagChatService, ServicesLayer.RagChatService>();
+            builder.Services.AddHttpClient<ServicesLayer.IResearchBenchmarkService, ServicesLayer.ResearchBenchmarkService>(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(180);
+            });
 
             var app = builder.Build();
             _ = app.Services.GetRequiredService<DataAccessLayer.IKnowledgeRepository>();

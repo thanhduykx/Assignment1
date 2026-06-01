@@ -1,0 +1,118 @@
+@model PresentationLayer.Models.ResearchCreateViewModel
+@{
+    ViewData["Title"] = "Cấu hình thực nghiệm RBL";
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "config";
+    ViewData["ShellTitle"] = "Cấu hình thực nghiệm";
+    ViewData["ShellTitleI18n"] = "config.shellTitle";
+}
+
+<section class="rbl-config-page">
+    <div class="rbl-page-heading">
+        <div>
+            <a asp-action="Index" class="rbl-back-link">
+                <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+                <span data-i18n="config.back">Back to dashboard</span>
+            </a>
+            <h1 data-i18n="config.title">Trình cấu hình thực nghiệm</h1>
+            <p data-i18n="config.subtitle">Thiết lập ma trận benchmark RAG theo Gemini embedding và nhiều chunking strategy.</p>
+        </div>
+    </div>
+
+    <form asp-action="Create" method="post" class="rbl-config-grid">
+        @Html.AntiForgeryToken()
+
+        <section class="rbl-panel rbl-config-form">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label" data-i18n="config.sessionParams">Thông số phiên mới</span>
+                    <h2>Benchmark setup</h2>
+                </div>
+            </div>
+
+            <div asp-validation-summary="All" class="rbl-validation"></div>
+
+            <div class="rbl-form-grid">
+                <label class="rbl-field">
+                    <span data-i18n="config.experimentName">Experiment name</span>
+                    <input asp-for="Name" placeholder="DBA103 RAG benchmark" />
+                    <small><span asp-validation-for="Name"></span></small>
+                </label>
+
+                <label class="rbl-field">
+                    <span data-i18n="config.subjectFilter">Subject filter</span>
+                    <input asp-for="Subject" placeholder="DBA103" />
+                    <small><span asp-validation-for="Subject"></span></small>
+                </label>
+            </div>
+
+            <div class="rbl-choice-section">
+                <div>
+                    <h3 data-i18n="config.embeddingModels">Mô hình Embedding</h3>
+                </div>
+                <div class="rbl-choice-grid">
+                    @foreach (var item in Model.EmbeddingModels)
+                    {
+                        <label class="rbl-choice-card">
+                            <input type="checkbox" name="EmbeddingModelIds" value="@item.Value" checked="@item.Selected" />
+                            <span>
+                                <strong>@item.Text</strong>
+                                <small data-i18n="config.embeddingRunner">Gemini embedding runner</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="rbl-choice-section">
+                <div>
+                    <h3 data-i18n="config.chunkingStrategies">Chunking strategies</h3>
+                </div>
+                <div class="rbl-choice-grid">
+                    @foreach (var item in Model.ChunkingStrategies)
+                    {
+                        <label class="rbl-choice-card">
+                            <input type="checkbox" name="ChunkingStrategyIds" value="@item.Value" checked="@item.Selected" />
+                            <span>
+                                <strong>@item.Text</strong>
+                                <small data-i18n="config.chunkingConfiguration">Chunking configuration</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <label class="rbl-field">
+                <span data-i18n="config.benchmarkQuestions">Benchmark questions</span>
+                <textarea asp-for="QuestionsText" rows="8" placeholder="Question | Expected answer / ground truth"></textarea>
+                <small data-i18n="config.questionsHint">Mỗi dòng một câu hỏi. Dùng dấu | để tách câu hỏi và ground truth.</small>
+                <small><span asp-validation-for="QuestionsText"></span></small>
+            </label>
+
+            <div class="rbl-form-actions">
+                <button type="submit" class="rbl-submit-button">
+                    <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                    <span data-i18n="config.createExperiment">Create experiment</span>
+                </button>
+                <a asp-action="Index" class="rbl-secondary-button" data-i18n="config.cancel">Cancel</a>
+            </div>
+        </section>
+
+        <aside class="rbl-panel rbl-progress-preview">
+            <span class="rbl-section-label" data-i18n="config.systemStatus">Trạng thái hệ thống</span>
+            <h2 data-i18n="config.lifecycle">Benchmark lifecycle</h2>
+            <div class="rbl-progress-ring" aria-hidden="true">
+                <span>RBL</span>
+            </div>
+            <ol class="rbl-run-steps">
+                <li><strong>1. Pending</strong><span data-i18n="config.stepPending">Tạo run matrix từ model x strategy.</span></li>
+                <li><strong>2. Running</strong><span data-i18n="config.stepRunning">Re-chunk, embed, retrieve, generate answer.</span></li>
+                <li><strong>3. Scored</strong><span data-i18n="config.stepScored">Lưu RAGAS metrics vào database.</span></li>
+            </ol>
+        </aside>
+    </form>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

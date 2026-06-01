@@ -5,6 +5,91 @@ const translations = {
     "nav.logout": "Logout",
     "nav.login": "Login",
     "nav.register": "Create account",
+    "shell.portal": "Research Portal",
+    "shell.dashboard": "Research Dashboard",
+    "shell.chatbot": "Chatbot",
+    "shell.documents": "Document Repository",
+    "shell.config": "Experiment Config",
+    "shell.newResearchProject": "New Research Project",
+    "shell.help": "Help",
+    "shell.search": "Search the system...",
+    "shell.notifications": "Notifications",
+    "shell.history": "History",
+    "research.shellTitle": "EdTech AI Research",
+    "research.heroKicker": "Active Research",
+    "research.heroTitle": "RAG performance analysis in education",
+    "research.heroText": "Track benchmarks by Gemini embedding configuration and chunking strategy on real system data.",
+    "research.experiments": "Experiments",
+    "research.runs": "Runs",
+    "research.avgRagas": "Avg RAGAS",
+    "research.dashboard": "RBL Dashboard",
+    "research.ragasByExperiment": "RAGAS by experiment",
+    "research.create": "Create",
+    "research.noExperimentTitle": "No experiments yet",
+    "research.noExperimentText": "Create the first experiment to start benchmarking RAG.",
+    "research.bestPerformer": "Best performer",
+    "research.noScore": "No score yet",
+    "research.runBenchmarkHint": "Run a benchmark to get comparison data.",
+    "research.detailsLabel": "Experiment details",
+    "research.experimentList": "RBL experiment list",
+    "research.benchmarkQuestionsUnit": "benchmark questions",
+    "research.noData": "No data.",
+    "research.createFirstHint": "Click Create to configure embedding model and chunking strategy.",
+    "research.open": "Open",
+    "detail.shellTitle": "RBL Experiment Detail",
+    "detail.back": "Back to experiments",
+    "detail.downloadPdf": "Download PDF",
+    "detail.runBenchmark": "Run benchmark",
+    "detail.status": "Status",
+    "detail.averageRagas": "Average RAGAS",
+    "detail.bestRun": "Best run",
+    "detail.completed": "Completed",
+    "detail.ragVsFt": "RAG vs Fine-tuned",
+    "detail.averageByRunGroup": "Average score by run group",
+    "detail.noScoredRun": "No scored run",
+    "detail.runForBaseline": "Run benchmark to get comparison data.",
+    "detail.runs": "Runs",
+    "detail.runResults": "Results by configuration",
+    "detail.testQuestions": "Test questions",
+    "detail.evaluationQuestions": "Evaluation question set",
+    "config.shellTitle": "Experiment Config",
+    "config.back": "Back to dashboard",
+    "config.title": "Experiment configuration",
+    "config.subtitle": "Set up a RAG benchmark matrix with Gemini embedding and multiple chunking strategies.",
+    "config.sessionParams": "New session settings",
+    "config.experimentName": "Experiment name",
+    "config.subjectFilter": "Subject filter",
+    "config.embeddingModels": "Embedding models",
+    "config.chunkingStrategies": "Chunking strategies",
+    "config.embeddingRunner": "Gemini embedding runner",
+    "config.chunkingConfiguration": "Chunking configuration",
+    "config.benchmarkQuestions": "Benchmark questions",
+    "config.questionsHint": "One question per line. Use | to separate question and ground truth.",
+    "config.createExperiment": "Create experiment",
+    "config.cancel": "Cancel",
+    "config.systemStatus": "System status",
+    "config.lifecycle": "Benchmark lifecycle",
+    "config.stepPending": "Create run matrix from model x strategy.",
+    "config.stepRunning": "Re-chunk, embed, retrieve, generate answer.",
+    "config.stepScored": "Save RAGAS metrics to database.",
+    "documents.shellTitle": "Document Repository",
+    "documents.manageTitle": "Document repository management",
+    "documents.manageSubtitle": "Upload learning materials, extract content, and index them so the chatbot can answer with sources.",
+    "documents.uploadKicker": "Upload",
+    "documents.dropTitle": "Drop documents here",
+    "documents.chooseFile": "Choose a file or drag it here",
+    "documents.urlRenderHint": "SPA/React/Vue pages will be rendered before DOM extraction.",
+    "documents.storage": "Storage",
+    "documents.uploadedSize": "Uploaded size",
+    "documents.totalUploaded": "Total uploaded",
+    "documents.documentList": "Document list",
+    "documents.showing": "Showing",
+    "documents.fileName": "File name",
+    "documents.status": "Status",
+    "documents.uploadDate": "Upload date",
+    "documents.indexedStatus": "Indexed",
+    "documents.emptyTitle": "No documents yet.",
+    "documents.emptyHint": "Upload a syllabus or lecture URL to start source-grounded Q&A.",
     "assistant.open": "Open chat page",
     "assistant.hidden": "Hi, I am your chatbot assistant for finding information faster.",
     "documents.title": "Course document repository",
@@ -42,6 +127,9 @@ const translations = {
     "chat.mainAria": "Document chat",
     "chat.title": "Document chat",
     "chat.subtitle": "Ask questions based on indexed documents. Questions outside the document scope will be marked as insufficient data.",
+    "chat.headerKicker": "Course assistant",
+    "chat.headerTitle": "Introduction to AI",
+    "chat.headerSubtitle": "Ask questions from indexed documents. If the data is insufficient, the chatbot must report missing sources instead of guessing.",
     "chat.currentSession": "Current session",
     "chat.emptyTitle": "Start with a specific question",
     "chat.emptyText": "Choose a suggestion below or type your question. If the documents do not contain enough data, the chatbot will say so instead of guessing.",
@@ -68,6 +156,91 @@ const translations = {
     "nav.logout": "\u0110\u0103ng xu\u1ea5t",
     "nav.login": "\u0110\u0103ng nh\u1eadp",
     "nav.register": "T\u1ea1o t\u00e0i kho\u1ea3n",
+    "shell.portal": "C\u1ed5ng nghi\u00ean c\u1ee9u",
+    "shell.dashboard": "Dashboard nghi\u00ean c\u1ee9u",
+    "shell.chatbot": "Chatbot",
+    "shell.documents": "Kho t\u00e0i li\u1ec7u",
+    "shell.config": "C\u1ea5u h\u00ecnh th\u1ef1c nghi\u1ec7m",
+    "shell.newResearchProject": "D\u1ef1 \u00e1n nghi\u00ean c\u1ee9u m\u1edbi",
+    "shell.help": "Tr\u1ee3 gi\u00fap",
+    "shell.search": "T\u00ecm ki\u1ebfm trong h\u1ec7 th\u1ed1ng...",
+    "shell.notifications": "Th\u00f4ng b\u00e1o",
+    "shell.history": "L\u1ecbch s\u1eed",
+    "research.shellTitle": "EdTech AI Research",
+    "research.heroKicker": "Nghi\u00ean c\u1ee9u \u0111ang ho\u1ea1t \u0111\u1ed9ng",
+    "research.heroTitle": "Ph\u00e2n t\u00edch hi\u1ec7u n\u0103ng RAG trong gi\u00e1o d\u1ee5c",
+    "research.heroText": "Theo d\u00f5i benchmark theo c\u1ea5u h\u00ecnh Gemini embedding v\u00e0 chunking strategy tr\u00ean d\u1eef li\u1ec7u th\u1eadt c\u1ee7a h\u1ec7 th\u1ed1ng.",
+    "research.experiments": "Th\u1ef1c nghi\u1ec7m",
+    "research.runs": "Runs",
+    "research.avgRagas": "Avg RAGAS",
+    "research.dashboard": "RBL Dashboard",
+    "research.ragasByExperiment": "RAGAS theo th\u1ef1c nghi\u1ec7m",
+    "research.create": "T\u1ea1o m\u1edbi",
+    "research.noExperimentTitle": "Ch\u01b0a c\u00f3 th\u1ef1c nghi\u1ec7m",
+    "research.noExperimentText": "T\u1ea1o experiment \u0111\u1ea7u ti\u00ean \u0111\u1ec3 b\u1eaft \u0111\u1ea7u benchmark RAG.",
+    "research.bestPerformer": "C\u1ea5u h\u00ecnh t\u1ed1t nh\u1ea5t",
+    "research.noScore": "Ch\u01b0a c\u00f3 \u0111i\u1ec3m",
+    "research.runBenchmarkHint": "Ch\u1ea1y benchmark \u0111\u1ec3 c\u00f3 d\u1eef li\u1ec7u so s\u00e1nh.",
+    "research.detailsLabel": "Chi ti\u1ebft th\u1ef1c nghi\u1ec7m",
+    "research.experimentList": "Danh s\u00e1ch RBL experiments",
+    "research.benchmarkQuestionsUnit": "c\u00e2u h\u1ecfi benchmark",
+    "research.noData": "Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u.",
+    "research.createFirstHint": "Nh\u1ea5n T\u1ea1o m\u1edbi \u0111\u1ec3 c\u1ea5u h\u00ecnh embedding model v\u00e0 chunking strategy.",
+    "research.open": "M\u1edf",
+    "detail.shellTitle": "Chi ti\u1ebft th\u1ef1c nghi\u1ec7m RBL",
+    "detail.back": "Quay l\u1ea1i danh s\u00e1ch th\u1ef1c nghi\u1ec7m",
+    "detail.downloadPdf": "T\u1ea3i PDF",
+    "detail.runBenchmark": "Ch\u1ea1y benchmark",
+    "detail.status": "Tr\u1ea1ng th\u00e1i",
+    "detail.averageRagas": "RAGAS trung b\u00ecnh",
+    "detail.bestRun": "Run t\u1ed1t nh\u1ea5t",
+    "detail.completed": "Ho\u00e0n t\u1ea5t",
+    "detail.ragVsFt": "RAG vs Fine-tuned",
+    "detail.averageByRunGroup": "\u0110i\u1ec3m trung b\u00ecnh theo nh\u00f3m run",
+    "detail.noScoredRun": "Ch\u01b0a c\u00f3 run \u0111\u01b0\u1ee3c ch\u1ea5m",
+    "detail.runForBaseline": "Ch\u1ea1y benchmark \u0111\u1ec3 c\u00f3 d\u1eef li\u1ec7u so s\u00e1nh.",
+    "detail.runs": "Runs",
+    "detail.runResults": "K\u1ebft qu\u1ea3 t\u1eebng c\u1ea5u h\u00ecnh",
+    "detail.testQuestions": "C\u00e2u h\u1ecfi test",
+    "detail.evaluationQuestions": "B\u1ed9 c\u00e2u h\u1ecfi \u0111\u00e1nh gi\u00e1",
+    "config.shellTitle": "C\u1ea5u h\u00ecnh th\u1ef1c nghi\u1ec7m",
+    "config.back": "Quay l\u1ea1i dashboard",
+    "config.title": "Tr\u00ecnh c\u1ea5u h\u00ecnh th\u1ef1c nghi\u1ec7m",
+    "config.subtitle": "Thi\u1ebft l\u1eadp ma tr\u1eadn benchmark RAG theo Gemini embedding v\u00e0 nhi\u1ec1u chunking strategy.",
+    "config.sessionParams": "Th\u00f4ng s\u1ed1 phi\u00ean m\u1edbi",
+    "config.experimentName": "T\u00ean th\u1ef1c nghi\u1ec7m",
+    "config.subjectFilter": "B\u1ed9 l\u1ecdc m\u00f4n h\u1ecdc",
+    "config.embeddingModels": "M\u00f4 h\u00ecnh Embedding",
+    "config.chunkingStrategies": "Chi\u1ebfn l\u01b0\u1ee3c chunking",
+    "config.embeddingRunner": "B\u1ed9 ch\u1ea1y Gemini embedding",
+    "config.chunkingConfiguration": "C\u1ea5u h\u00ecnh chunking",
+    "config.benchmarkQuestions": "C\u00e2u h\u1ecfi benchmark",
+    "config.questionsHint": "M\u1ed7i d\u00f2ng m\u1ed9t c\u00e2u h\u1ecfi. D\u00f9ng d\u1ea5u | \u0111\u1ec3 t\u00e1ch c\u00e2u h\u1ecfi v\u00e0 ground truth.",
+    "config.createExperiment": "T\u1ea1o th\u1ef1c nghi\u1ec7m",
+    "config.cancel": "H\u1ee7y",
+    "config.systemStatus": "Tr\u1ea1ng th\u00e1i h\u1ec7 th\u1ed1ng",
+    "config.lifecycle": "V\u00f2ng \u0111\u1eddi benchmark",
+    "config.stepPending": "T\u1ea1o run matrix t\u1eeb model x strategy.",
+    "config.stepRunning": "Re-chunk, embed, retrieve, generate answer.",
+    "config.stepScored": "L\u01b0u RAGAS metrics v\u00e0o database.",
+    "documents.shellTitle": "Kho t\u00e0i li\u1ec7u",
+    "documents.manageTitle": "Qu\u1ea3n l\u00fd kho t\u00e0i li\u1ec7u",
+    "documents.manageSubtitle": "Upload t\u00e0i li\u1ec7u h\u1ecdc t\u1eadp, tr\u00edch xu\u1ea5t n\u1ed9i dung v\u00e0 index \u0111\u1ec3 chatbot tr\u1ea3 l\u1eddi c\u00f3 ngu\u1ed3n.",
+    "documents.uploadKicker": "Upload",
+    "documents.dropTitle": "K\u00e9o th\u1ea3 t\u00e0i li\u1ec7u v\u00e0o \u0111\u00e2y",
+    "documents.chooseFile": "Ch\u1ecdn t\u1ec7p ho\u1eb7c k\u00e9o th\u1ea3 v\u00e0o \u0111\u00e2y",
+    "documents.urlRenderHint": "Trang SPA/React/Vue s\u1ebd \u0111\u01b0\u1ee3c render tr\u01b0\u1edbc khi tr\u00edch xu\u1ea5t DOM.",
+    "documents.storage": "L\u01b0u tr\u1eef",
+    "documents.uploadedSize": "Dung l\u01b0\u1ee3ng \u0111\u00e3 upload",
+    "documents.totalUploaded": "T\u1ed5ng \u0111\u00e3 upload",
+    "documents.documentList": "Danh s\u00e1ch t\u00e0i li\u1ec7u",
+    "documents.showing": "Hi\u1ec3n th\u1ecb",
+    "documents.fileName": "T\u00ean file",
+    "documents.status": "Tr\u1ea1ng th\u00e1i",
+    "documents.uploadDate": "Ng\u00e0y upload",
+    "documents.indexedStatus": "\u0110\u00e3 Index",
+    "documents.emptyTitle": "Ch\u01b0a c\u00f3 t\u00e0i li\u1ec7u.",
+    "documents.emptyHint": "Upload gi\u00e1o tr\u00ecnh ho\u1eb7c URL b\u00e0i gi\u1ea3ng \u0111\u1ec3 b\u1eaft \u0111\u1ea7u h\u1ecfi \u0111\u00e1p theo ngu\u1ed3n.",
     "assistant.open": "M\u1edf trang chat",
     "assistant.hidden": "Ch\u00e0o b\u1ea1n, m\u00ecnh l\u00e0 chatbot h\u1ed7 tr\u1ee3 t\u00ecm ki\u1ebfm th\u00f4ng tin nhanh h\u01a1n.",
     "documents.title": "Kho t\u00e0i li\u1ec7u m\u00f4n h\u1ecdc",
@@ -105,6 +278,9 @@ const translations = {
     "chat.mainAria": "Chat theo t\u00e0i li\u1ec7u",
     "chat.title": "Chat t\u00e0i li\u1ec7u",
     "chat.subtitle": "H\u1ecfi theo kho t\u00e0i li\u1ec7u \u0111\u00e3 index. C\u00e2u h\u1ecfi ngo\u00e0i ph\u1ea1m vi t\u00e0i li\u1ec7u s\u1ebd \u0111\u01b0\u1ee3c b\u00e1o kh\u00f4ng \u0111\u1ee7 d\u1eef li\u1ec7u.",
+    "chat.headerKicker": "Tr\u1ee3 l\u00fd m\u00f4n h\u1ecdc",
+    "chat.headerTitle": "Nh\u1eadp m\u00f4n AI",
+    "chat.headerSubtitle": "H\u1ecfi \u0111\u00e1p d\u1ef1a tr\u00ean t\u00e0i li\u1ec7u \u0111\u00e3 index. N\u1ebfu d\u1eef li\u1ec7u kh\u00f4ng \u0111\u1ee7, chatbot ph\u1ea3i b\u00e1o thi\u1ebfu ngu\u1ed3n thay v\u00ec \u0111o\u00e1n.",
     "chat.currentSession": "Phi\u00ean hi\u1ec7n t\u1ea1i",
     "chat.emptyTitle": "B\u1eaft \u0111\u1ea7u b\u1eb1ng m\u1ed9t c\u00e2u h\u1ecfi c\u1ee5 th\u1ec3",
     "chat.emptyText": "Ch\u1ecdn g\u1ee3i \u00fd b\u00ean d\u01b0\u1edbi ho\u1eb7c nh\u1eadp c\u00e2u h\u1ecfi c\u1ee7a b\u1ea1n. N\u1ebfu t\u00e0i li\u1ec7u kh\u00f4ng \u0111\u1ee7 d\u1eef li\u1ec7u, chatbot s\u1ebd b\u00e1o r\u00f5 thay v\u00ec \u0111o\u00e1n.",
@@ -205,17 +381,46 @@ const relatedQuestionPool = [
 ];
 
 function getLanguage() {
-  return localStorage.getItem(languageKey) === "vi" ? "vi" : "en";
+  return localStorage.getItem(languageKey) === "en" ? "en" : "vi";
 }
 
 function t(key) {
   return translations[getLanguage()][key] || translations.en[key] || key;
 }
 
-function setLanguage(language) {
+async function ensureVietnameseFontReady() {
+  if (!document.fonts?.load) {
+    return;
+  }
+
+  await Promise.all([
+    document.fonts.load('400 16px "Be Vietnam Pro"'),
+    document.fonts.load('600 16px "Be Vietnam Pro"'),
+    document.fonts.load('800 16px "Be Vietnam Pro"')
+  ]);
+}
+
+async function setLanguage(language) {
   const nextLanguage = language === "vi" ? "vi" : "en";
-  localStorage.setItem(languageKey, nextLanguage);
-  applyLanguage();
+  if (getLanguage() === nextLanguage) {
+    return;
+  }
+
+  try {
+    if (nextLanguage === "vi") {
+      await ensureVietnameseFontReady();
+    }
+
+    localStorage.setItem(languageKey, nextLanguage);
+    document.documentElement.classList.add("is-language-changing");
+    applyLanguage();
+  } finally {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.documentElement.classList.remove("is-language-changing");
+      });
+    });
+  }
 }
 
 function applyLanguage() {
@@ -258,6 +463,8 @@ function applyLanguage() {
   updateSuggestionButtons();
   updateRelatedQuestionButtons();
   updateDropzoneDefaultText();
+  document.documentElement.classList.remove("i18n-pending");
+  document.documentElement.classList.add("i18n-ready");
 }
 
 function updateSuggestionButtons() {
