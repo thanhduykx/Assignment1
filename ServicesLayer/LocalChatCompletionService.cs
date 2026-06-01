@@ -110,6 +110,10 @@ public sealed class OllamaChatCompletionService : ILocalChatCompletionService
 
             return string.IsNullOrWhiteSpace(result?.Message?.Content) ? null : result.Message.Content.Trim();
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
         catch (OperationCanceledException)
         {
             throw;
@@ -361,6 +365,10 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
             return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
         catch (OperationCanceledException)
         {
