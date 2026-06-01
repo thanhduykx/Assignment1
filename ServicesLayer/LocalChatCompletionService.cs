@@ -420,18 +420,19 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         try
         {
             var payload = JsonSerializer.Deserialize<GeminiRerankResponse>(json, JsonOptions);
-            return payload?.Selected?
-                       .Where(item => item.Candidate >= 1 && item.Candidate <= candidateCount)
-                       .Select(item => new ChatChunkRerankResult(
-                           item.Candidate,
-                           Math.Clamp(item.Score, 0, 1),
-                           item.Reason ?? string.Empty))
-                       .GroupBy(item => item.CandidateNumber)
-                       .Select(group => group.OrderByDescending(item => item.Score).First())
-                       .OrderByDescending(item => item.Score)
-                       .Take(6)
-                       .ToList()
-                   ?? Array.Empty<ChatChunkRerankResult>();
+            return payload?.Selected is null
+                ? Array.Empty<ChatChunkRerankResult>()
+                : payload.Selected
+                    .Where(item => item.Candidate >= 1 && item.Candidate <= candidateCount)
+                    .Select(item => new ChatChunkRerankResult(
+                        item.Candidate,
+                        Math.Clamp(item.Score, 0, 1),
+                        item.Reason ?? string.Empty))
+                    .GroupBy(item => item.CandidateNumber)
+                    .Select(group => group.OrderByDescending(item => item.Score).First())
+                    .OrderByDescending(item => item.Score)
+                    .Take(6)
+                    .ToList();
         }
         catch (JsonException)
         {
