@@ -126,7 +126,7 @@ public sealed class SqlResearchRepository : IResearchRepository
         var embeddings = await context.ResearchEmbeddingModels
             .Where(item => request.EmbeddingModelIds.Contains(item.Id)
                 && item.IsActive
-                && item.Provider == "Gemini")
+                && (item.Provider == "Gemini" || item.Provider == "OpenAI"))
             .ToListAsync(cancellationToken);
         var strategies = await context.ResearchChunkingStrategies
             .Where(item => request.ChunkingStrategyIds.Contains(item.Id) && item.IsActive)
@@ -134,7 +134,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
         if (embeddings.Count == 0 || strategies.Count == 0)
         {
-            throw new InvalidOperationException("Choose the active Gemini embedding model and at least one active chunking strategy.");
+            throw new InvalidOperationException("Choose at least one active supported embedding model and one active chunking strategy.");
         }
 
         var experiment = new KnowledgeSqlResearchExperiment

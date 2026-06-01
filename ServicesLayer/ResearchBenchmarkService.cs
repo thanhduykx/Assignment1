@@ -26,6 +26,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 {
     private const int MaxGeminiRetryAttempts = 6;
     private const int GeminiEmbeddingBatchSize = 8;
+    private const int OpenAiEmbeddingBatchSize = 64;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -37,19 +38,22 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private readonly ILocalChatCompletionService _chatCompletionService;
     private readonly HttpClient _httpClient;
     private readonly GeminiApiOptions _geminiOptions;
+    private readonly OpenAiApiOptions _openAiOptions;
 
     public ResearchBenchmarkService(
         IResearchRepository researchRepository,
         IKnowledgeRepository knowledgeRepository,
         ILocalChatCompletionService chatCompletionService,
         HttpClient httpClient,
-        GeminiApiOptions geminiOptions)
+        GeminiApiOptions geminiOptions,
+        OpenAiApiOptions openAiOptions)
     {
         _researchRepository = researchRepository;
         _knowledgeRepository = knowledgeRepository;
         _chatCompletionService = chatCompletionService;
         _httpClient = httpClient;
         _geminiOptions = geminiOptions;
+        _openAiOptions = openAiOptions;
     }
 
     public async Task<ResearchCatalog> GetCatalogAsync(CancellationToken cancellationToken = default)
@@ -155,6 +159,10 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             run,
             experiment.Questions.Select(question => question.Question).ToList(),
             cancellationToken);
+        var groundTruthEmbeddings = await EmbedBatchAsync(
+            run,
+            experiment.Questions.Select(question => question.GroundTruth).ToList(),
+            cancellationToken);
 
         var results = new List<ResearchBenchmarkResult>();
         for (var questionIndex = 0; questionIndex < experiment.Questions.Count; questionIndex++)
@@ -162,32 +170,27 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             var question = experiment.Questions[questionIndex];
             var stopwatch = Stopwatch.StartNew();
             var queryEmbedding = queryEmbeddings[questionIndex];
-            var retrieved = chunks
-                .Select(chunk => new
-                {
-                    Chunk = chunk,
-                    Score = CosineSimilarity(queryEmbedding, chunk.Embedding)
-                })
-                .OrderByDescending(item => item.Score)
-                .Take(5)
-                .ToList();
+            var retrievedChunks = RetrieveRelevantChunks(chunks, queryEmbedding, ExtractTerms(question.Question));
 
-            var answer = await _chatCompletionService.GenerateAnswerAsync(
-                question.Question,
-                experiment.Subject,
-                Array.Empty<ChatMessage>(),
-                retrieved.Select(item => item.Chunk).ToList(),
-                "vi",
-                cancellationToken) ?? "Không tạo được câu trả lời từ RAG.";
+            var answer = retrievedChunks.Count == 0
+                ? "Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này."
+                : await _chatCompletionService.GenerateAnswerAsync(
+                    question.Question,
+                    experiment.Subject,
+                    Array.Empty<ChatMessage>(),
+                    retrievedChunks,
+                    "vi",
+                    cancellationToken) ?? "Không tạo được câu trả lời từ RAG.";
             stopwatch.Stop();
 
             var answerEmbedding = await EmbedAsync(run, answer, cancellationToken);
             var result = Score(
                 question,
                 answer,
-                retrieved.Select(item => item.Chunk).ToList(),
+                retrievedChunks,
                 stopwatch.Elapsed.TotalMilliseconds,
                 answerEmbedding,
+                groundTruthEmbeddings[questionIndex],
                 queryEmbedding);
             results.Add(result);
             await _researchRepository.SaveBenchmarkResultsAsync(run.Id, results, cancellationToken);
@@ -251,7 +254,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             return await EmbedWithGeminiBatchAsync(run, texts, cancellationToken);
         }
 
-        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Only Gemini embeddings are enabled.");
+        if (run.EmbeddingProvider?.Equals("OpenAI", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return await EmbedWithOpenAiBatchAsync(run, texts, cancellationToken);
+        }
+
+        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, OpenAI.");
     }
 
     private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
@@ -368,6 +376,136 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                     .ToList()),
             options: JsonOptions);
         return request;
+    }
+
+    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedWithOpenAiBatchAsync(
+        ResearchRunSummary run,
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken)
+    {
+        if (!_openAiOptions.Enabled || string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
+        {
+            throw new InvalidOperationException("OpenAI API key is required for text-embedding-3-small RBL runs. Set OPENAI_API_KEY or user-secrets OpenAI:ApiKey.");
+        }
+
+        var model = run.EmbeddingModelIdValue ?? "text-embedding-3-small";
+        var dimensions = ReadIntConfigValue(run.EmbeddingConfigJson, "dimensions", 0);
+        var results = new List<Dictionary<int, double>>(texts.Count);
+
+        foreach (var batch in texts.Chunk(OpenAiEmbeddingBatchSize))
+        {
+            using var response = await SendOpenAiWithRetryAsync(
+                () => CreateOpenAiEmbeddingRequest(model, dimensions, batch),
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw BuildOpenAiRuntimeException(run.EmbeddingModelName, response);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<OpenAiEmbeddingResponse>(JsonOptions, cancellationToken);
+            if (payload?.Data is not { Count: > 0 } data || data.Count != batch.Length)
+            {
+                throw new InvalidOperationException($"{run.EmbeddingModelName} returned an invalid OpenAI embedding response.");
+            }
+
+            results.AddRange(data
+                .OrderBy(item => item.Index)
+                .Select(item =>
+                {
+                    if (item.Embedding is not { Count: > 0 } values)
+                    {
+                        throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty OpenAI embedding.");
+                    }
+
+                    return NormalizeDenseEmbedding(values);
+                }));
+
+            if (results.Count < texts.Count)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            }
+        }
+
+        return results;
+    }
+
+    private HttpRequestMessage CreateOpenAiEmbeddingRequest(
+        string model,
+        int dimensions,
+        IReadOnlyList<string> batch)
+    {
+        var endpoint = BuildOpenAiEndpoint("v1/embeddings");
+        var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
+        request.Content = JsonContent.Create(
+            new OpenAiEmbeddingRequest(
+                model,
+                batch,
+                dimensions > 0 ? dimensions : null),
+            options: JsonOptions);
+        return request;
+    }
+
+    private Uri BuildOpenAiEndpoint(string relativePath)
+    {
+        var baseAddress = string.IsNullOrWhiteSpace(_openAiOptions.BaseAddress)
+            ? "https://api.openai.com/"
+            : _openAiOptions.BaseAddress.Trim();
+        if (!baseAddress.EndsWith("/", StringComparison.Ordinal))
+        {
+            baseAddress += "/";
+        }
+
+        return new Uri(new Uri(baseAddress), relativePath);
+    }
+
+    private async Task<HttpResponseMessage> SendOpenAiWithRetryAsync(
+        Func<HttpRequestMessage> createRequest,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaxGeminiRetryAttempts; attempt++)
+        {
+            HttpResponseMessage? response = null;
+            try
+            {
+                response = await _httpClient.SendAsync(createRequest(), cancellationToken);
+                if (response.IsSuccessStatusCode || !IsRetryable(response) || attempt == MaxGeminiRetryAttempts)
+                {
+                    return response;
+                }
+
+                var delay = GetRetryDelay(response, attempt);
+                response.Dispose();
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch
+            {
+                response?.Dispose();
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("OpenAI embedding request could not be sent.");
+    }
+
+    private static InvalidOperationException BuildOpenAiRuntimeException(
+        string? modelName,
+        HttpResponseMessage response)
+    {
+        var name = string.IsNullOrWhiteSpace(modelName) ? "OpenAI embedding" : modelName;
+        return (int)response.StatusCode == 429
+            ? new InvalidOperationException($"{name} đang bị giới hạn quota/rate limit OpenAI (HTTP 429). Hãy chờ rồi chạy lại, hoặc giảm số câu hỏi/số cấu hình benchmark.")
+            : new InvalidOperationException($"{name} OpenAI embedding runtime returned HTTP {(int)response.StatusCode}.");
     }
 
     private async Task<HttpResponseMessage> SendGeminiWithRetryAsync(
@@ -570,13 +708,44 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return chunks;
     }
 
+    private static IReadOnlyList<DocumentChunk> RetrieveRelevantChunks(
+        IReadOnlyList<DocumentChunk> chunks,
+        IReadOnlyDictionary<int, double> queryEmbedding,
+        IReadOnlySet<string> queryTerms)
+    {
+        var minimumSharedTerms = queryTerms.Count >= 4 ? 2 : 1;
+        return chunks
+            .Select(chunk =>
+            {
+                var vectorScore = CosineSimilarity(queryEmbedding, chunk.Embedding);
+                var sharedTerms = CountSharedTerms(queryTerms, chunk.Text);
+                var metadataTerms = CountSharedTerms(queryTerms, $"{chunk.FileName} {chunk.Subject} {chunk.Chapter}");
+                var lexicalCoverage = queryTerms.Count == 0 ? 0 : sharedTerms / (double)queryTerms.Count;
+                var score = Clamp01((NormalizeCosine(vectorScore) * 0.62) + (lexicalCoverage * 0.30) + (metadataTerms > 0 ? 0.08 : 0));
+                return new
+                {
+                    Chunk = chunk,
+                    Score = score,
+                    SharedTerms = sharedTerms,
+                    MetadataTerms = metadataTerms
+                };
+            })
+            .Where(item => queryTerms.Count == 0 || item.SharedTerms >= minimumSharedTerms || item.Score >= 0.68)
+            .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.SharedTerms)
+            .ThenByDescending(item => item.MetadataTerms)
+            .Take(5)
+            .Select(item => item.Chunk)
+            .ToList();
+    }
+
     private static ResearchBenchmarkResult Score(
         ResearchTestQuestion question,
         string answer,
         IReadOnlyList<DocumentChunk> retrievedChunks,
         double latencyMs)
     {
-        return Score(question, answer, retrievedChunks, latencyMs, null, null);
+        return Score(question, answer, retrievedChunks, latencyMs, null, null, null);
     }
 
     private static ResearchBenchmarkResult Score(
@@ -585,6 +754,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         IReadOnlyList<DocumentChunk> retrievedChunks,
         double latencyMs,
         IReadOnlyDictionary<int, double>? answerEmbedding,
+        IReadOnlyDictionary<int, double>? groundTruthEmbedding,
         IReadOnlyDictionary<int, double>? questionEmbedding)
     {
         var groundTruthTerms = ExtractTerms(question.GroundTruth);
@@ -593,10 +763,13 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
         var answerGroundTruthOverlap = BalancedOverlap(answerTerms, groundTruthTerms);
         var answerQuestionOverlap = BalancedOverlap(answerTerms, ExtractTerms(question.Question));
-        var answerSemanticSimilarity = answerEmbedding is not null && questionEmbedding is not null
-            ? NormalizeCosine(CosineSimilarity(answerEmbedding, questionEmbedding))
+        var answerGroundTruthSimilarity = answerEmbedding is not null && groundTruthEmbedding is not null
+            ? NormalizeCosine(CosineSimilarity(answerEmbedding, groundTruthEmbedding))
             : answerGroundTruthOverlap;
-        var answerRelevancy = Clamp01((answerGroundTruthOverlap * 0.55) + (answerSemanticSimilarity * 0.30) + (answerQuestionOverlap * 0.15));
+        var answerQuestionSimilarity = answerEmbedding is not null && questionEmbedding is not null
+            ? NormalizeCosine(CosineSimilarity(answerEmbedding, questionEmbedding))
+            : answerQuestionOverlap;
+        var answerRelevancy = Clamp01((answerGroundTruthOverlap * 0.45) + (answerGroundTruthSimilarity * 0.40) + (answerQuestionSimilarity * 0.15));
 
         var contextRecall = groundTruthTerms.Count == 0 ? 0 : BalancedOverlap(contextTerms, groundTruthTerms);
         var contextPrecision = contextTerms.Count == 0
@@ -665,6 +838,17 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return (leftHit + rightHit) / 2d;
     }
 
+    private static int CountSharedTerms(IReadOnlySet<string> queryTerms, string text)
+    {
+        if (queryTerms.Count == 0 || string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        var sourceTerms = ExtractTerms(text);
+        return queryTerms.Count(queryTerm => sourceTerms.Any(sourceTerm => TermsMatch(queryTerm, sourceTerm)));
+    }
+
     private static bool TermsMatch(string left, string right)
     {
         if (left.Equals(right, StringComparison.OrdinalIgnoreCase))
@@ -714,6 +898,27 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return smaller.Sum(item => larger.TryGetValue(item.Key, out var value) ? item.Value * value : 0);
     }
 
+    private static Dictionary<int, double> NormalizeDenseEmbedding(IReadOnlyList<double> embedding)
+    {
+        var norm = Math.Sqrt(embedding.Sum(value => value * value));
+        var vector = new Dictionary<int, double>(embedding.Count);
+        if (norm == 0)
+        {
+            return vector;
+        }
+
+        for (var index = 0; index < embedding.Count; index++)
+        {
+            var value = embedding[index] / norm;
+            if (Math.Abs(value) > 0)
+            {
+                vector[index] = value;
+            }
+        }
+
+        return vector;
+    }
+
     private static string RemoveDiacritics(string text)
     {
         var normalized = text.Normalize(NormalizationForm.FormD);
@@ -757,6 +962,18 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private sealed record GeminiEmbedding(
         [property: JsonPropertyName("values")] List<double>? Values);
+
+    private sealed record OpenAiEmbeddingRequest(
+        [property: JsonPropertyName("model")] string Model,
+        [property: JsonPropertyName("input")] IReadOnlyList<string> Input,
+        [property: JsonPropertyName("dimensions")] int? Dimensions);
+
+    private sealed record OpenAiEmbeddingResponse(
+        [property: JsonPropertyName("data")] List<OpenAiEmbeddingData>? Data);
+
+    private sealed record OpenAiEmbeddingData(
+        [property: JsonPropertyName("index")] int Index,
+        [property: JsonPropertyName("embedding")] List<double>? Embedding);
 
     private sealed record FineTunedRequest(
         [property: JsonPropertyName("subject")] string Subject,

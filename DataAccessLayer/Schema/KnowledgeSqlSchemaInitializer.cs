@@ -48,15 +48,6 @@ internal static class KnowledgeSqlSchemaInitializer
     {
         var changed = false;
 
-        foreach (var model in context.ResearchEmbeddingModels.Where(item => item.Provider != "Gemini"))
-        {
-            if (model.IsActive)
-            {
-                model.IsActive = false;
-                changed = true;
-            }
-        }
-
         changed |= UpsertEmbeddingModel(
             context,
             name: "gemini-embedding-001",
@@ -80,6 +71,14 @@ internal static class KnowledgeSqlSchemaInitializer
             modelId: "gemini-embedding-001",
             dimensions: 3072,
             configJson: "{\"outputDimensionality\":3072}");
+
+        changed |= UpsertEmbeddingModel(
+            context,
+            name: "text-embedding-3-small",
+            provider: "OpenAI",
+            modelId: "text-embedding-3-small",
+            dimensions: 1536,
+            configJson: "{\"dimensions\":1536}");
 
         changed |= AddChunkingStrategyIfMissing(
             context,

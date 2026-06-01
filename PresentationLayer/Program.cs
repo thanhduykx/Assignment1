@@ -58,6 +58,19 @@ namespace PresentationLayer
                 geminiEmbeddingModel,
                 geminiEmbeddingDimensions,
                 geminiEnabled));
+            var openAiApiKey = builder.Configuration["OpenAI:ApiKey"]
+                ?? builder.Configuration["OPENAI_API_KEY"]
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+                ?? string.Empty;
+            var openAiBaseAddress = builder.Configuration["OpenAI:BaseAddress"]
+                ?? Environment.GetEnvironmentVariable("OPENAI_BASE_ADDRESS")
+                ?? "https://api.openai.com/";
+            var openAiEnabled = !bool.TryParse(builder.Configuration["OpenAI:Enabled"], out var parsedOpenAiEnabled)
+                || parsedOpenAiEnabled;
+            builder.Services.AddSingleton(new ServicesLayer.OpenAiApiOptions(
+                openAiApiKey,
+                openAiBaseAddress,
+                openAiEnabled));
             builder.Services.AddSingleton<DataAccessLayer.IKnowledgeRepository>(_ =>
             {
                 var repository = new DataAccessLayer.Repositories.SqlKnowledgeRepository(

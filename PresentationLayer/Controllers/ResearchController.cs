@@ -68,7 +68,7 @@ public sealed class ResearchController : Controller
 
         if (model.EmbeddingModelIds.Count == 0)
         {
-            ModelState.AddModelError(nameof(model.EmbeddingModelIds), "Choose Gemini embedding model before creating an experiment.");
+            ModelState.AddModelError(nameof(model.EmbeddingModelIds), "Choose at least one embedding model before creating an experiment.");
         }
 
         if (model.ChunkingStrategyIds.Count == 0)

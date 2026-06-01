@@ -17,6 +17,7 @@ public sealed class RagChatService : IRagChatService
     private const int TopK = 5;
     private const int MaxBatchQuestions = 50;
     private const double MinimumScore = 0.7;
+    private const double MinimumAnswerGroundingRatio = 0.42;
     private const string OutOfScopeAnswer = "Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này.";
 
     private static readonly Regex TokenRegex = new(@"[\p{L}\p{N}]+", RegexOptions.Compiled);
@@ -69,6 +70,14 @@ public sealed class RagChatService : IRagChatService
         "who", "what", "where", "when", "why", "how", "please", "tell", "about",
         "va", "la", "cua", "cho", "trong", "khi", "voi", "mot", "cac", "nhung", "duoc", "tu", "theo", "nay", "do", "thi", "o",
         "ai", "gi", "nao", "hay", "cho", "biet", "ve", "khong", "da", "bao", "nhieu", "may", "hoi", "can", "noi", "noi dung"
+    };
+
+    private static readonly HashSet<string> AnswerScaffoldTerms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "answer", "based", "below", "citation", "cited", "course", "data", "document", "documents", "found", "from", "information",
+        "student", "source", "sources",
+        "ban", "cau", "day", "du", "duoi", "hoi", "lieu", "minh", "nguon", "noi", "sau", "sinh", "tai", "theo", "thong", "tin",
+        "toi", "tra", "trich", "vien"
     };
 
     private readonly IKnowledgeRepository _repository;
@@ -257,9 +266,9 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, correctionPrefix + finalExamAnswer, new[] { finalExamCitation });
         }
 
-        var minimumSharedTerms = queryTerms.Count >= 4 ? 2 : 1;
         var contentTerms = RemoveCourseScopeTerms(queryTerms);
         var needsContentEvidence = contentTerms.Count > 0;
+        var minimumSharedTerms = contentTerms.Count >= 4 ? 2 : 1;
         var queryEmbedding = await _embeddingService.EmbedAsync(resolvedQuestion, cancellationToken);
 
         var matches = scopedChunks
@@ -268,6 +277,7 @@ public sealed class RagChatService : IRagChatService
                 Chunk = chunk,
                 VectorScore = _embeddingService.CosineSimilarity(queryEmbedding, chunk.Embedding),
                 TextSharedTerms = CountSharedTerms(queryTerms, chunk.Text),
+                ContentSharedTerms = CountSharedTerms(contentTerms, chunk.Text),
                 MetadataSharedTerms = CountSharedTerms(queryTerms, BuildChunkMetadataText(chunk))
             })
             .Select(item => new
@@ -277,17 +287,21 @@ public sealed class RagChatService : IRagChatService
                     item.VectorScore,
                     item.TextSharedTerms,
                     item.MetadataSharedTerms,
-                    queryTerms.Count),
+                    item.ContentSharedTerms,
+                    queryTerms.Count,
+                    contentTerms.Count),
                 item.TextSharedTerms,
+                item.ContentSharedTerms,
                 SharedTerms = item.TextSharedTerms + item.MetadataSharedTerms,
                 item.MetadataSharedTerms
             })
             .Where(item => item.Score >= MinimumScore
-                           && item.SharedTerms >= minimumSharedTerms
-                           && (!needsContentEvidence || item.TextSharedTerms > 0))
+                           && item.TextSharedTerms >= minimumSharedTerms
+                           && (!needsContentEvidence || item.ContentSharedTerms > 0))
             .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.ContentSharedTerms)
+            .ThenByDescending(item => item.TextSharedTerms)
             .ThenByDescending(item => item.MetadataSharedTerms)
-            .ThenByDescending(item => item.SharedTerms)
             .Take(TopK)
             .ToList();
 
@@ -322,19 +336,22 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
+        var contextText = string.Join("\n\n", matchedChunks.Select(chunk => chunk.Text));
+        if (!IsAnswerGrounded(answer, contextText, queryTerms))
+        {
+            answer = BuildGroundedAnswer(queryTerms, matchedChunks, responseLanguage);
+            if (IsInsufficientDataAnswer(answer))
+            {
+                return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
+            }
+        }
+
         return new SingleQuestionAnswer(question, correctionPrefix + answer, citations);
     }
 
     private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(CancellationToken cancellationToken)
     {
-        var allChunks = await _repository.GetChunksAsync(cancellationToken);
-        if (allChunks.Count == 0)
-        {
-            return Array.Empty<DocumentChunk>();
-        }
-
-        var flmChunks = allChunks.Where(IsFlmChunk).ToList();
-        return flmChunks.Count > 0 ? flmChunks : allChunks;
+        return await _repository.GetChunksAsync(cancellationToken);
     }
 
     private static IReadOnlyList<string> SplitQuestionBatch(string input)
@@ -454,14 +471,6 @@ public sealed class RagChatService : IRagChatService
 
         var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken);
         return new ChatAnswer(answer, citations, session.Messages);
-    }
-
-    private static bool IsFlmChunk(DocumentChunk chunk)
-    {
-        return chunk.FileName.StartsWith("FLM-", StringComparison.OrdinalIgnoreCase)
-               || chunk.FileName.Contains("Syllabus-11835", StringComparison.OrdinalIgnoreCase)
-               || chunk.Subject.Contains("DBA103", StringComparison.OrdinalIgnoreCase)
-               || chunk.Chapter.Contains("Syllabus 11835", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryBuildCreditAnswer(
@@ -1326,6 +1335,53 @@ public sealed class RagChatService : IRagChatService
                || normalized.Contains("do not have enough data", StringComparison.Ordinal);
     }
 
+    private static bool IsAnswerGrounded(
+        string answer,
+        string contextText,
+        IReadOnlySet<string> questionTerms)
+    {
+        if (string.IsNullOrWhiteSpace(answer) || string.IsNullOrWhiteSpace(contextText))
+        {
+            return false;
+        }
+
+        var answerFacts = ExtractGroundingFacts(answer);
+        if (answerFacts.Count > 0)
+        {
+            var contextFacts = ExtractGroundingFacts(contextText);
+            if (answerFacts.Any(fact => !contextFacts.Contains(fact)))
+            {
+                return false;
+            }
+        }
+
+        var answerTerms = ExtractTerms(answer);
+        answerTerms.ExceptWith(questionTerms);
+        answerTerms.RemoveWhere(term => AnswerScaffoldTerms.Contains(term));
+        if (answerTerms.Count == 0)
+        {
+            return true;
+        }
+
+        var contextTerms = ExtractTerms(contextText);
+        if (contextTerms.Count == 0)
+        {
+            return false;
+        }
+
+        var groundedTerms = answerTerms.Count(answerTerm => contextTerms.Any(contextTerm => TermsMatch(answerTerm, contextTerm)));
+        var groundingRatio = groundedTerms / (double)answerTerms.Count;
+        var requiredRatio = answerTerms.Count <= 4 ? 0.5 : MinimumAnswerGroundingRatio;
+        return groundingRatio >= requiredRatio;
+    }
+
+    private static HashSet<string> ExtractGroundingFacts(string text)
+    {
+        return Regex.Matches(NormalizeQuestion(text), @"\b(?:[a-z]{2,}\d{2,}|\d+(?:[.,]\d+)?%?)\b")
+            .Select(match => match.Value.Replace(',', '.'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private static string BuildGroundedAnswer(IReadOnlySet<string> queryTerms, IReadOnlyList<DocumentChunk> chunks, string language)
     {
         var selectedSentences = chunks
@@ -1423,30 +1479,33 @@ public sealed class RagChatService : IRagChatService
         double vectorScore,
         int textSharedTerms,
         int metadataSharedTerms,
-        int queryTermCount)
+        int contentSharedTerms,
+        int queryTermCount,
+        int contentTermCount)
     {
-        if (metadataSharedTerms > 0)
-        {
-            return Math.Max(vectorScore, MinimumScore);
-        }
-
         if (queryTermCount == 0)
         {
             return vectorScore;
         }
 
-        var sharedTerms = textSharedTerms + metadataSharedTerms;
-        var enoughLexicalEvidence = queryTermCount <= 3
-            ? sharedTerms >= 1
-            : sharedTerms >= 2;
+        if (contentTermCount > 0 && contentSharedTerms == 0)
+        {
+            return vectorScore;
+        }
+
+        var enoughLexicalEvidence = contentTermCount == 0
+            ? textSharedTerms > 0
+            : contentSharedTerms >= (contentTermCount >= 4 ? 2 : 1);
 
         if (!enoughLexicalEvidence)
         {
             return vectorScore;
         }
 
-        var lexicalCoverage = sharedTerms / (double)queryTermCount;
-        var lexicalScore = lexicalCoverage >= 0.45 ? MinimumScore : vectorScore;
+        var textCoverage = textSharedTerms / (double)queryTermCount;
+        var contentCoverage = contentTermCount == 0 ? textCoverage : contentSharedTerms / (double)contentTermCount;
+        var metadataBoost = metadataSharedTerms > 0 ? 0.08 : 0;
+        var lexicalScore = (contentCoverage * 0.62) + (textCoverage * 0.30) + metadataBoost;
         return Math.Max(vectorScore, lexicalScore);
     }
 

@@ -1,16 +1,16 @@
 # Setup chạy trên máy mới
 
-Project đã được chỉnh để người khác chạy mà không cần cấu hình environment variable hay user-secrets.
+Project dùng EF Core code-first runtime schema initializer. App tự tạo database/tables khi connection string hợp lệ. API key nên cấu hình bằng user-secrets hoặc environment variable, không đặt trực tiếp vào source.
 
 ## Yêu cầu còn lại
 
 - Cài .NET SDK 9.x.
 - Có SQL Server LocalDB. Máy có Visual Studio thường đã có sẵn `MSSQLLocalDB`.
-- Có mạng Internet nếu dùng Gemini.
+- Có mạng Internet nếu dùng Gemini hoặc OpenAI embedding trong RBL.
 
 Không cần tạo database thủ công. App tự tạo database `EduVietRAG`, tự tạo bảng và tự import dữ liệu từ `PresentationLayer/App_Data/rag-store.json` nếu database đang rỗng.
 
-## Cấu hình nằm trong source
+## Cấu hình runtime
 
 File cấu hình chính:
 
@@ -24,16 +24,19 @@ Database mặc định:
 "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=EduVietRAG;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"
 ```
 
-Gemini API key đặt trực tiếp trong:
+Gemini và OpenAI API key nên đặt bằng user-secrets:
 
-```json
-"Gemini": {
-  "Enabled": true,
-  "ApiKey": "PASTE_GEMINI_API_KEY_HERE"
-}
+```powershell
+dotnet user-secrets set "Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project PresentationLayer\Group07MVC.csproj
+dotnet user-secrets set "OpenAI:ApiKey" "YOUR_OPENAI_API_KEY" --project PresentationLayer\Group07MVC.csproj
 ```
 
-Thay `PASTE_GEMINI_API_KEY_HERE` bằng key thật trước khi gửi project cho người khác. Nếu để placeholder, app vẫn build và mở được, nhưng các chức năng gọi Gemini sẽ lỗi xác thực API.
+Hoặc dùng environment variables:
+
+```powershell
+$env:GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+$env:OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
+```
 
 ## Chạy nhanh
 
@@ -41,6 +44,8 @@ Thay `PASTE_GEMINI_API_KEY_HERE` bằng key thật trước khi gửi project ch
 cd C:\Assignment1
 dotnet restore
 dotnet build Group7_SE1950.sln
+dotnet user-secrets set "Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project PresentationLayer\Group07MVC.csproj
+dotnet user-secrets set "OpenAI:ApiKey" "YOUR_OPENAI_API_KEY" --project PresentationLayer\Group07MVC.csproj
 dotnet run --project PresentationLayer\Group07MVC.csproj --urls http://localhost:5097
 ```
 
