@@ -48,6 +48,7 @@ public sealed class ResearchRunSummary
     public int ChunkOverlap { get; set; }
     public string? FineTunedModelName { get; set; }
     public string? FineTunedEndpoint { get; set; }
+    public string? FineTunedConfigJson { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
@@ -95,6 +96,8 @@ public sealed class CreateResearchExperimentRequest
     public IReadOnlyList<Guid> EmbeddingModelIds { get; set; } = Array.Empty<Guid>();
     public IReadOnlyList<Guid> ChunkingStrategyIds { get; set; } = Array.Empty<Guid>();
     public IReadOnlyList<ResearchQuestionInput> Questions { get; set; } = Array.Empty<ResearchQuestionInput>();
+    public bool UseLocalFineTunedBaseline { get; set; } = true;
+    public IReadOnlyList<ResearchQuestionInput> FineTunedTrainingExamples { get; set; } = Array.Empty<ResearchQuestionInput>();
     public string? FineTunedModelName { get; set; }
     public string? FineTunedEndpoint { get; set; }
 }

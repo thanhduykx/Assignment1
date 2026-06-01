@@ -57,4 +57,27 @@ public sealed class KnowledgeStore
     public List<IndexedDocument> Documents { get; set; } = new();
     public List<DocumentChunk> Chunks { get; set; } = new();
     public List<ChatSession> Sessions { get; set; } = new();
+    public List<CourseSubject> CourseSubjects { get; set; } = new();
+}
+
+public sealed class CourseSubject
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public List<CourseChapter> Chapters { get; set; } = new();
+
+    public string DisplayName => string.IsNullOrWhiteSpace(Code) ? Name : $"{Code} - {Name}";
+}
+
+public sealed class CourseChapter
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SubjectId { get; set; }
+    public string SubjectCode { get; set; } = string.Empty;
+    public string SubjectName { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
 }

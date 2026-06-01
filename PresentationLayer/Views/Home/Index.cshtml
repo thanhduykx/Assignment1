@@ -7,17 +7,21 @@
     ViewData["ShellTitleI18n"] = "documents.shellTitle";
 
     var documents = Model.Documents.OrderByDescending(item => item.UploadedAt).ToList();
+    var courseCatalog = Model.CourseCatalog.OrderBy(item => item.Code).ToList();
     var totalDocuments = documents.Count;
     var totalChunks = documents.Sum(item => item.ChunkCount);
     var totalUploadedBytes = documents.Sum(item => item.FileSizeBytes);
-    var subjectOptions = documents
-        .Select(document => document.Subject)
-        .Where(subject => !string.IsNullOrWhiteSpace(subject))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(subject => subject)
-        .ToList();
-    var chapterOptions = documents
-        .Select(document => document.Chapter)
+    var subjectOptions = courseCatalog.Count > 0
+        ? courseCatalog.Select(subject => subject.DisplayName).ToList()
+        : documents
+            .Select(document => document.Subject)
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(subject => subject)
+            .ToList();
+    var chapterOptions = courseCatalog.SelectMany(subject => subject.Chapters)
+        .Select(chapter => chapter.Title)
+        .Concat(documents.Select(document => document.Chapter))
         .Where(chapter => !string.IsNullOrWhiteSpace(chapter))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(chapter => chapter)
@@ -140,6 +144,127 @@
             </div>
         </aside>
     </div>
+
+    <section class="rbl-panel rbl-document-table-panel">
+        <div class="rbl-panel-header">
+            <div>
+                <span class="rbl-section-label">Course catalog</span>
+                <h2>Quản lý môn học và chương</h2>
+            </div>
+            <span class="rbl-table-meta">@courseCatalog.Count môn học</span>
+        </div>
+
+        <div class="rbl-form-grid">
+            <form asp-action="SaveSubject" method="post" class="rbl-field">
+                @Html.AntiForgeryToken()
+                <span>Thêm môn học</span>
+                <input name="Code" placeholder="DBA103" />
+                <input name="Name" placeholder="Nhạc cụ truyền thống - Đàn Bầu" />
+                <input name="Description" placeholder="Mô tả ngắn" />
+                <button type="submit" class="rbl-small-button">Lưu môn</button>
+            </form>
+
+            <form asp-action="SaveChapter" method="post" class="rbl-field">
+                @Html.AntiForgeryToken()
+                <span>Thêm chương</span>
+                <select name="SubjectId">
+                    @foreach (var subject in courseCatalog)
+                    {
+                        <option value="@subject.Id">@subject.DisplayName</option>
+                    }
+                </select>
+                <input name="Title" placeholder="Syllabus 11835 hoặc Chapter 1" />
+                <input name="SortOrder" type="number" value="1" />
+                <button type="submit" class="rbl-small-button">Lưu chương</button>
+            </form>
+        </div>
+
+        @if (courseCatalog.Count == 0)
+        {
+            <div class="rbl-empty-state compact">
+                <strong>Chưa có danh mục môn học.</strong>
+                <p>Tạo môn học trước, sau đó thêm chương để upload tài liệu theo danh mục chuẩn.</p>
+            </div>
+        }
+        else
+        {
+            <div class="rbl-table-wrap">
+                <table class="rbl-table">
+                    <thead>
+                        <tr>
+                            <th>Mã môn</th>
+                            <th>Tên môn</th>
+                            <th>Mô tả</th>
+                            <th>Chương</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var subject in courseCatalog)
+                    {
+                        <tr>
+                            <td colspan="5">
+                                <form asp-action="SaveSubject" method="post" class="rbl-form-grid">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="Id" value="@subject.Id" />
+                                    <label class="rbl-field">
+                                        <span>Mã môn</span>
+                                        <input name="Code" value="@subject.Code" />
+                                    </label>
+                                    <label class="rbl-field">
+                                        <span>Tên môn</span>
+                                        <input name="Name" value="@subject.Name" />
+                                    </label>
+                                    <label class="rbl-field">
+                                        <span>Mô tả</span>
+                                        <input name="Description" value="@subject.Description" />
+                                    </label>
+                                    <div class="rbl-table-actions">
+                                        <button type="submit" class="rbl-small-button">Cập nhật</button>
+                                    </div>
+                                </form>
+                                <form asp-action="DeleteSubject" method="post" class="rbl-table-actions">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@subject.Id" />
+                                    <button type="submit" class="rbl-small-button">Xóa môn</button>
+                                </form>
+                            </td>
+                        </tr>
+                        @foreach (var chapter in subject.Chapters)
+                        {
+                            <tr>
+                                <td></td>
+                                <td colspan="4">
+                                    <form asp-action="SaveChapter" method="post" class="rbl-form-grid">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="Id" value="@chapter.Id" />
+                                        <input type="hidden" name="SubjectId" value="@subject.Id" />
+                                        <label class="rbl-field">
+                                            <span>Tên chương</span>
+                                            <input name="Title" value="@chapter.Title" />
+                                        </label>
+                                        <label class="rbl-field">
+                                            <span>Thứ tự</span>
+                                            <input name="SortOrder" type="number" value="@chapter.SortOrder" />
+                                        </label>
+                                        <div class="rbl-table-actions">
+                                            <button type="submit" class="rbl-small-button">Cập nhật chương</button>
+                                        </div>
+                                    </form>
+                                    <form asp-action="DeleteChapter" method="post" class="rbl-table-actions">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@chapter.Id" />
+                                        <button type="submit" class="rbl-small-button">Xóa chương</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
 
     <section class="rbl-panel rbl-document-table-panel">
         <div class="rbl-panel-header">

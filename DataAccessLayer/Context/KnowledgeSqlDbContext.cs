@@ -10,6 +10,8 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
     public DbSet<KnowledgeSqlChatSession> Sessions => Set<KnowledgeSqlChatSession>();
     public DbSet<KnowledgeSqlChatMessage> Messages => Set<KnowledgeSqlChatMessage>();
     public DbSet<KnowledgeSqlCitation> Citations => Set<KnowledgeSqlCitation>();
+    public DbSet<KnowledgeSqlCourseSubject> CourseSubjects => Set<KnowledgeSqlCourseSubject>();
+    public DbSet<KnowledgeSqlCourseChapter> CourseChapters => Set<KnowledgeSqlCourseChapter>();
     public DbSet<KnowledgeSqlResearchEmbeddingModel> ResearchEmbeddingModels => Set<KnowledgeSqlResearchEmbeddingModel>();
     public DbSet<KnowledgeSqlResearchChunkingStrategy> ResearchChunkingStrategies => Set<KnowledgeSqlResearchChunkingStrategy>();
     public DbSet<KnowledgeSqlResearchFineTunedModel> ResearchFineTunedModels => Set<KnowledgeSqlResearchFineTunedModel>();
@@ -80,6 +82,28 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.HasOne(item => item.Message)
                 .WithMany(item => item.Citations)
                 .HasForeignKey(item => item.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KnowledgeSqlCourseSubject>(entity =>
+        {
+            entity.ToTable("rag_subjects");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Code).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.Name).HasMaxLength(255).IsRequired();
+            entity.Property(item => item.Description).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(item => item.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<KnowledgeSqlCourseChapter>(entity =>
+        {
+            entity.ToTable("rag_chapters");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Title).HasMaxLength(255).IsRequired();
+            entity.HasIndex(item => new { item.SubjectId, item.Title }).IsUnique();
+            entity.HasOne(item => item.Subject)
+                .WithMany(item => item.Chapters)
+                .HasForeignKey(item => item.SubjectId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

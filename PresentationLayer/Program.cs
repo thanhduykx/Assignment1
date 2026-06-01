@@ -71,6 +71,19 @@ namespace PresentationLayer
                 openAiApiKey,
                 openAiBaseAddress,
                 openAiEnabled));
+            var huggingFaceApiKey = builder.Configuration["HuggingFace:ApiKey"]
+                ?? builder.Configuration["HUGGINGFACE_API_KEY"]
+                ?? Environment.GetEnvironmentVariable("HUGGINGFACE_API_KEY")
+                ?? string.Empty;
+            var huggingFaceBaseAddress = builder.Configuration["HuggingFace:BaseAddress"]
+                ?? Environment.GetEnvironmentVariable("HUGGINGFACE_BASE_ADDRESS")
+                ?? "https://api-inference.huggingface.co/";
+            var huggingFaceEnabled = !bool.TryParse(builder.Configuration["HuggingFace:Enabled"], out var parsedHuggingFaceEnabled)
+                || parsedHuggingFaceEnabled;
+            builder.Services.AddSingleton(new ServicesLayer.HuggingFaceApiOptions(
+                huggingFaceApiKey,
+                huggingFaceBaseAddress,
+                huggingFaceEnabled));
             builder.Services.AddSingleton<DataAccessLayer.IKnowledgeRepository>(_ =>
             {
                 var repository = new DataAccessLayer.Repositories.SqlKnowledgeRepository(

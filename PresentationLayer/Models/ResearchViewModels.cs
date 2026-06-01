@@ -15,6 +15,8 @@ public sealed class ResearchCreateViewModel
     public string QuestionsText { get; set; } = string.Empty;
     public List<Guid> EmbeddingModelIds { get; set; } = new();
     public List<Guid> ChunkingStrategyIds { get; set; } = new();
+    public bool UseLocalFineTunedBaseline { get; set; } = true;
+    public string? FineTunedTrainingText { get; set; }
     public string? FineTunedModelName { get; set; }
     public string? FineTunedEndpoint { get; set; }
     public IReadOnlyList<SelectListItem> EmbeddingModels { get; set; } = Array.Empty<SelectListItem>();

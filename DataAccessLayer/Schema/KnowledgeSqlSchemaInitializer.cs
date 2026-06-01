@@ -10,7 +10,9 @@ internal static class KnowledgeSqlSchemaInitializer
     {
         context.Database.EnsureCreated();
         EnsureDocumentFileSizeColumn(context);
+        EnsureCourseCatalogTables(context);
         BackfillDocumentFileSizes(context);
+        SeedCourseCatalog(context);
         SeedResearchCatalog(context);
     }
 
@@ -40,6 +42,67 @@ internal static class KnowledgeSqlSchemaInitializer
 
         if (changed)
         {
+            context.SaveChanges();
+        }
+    }
+
+    private static void EnsureCourseCatalogTables(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_subjects', 'U') IS NULL
+            BEGIN
+                CREATE TABLE rag_subjects (
+                    Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_rag_subjects PRIMARY KEY,
+                    Code NVARCHAR(32) NOT NULL,
+                    Name NVARCHAR(255) NOT NULL,
+                    Description NVARCHAR(1000) NOT NULL,
+                    CreatedAt DATETIMEOFFSET NOT NULL,
+                    CONSTRAINT UX_rag_subjects_Code UNIQUE (Code)
+                )
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_chapters', 'U') IS NULL
+            BEGIN
+                CREATE TABLE rag_chapters (
+                    Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_rag_chapters PRIMARY KEY,
+                    SubjectId UNIQUEIDENTIFIER NOT NULL,
+                    Title NVARCHAR(255) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    CONSTRAINT FK_rag_chapters_rag_subjects_SubjectId FOREIGN KEY (SubjectId) REFERENCES rag_subjects(Id) ON DELETE CASCADE,
+                    CONSTRAINT UX_rag_chapters_SubjectId_Title UNIQUE (SubjectId, Title)
+                )
+            END
+            """);
+    }
+
+    private static void SeedCourseCatalog(KnowledgeSqlDbContext context)
+    {
+        var subject = context.CourseSubjects.FirstOrDefault(item => item.Code == "DBA103");
+        if (subject is null)
+        {
+            subject = new KnowledgeSqlCourseSubject
+            {
+                Id = Guid.NewGuid(),
+                Code = "DBA103",
+                Name = "Nhạc cụ truyền thống - Đàn Bầu",
+                Description = "Demo subject used for the assignment RAG and RBL benchmark.",
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            context.CourseSubjects.Add(subject);
+            context.SaveChanges();
+        }
+
+        if (!context.CourseChapters.Any(item => item.SubjectId == subject.Id && item.Title == "Syllabus 11835"))
+        {
+            context.CourseChapters.Add(new KnowledgeSqlCourseChapter
+            {
+                Id = Guid.NewGuid(),
+                SubjectId = subject.Id,
+                Title = "Syllabus 11835",
+                SortOrder = 1
+            });
             context.SaveChanges();
         }
     }
@@ -79,6 +142,14 @@ internal static class KnowledgeSqlSchemaInitializer
             modelId: "text-embedding-3-small",
             dimensions: 1536,
             configJson: "{\"dimensions\":1536}");
+
+        changed |= UpsertEmbeddingModel(
+            context,
+            name: "vinai/phobert-base",
+            provider: "HuggingFace",
+            modelId: "vinai/phobert-base",
+            dimensions: 768,
+            configJson: "{\"pooling\":\"mean\",\"normalize\":true,\"task\":\"feature-extraction\"}");
 
         changed |= AddChunkingStrategyIfMissing(
             context,

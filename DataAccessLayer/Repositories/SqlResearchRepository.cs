@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DataAccessLayer.Context;
 using DataAccessLayer.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ namespace DataAccessLayer.Repositories;
 
 public sealed class SqlResearchRepository : IResearchRepository
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly DbContextOptions<KnowledgeSqlDbContext> _options;
 
     public SqlResearchRepository(string connectionString)
@@ -126,7 +128,7 @@ public sealed class SqlResearchRepository : IResearchRepository
         var embeddings = await context.ResearchEmbeddingModels
             .Where(item => request.EmbeddingModelIds.Contains(item.Id)
                 && item.IsActive
-                && (item.Provider == "Gemini" || item.Provider == "OpenAI"))
+                && (item.Provider == "Gemini" || item.Provider == "OpenAI" || item.Provider == "HuggingFace"))
             .ToListAsync(cancellationToken);
         var strategies = await context.ResearchChunkingStrategies
             .Where(item => request.ChunkingStrategyIds.Contains(item.Id) && item.IsActive)
@@ -181,6 +183,56 @@ public sealed class SqlResearchRepository : IResearchRepository
                     CreatedAt = DateTimeOffset.UtcNow
                 });
             }
+        }
+
+        if (request.UseLocalFineTunedBaseline)
+        {
+            var trainingExamples = request.FineTunedTrainingExamples.Count > 0
+                ? request.FineTunedTrainingExamples
+                : experiment.Questions.Select(item => new ResearchQuestionInput
+                {
+                    Question = item.Question,
+                    GroundTruth = item.GroundTruth,
+                    Difficulty = item.Difficulty,
+                    Category = item.Category
+                }).ToList();
+
+            var fineTunedModel = new KnowledgeSqlResearchFineTunedModel
+            {
+                Id = Guid.NewGuid(),
+                Name = "local-supervised-qa-baseline",
+                Endpoint = "local://supervised-qa",
+                Status = "Trained",
+                CreatedAt = DateTimeOffset.UtcNow,
+                ConfigJson = JsonSerializer.Serialize(
+                    new
+                    {
+                        trainingMode = request.FineTunedTrainingExamples.Count > 0 ? "provided-training-set" : "leave-one-out-from-evaluation-set",
+                        trainedAt = DateTimeOffset.UtcNow,
+                        examples = trainingExamples
+                            .Where(item => !string.IsNullOrWhiteSpace(item.Question))
+                            .Select(item => new
+                            {
+                                question = item.Question.Trim(),
+                                answer = string.IsNullOrWhiteSpace(item.GroundTruth) ? item.Question.Trim() : item.GroundTruth.Trim(),
+                                category = item.Category,
+                                difficulty = string.IsNullOrWhiteSpace(item.Difficulty) ? "Medium" : item.Difficulty.Trim()
+                            })
+                            .ToList()
+                    },
+                    JsonOptions)
+            };
+            context.ResearchFineTunedModels.Add(fineTunedModel);
+            experiment.Runs.Add(new KnowledgeSqlResearchRun
+            {
+                Id = Guid.NewGuid(),
+                ExperimentId = experiment.Id,
+                RunName = fineTunedModel.Name,
+                RunKind = "FineTuned",
+                FineTunedModelId = fineTunedModel.Id,
+                Status = "Pending",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
         }
 
         if (!string.IsNullOrWhiteSpace(request.FineTunedEndpoint))
@@ -333,6 +385,7 @@ public sealed class SqlResearchRepository : IResearchRepository
             ChunkOverlap = run.ChunkingStrategy?.Overlap ?? 0,
             FineTunedModelName = run.FineTunedModel?.Name,
             FineTunedEndpoint = run.FineTunedModel?.Endpoint,
+            FineTunedConfigJson = run.FineTunedModel?.ConfigJson,
             ErrorMessage = run.ErrorMessage,
             CreatedAt = run.CreatedAt,
             CompletedAt = run.CompletedAt,

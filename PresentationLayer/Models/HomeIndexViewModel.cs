@@ -5,6 +5,7 @@ namespace PresentationLayer.Models;
 public sealed class HomeIndexViewModel
 {
     public IReadOnlyList<IndexedDocument> Documents { get; set; } = Array.Empty<IndexedDocument>();
+    public IReadOnlyList<CourseSubject> CourseCatalog { get; set; } = Array.Empty<CourseSubject>();
 }
 
 public sealed class ChatIndexViewModel
@@ -20,6 +21,22 @@ public sealed class DocumentUploadViewModel
     public string? Language { get; set; }
     public string Subject { get; set; } = "DBA103 - Traditional musical instrument";
     public string Chapter { get; set; } = "Syllabus 11835";
+}
+
+public sealed class SubjectCatalogViewModel
+{
+    public Guid? Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+}
+
+public sealed class ChapterCatalogViewModel
+{
+    public Guid? Id { get; set; }
+    public Guid SubjectId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
 }
 
 public sealed class DocumentTextViewModel

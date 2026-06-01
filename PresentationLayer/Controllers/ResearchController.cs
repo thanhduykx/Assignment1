@@ -83,6 +83,7 @@ public sealed class ResearchController : Controller
 
         try
         {
+            var trainingExamples = ParseQuestions(model.FineTunedTrainingText);
             var experimentId = await _researchService.CreateExperimentAsync(new CreateResearchExperimentRequest
             {
                 Name = model.Name,
@@ -90,6 +91,8 @@ public sealed class ResearchController : Controller
                 EmbeddingModelIds = model.EmbeddingModelIds,
                 ChunkingStrategyIds = model.ChunkingStrategyIds,
                 Questions = questions,
+                UseLocalFineTunedBaseline = model.UseLocalFineTunedBaseline,
+                FineTunedTrainingExamples = trainingExamples,
                 FineTunedModelName = model.FineTunedModelName,
                 FineTunedEndpoint = model.FineTunedEndpoint
             }, cancellationToken);

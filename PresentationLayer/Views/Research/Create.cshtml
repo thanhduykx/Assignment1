@@ -89,6 +89,36 @@
                 <small><span asp-validation-for="QuestionsText"></span></small>
             </label>
 
+            <div class="rbl-choice-section">
+                <div>
+                    <h3>Fine-tuned baseline</h3>
+                </div>
+                <label class="rbl-choice-card">
+                    <input asp-for="UseLocalFineTunedBaseline" type="checkbox" />
+                    <span>
+                        <strong>Train local supervised QA baseline</strong>
+                        <small>Train từ câu hỏi-đáp án đã nhập, lưu artifact trong database và so sánh với RAG.</small>
+                    </span>
+                </label>
+            </div>
+
+            <label class="rbl-field">
+                <span>Fine-tuned training set riêng</span>
+                <textarea asp-for="FineTunedTrainingText" rows="5" placeholder="Câu hỏi train | Đáp án train"></textarea>
+                <small>Để trống thì baseline dùng bộ câu hỏi hiện tại theo cơ chế leave-one-out để tránh copy đúng câu đang chấm.</small>
+            </label>
+
+            <div class="rbl-form-grid">
+                <label class="rbl-field">
+                    <span>Fine-tuned endpoint ngoài</span>
+                    <input asp-for="FineTunedEndpoint" placeholder="https://your-fine-tuned-endpoint/api/answer" />
+                </label>
+                <label class="rbl-field">
+                    <span>Tên endpoint ngoài</span>
+                    <input asp-for="FineTunedModelName" placeholder="fine-tuned-baseline" />
+                </label>
+            </div>
+
             <div class="rbl-form-actions">
                 <button type="submit" class="rbl-submit-button">
                     <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>

@@ -27,6 +27,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private const int MaxGeminiRetryAttempts = 6;
     private const int GeminiEmbeddingBatchSize = 8;
     private const int OpenAiEmbeddingBatchSize = 64;
+    private const int HuggingFaceEmbeddingBatchSize = 4;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -39,6 +40,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private readonly HttpClient _httpClient;
     private readonly GeminiApiOptions _geminiOptions;
     private readonly OpenAiApiOptions _openAiOptions;
+    private readonly HuggingFaceApiOptions _huggingFaceOptions;
 
     public ResearchBenchmarkService(
         IResearchRepository researchRepository,
@@ -46,7 +48,8 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         ILocalChatCompletionService chatCompletionService,
         HttpClient httpClient,
         GeminiApiOptions geminiOptions,
-        OpenAiApiOptions openAiOptions)
+        OpenAiApiOptions openAiOptions,
+        HuggingFaceApiOptions huggingFaceOptions)
     {
         _researchRepository = researchRepository;
         _knowledgeRepository = knowledgeRepository;
@@ -54,6 +57,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         _httpClient = httpClient;
         _geminiOptions = geminiOptions;
         _openAiOptions = openAiOptions;
+        _huggingFaceOptions = huggingFaceOptions;
     }
 
     public async Task<ResearchCatalog> GetCatalogAsync(CancellationToken cancellationToken = default)
@@ -204,6 +208,11 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         ResearchExperimentDetail experiment,
         CancellationToken cancellationToken)
     {
+        if (run.FineTunedEndpoint?.Equals("local://supervised-qa", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return RunLocalFineTunedAsync(run, experiment);
+        }
+
         if (string.IsNullOrWhiteSpace(run.FineTunedEndpoint))
         {
             throw new InvalidOperationException("Fine-tuned run is missing endpoint.");
@@ -259,7 +268,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             return await EmbedWithOpenAiBatchAsync(run, texts, cancellationToken);
         }
 
-        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, OpenAI.");
+        if (run.EmbeddingProvider?.Equals("HuggingFace", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return await EmbedWithHuggingFaceBatchAsync(run, texts, cancellationToken);
+        }
+
+        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, OpenAI, HuggingFace.");
     }
 
     private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
@@ -429,6 +443,96 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return results;
     }
 
+    private static IReadOnlyList<ResearchBenchmarkResult> RunLocalFineTunedAsync(
+        ResearchRunSummary run,
+        ResearchExperimentDetail experiment)
+    {
+        var examples = LoadLocalFineTunedExamples(run.FineTunedConfigJson);
+        if (examples.Count == 0)
+        {
+            examples = experiment.Questions
+                .Select(question => new LocalFineTunedExample(question.Question, question.GroundTruth))
+                .ToList();
+        }
+
+        var results = new List<ResearchBenchmarkResult>();
+        foreach (var question in experiment.Questions)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var answer = GenerateLocalFineTunedAnswer(question.Question, examples);
+            stopwatch.Stop();
+            results.Add(Score(question, answer, Array.Empty<DocumentChunk>(), stopwatch.Elapsed.TotalMilliseconds));
+        }
+
+        return results;
+    }
+
+    private static string GenerateLocalFineTunedAnswer(
+        string question,
+        IReadOnlyList<LocalFineTunedExample> examples)
+    {
+        var normalizedQuestion = NormalizeQuestionForTraining(question);
+        var candidates = examples
+            .Where(example => !NormalizeQuestionForTraining(example.Question).Equals(normalizedQuestion, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            candidates = examples.ToList();
+        }
+
+        var queryTerms = ExtractTerms(question);
+        var best = candidates
+            .Select(example => new
+            {
+                Example = example,
+                Score = BalancedOverlap(queryTerms, ExtractTerms(example.Question))
+            })
+            .OrderByDescending(item => item.Score)
+            .FirstOrDefault();
+
+        if (best is null || best.Score < 0.35)
+        {
+            return "Mình không đủ dữ liệu trong mô hình fine-tuned local để trả lời câu hỏi này.";
+        }
+
+        return best.Example.Answer;
+    }
+
+    private static IReadOnlyList<LocalFineTunedExample> LoadLocalFineTunedExamples(string? configJson)
+    {
+        if (string.IsNullOrWhiteSpace(configJson))
+        {
+            return Array.Empty<LocalFineTunedExample>();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(configJson);
+            if (!document.RootElement.TryGetProperty("examples", out var examplesElement)
+                || examplesElement.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<LocalFineTunedExample>();
+            }
+
+            var examples = new List<LocalFineTunedExample>();
+            foreach (var item in examplesElement.EnumerateArray())
+            {
+                var question = item.TryGetProperty("question", out var questionValue) ? questionValue.GetString() : null;
+                var answer = item.TryGetProperty("answer", out var answerValue) ? answerValue.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(question) && !string.IsNullOrWhiteSpace(answer))
+                {
+                    examples.Add(new LocalFineTunedExample(question.Trim(), answer.Trim()));
+                }
+            }
+
+            return examples;
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<LocalFineTunedExample>();
+        }
+    }
+
     private HttpRequestMessage CreateOpenAiEmbeddingRequest(
         string model,
         int dimensions,
@@ -506,6 +610,215 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return (int)response.StatusCode == 429
             ? new InvalidOperationException($"{name} đang bị giới hạn quota/rate limit OpenAI (HTTP 429). Hãy chờ rồi chạy lại, hoặc giảm số câu hỏi/số cấu hình benchmark.")
             : new InvalidOperationException($"{name} OpenAI embedding runtime returned HTTP {(int)response.StatusCode}.");
+    }
+
+    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedWithHuggingFaceBatchAsync(
+        ResearchRunSummary run,
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken)
+    {
+        if (!_huggingFaceOptions.Enabled || string.IsNullOrWhiteSpace(_huggingFaceOptions.ApiKey))
+        {
+            throw new InvalidOperationException("HuggingFace API key is required for PhoBERT RBL runs. Set HUGGINGFACE_API_KEY or user-secrets HuggingFace:ApiKey.");
+        }
+
+        var model = run.EmbeddingModelIdValue ?? "vinai/phobert-base";
+        var results = new List<Dictionary<int, double>>(texts.Count);
+
+        foreach (var batch in texts.Chunk(HuggingFaceEmbeddingBatchSize))
+        {
+            using var response = await SendHuggingFaceWithRetryAsync(
+                () => CreateHuggingFaceEmbeddingRequest(model, batch),
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw BuildHuggingFaceRuntimeException(run.EmbeddingModelName, response);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken);
+            var vectors = ParseHuggingFaceEmbeddingPayload(payload, batch.Length);
+            if (vectors.Count != batch.Length)
+            {
+                throw new InvalidOperationException($"{run.EmbeddingModelName} returned {vectors.Count} HuggingFace embeddings for {batch.Length} inputs.");
+            }
+
+            results.AddRange(vectors.Select(NormalizeDenseEmbedding));
+
+            if (results.Count < texts.Count)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            }
+        }
+
+        return results;
+    }
+
+    private HttpRequestMessage CreateHuggingFaceEmbeddingRequest(
+        string model,
+        IReadOnlyList<string> batch)
+    {
+        var safeModel = string.Join("/", model.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
+        var endpoint = BuildHuggingFaceEndpoint($"models/{safeModel}");
+        var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _huggingFaceOptions.ApiKey);
+        request.Headers.TryAddWithoutValidation("x-wait-for-model", "true");
+        request.Content = JsonContent.Create(
+            new HuggingFaceFeatureExtractionRequest(
+                batch.Count == 1 ? batch[0] : batch,
+                new HuggingFaceFeatureExtractionOptions(true)),
+            options: JsonOptions);
+        return request;
+    }
+
+    private Uri BuildHuggingFaceEndpoint(string relativePath)
+    {
+        var baseAddress = string.IsNullOrWhiteSpace(_huggingFaceOptions.BaseAddress)
+            ? "https://api-inference.huggingface.co/"
+            : _huggingFaceOptions.BaseAddress.Trim();
+        if (!baseAddress.EndsWith("/", StringComparison.Ordinal))
+        {
+            baseAddress += "/";
+        }
+
+        return new Uri(new Uri(baseAddress), relativePath);
+    }
+
+    private async Task<HttpResponseMessage> SendHuggingFaceWithRetryAsync(
+        Func<HttpRequestMessage> createRequest,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaxGeminiRetryAttempts; attempt++)
+        {
+            HttpResponseMessage? response = null;
+            try
+            {
+                response = await _httpClient.SendAsync(createRequest(), cancellationToken);
+                if (response.IsSuccessStatusCode || !IsRetryable(response) || attempt == MaxGeminiRetryAttempts)
+                {
+                    return response;
+                }
+
+                var delay = GetRetryDelay(response, attempt);
+                response.Dispose();
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch
+            {
+                response?.Dispose();
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("HuggingFace embedding request could not be sent.");
+    }
+
+    private static InvalidOperationException BuildHuggingFaceRuntimeException(
+        string? modelName,
+        HttpResponseMessage response)
+    {
+        var name = string.IsNullOrWhiteSpace(modelName) ? "HuggingFace embedding" : modelName;
+        return (int)response.StatusCode switch
+        {
+            401 or 403 => new InvalidOperationException($"{name} HuggingFace authentication failed. Check HUGGINGFACE_API_KEY or user-secrets HuggingFace:ApiKey."),
+            429 => new InvalidOperationException($"{name} đang bị giới hạn quota/rate limit HuggingFace (HTTP 429). Hãy chờ rồi chạy lại, hoặc giảm số câu hỏi/số cấu hình benchmark."),
+            503 => new InvalidOperationException($"{name} HuggingFace model is loading or unavailable (HTTP 503). Hãy chạy lại sau ít phút."),
+            _ => new InvalidOperationException($"{name} HuggingFace embedding runtime returned HTTP {(int)response.StatusCode}.")
+        };
+    }
+
+    private static IReadOnlyList<IReadOnlyList<double>> ParseHuggingFaceEmbeddingPayload(
+        JsonElement payload,
+        int expectedInputs)
+    {
+        if (payload.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<IReadOnlyList<double>>();
+        }
+
+        var depth = GetArrayDepth(payload);
+        return depth switch
+        {
+            1 => new[] { ReadNumberVector(payload) },
+            2 => expectedInputs == 1
+                ? new[] { MeanPool(ReadMatrix(payload)) }
+                : payload.EnumerateArray().Select(ReadNumberVector).ToList(),
+            3 => payload.EnumerateArray().Select(item => MeanPool(ReadMatrix(item))).ToList(),
+            _ => Array.Empty<IReadOnlyList<double>>()
+        };
+    }
+
+    private static int GetArrayDepth(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            return 0;
+        }
+
+        using var enumerator = element.EnumerateArray();
+        return enumerator.MoveNext() ? 1 + GetArrayDepth(enumerator.Current) : 1;
+    }
+
+    private static IReadOnlyList<IReadOnlyList<double>> ReadMatrix(JsonElement element)
+    {
+        return element.ValueKind == JsonValueKind.Array
+            ? element.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.Array)
+                .Select(ReadNumberVector)
+                .Where(vector => vector.Count > 0)
+                .ToList()
+            : Array.Empty<IReadOnlyList<double>>();
+    }
+
+    private static IReadOnlyList<double> ReadNumberVector(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<double>();
+        }
+
+        var values = new List<double>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Number && item.TryGetDouble(out var value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
+    }
+
+    private static IReadOnlyList<double> MeanPool(IReadOnlyList<IReadOnlyList<double>> matrix)
+    {
+        var width = matrix.FirstOrDefault()?.Count ?? 0;
+        if (matrix.Count == 0 || width == 0)
+        {
+            return Array.Empty<double>();
+        }
+
+        var sums = new double[width];
+        var rows = 0;
+        foreach (var row in matrix.Where(row => row.Count == width))
+        {
+            for (var index = 0; index < width; index++)
+            {
+                sums[index] += row[index];
+            }
+
+            rows++;
+        }
+
+        return rows == 0 ? Array.Empty<double>() : sums.Select(value => value / rows).ToList();
     }
 
     private async Task<HttpResponseMessage> SendGeminiWithRetryAsync(
@@ -862,6 +1175,12 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                    || right.StartsWith(left, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static string NormalizeQuestionForTraining(string text)
+    {
+        return Regex.Replace(RemoveDiacritics(text).ToLowerInvariant(), @"[^\p{L}\p{N}\s]+", " ")
+            .Trim();
+    }
+
     private static string NormalizeTerm(string term)
     {
         var value = term.Trim();
@@ -975,6 +1294,13 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         [property: JsonPropertyName("index")] int Index,
         [property: JsonPropertyName("embedding")] List<double>? Embedding);
 
+    private sealed record HuggingFaceFeatureExtractionRequest(
+        [property: JsonPropertyName("inputs")] object Inputs,
+        [property: JsonPropertyName("options")] HuggingFaceFeatureExtractionOptions Options);
+
+    private sealed record HuggingFaceFeatureExtractionOptions(
+        [property: JsonPropertyName("wait_for_model")] bool WaitForModel);
+
     private sealed record FineTunedRequest(
         [property: JsonPropertyName("subject")] string Subject,
         [property: JsonPropertyName("question")] string Question);
@@ -982,4 +1308,6 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private sealed record FineTunedResponse(
         [property: JsonPropertyName("answer")] string? Answer,
         [property: JsonPropertyName("text")] string? Text);
+
+    private sealed record LocalFineTunedExample(string Question, string Answer);
 }

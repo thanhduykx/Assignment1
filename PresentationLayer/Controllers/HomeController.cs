@@ -39,10 +39,63 @@ namespace PresentationLayer.Controllers
         {
             var model = new HomeIndexViewModel
             {
-                Documents = await _indexingService.GetDocumentsAsync(cancellationToken)
+                Documents = await _indexingService.GetDocumentsAsync(cancellationToken),
+                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken)
             };
 
             return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveSubject(SubjectCatalogViewModel model, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _repository.UpsertSubjectAsync(model.Id, model.Code, model.Name, model.Description, cancellationToken);
+                TempData["Success"] = "Đã lưu môn học.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ToVietnameseCatalogError(ex.Message);
+            }
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteSubject(Guid id, CancellationToken cancellationToken)
+        {
+            await _repository.DeleteSubjectAsync(id, cancellationToken);
+            TempData["Success"] = "Đã xóa môn học.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveChapter(ChapterCatalogViewModel model, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _repository.UpsertChapterAsync(model.Id, model.SubjectId, model.Title, model.SortOrder, cancellationToken);
+                TempData["Success"] = "Đã lưu chương.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ToVietnameseCatalogError(ex.Message);
+            }
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteChapter(Guid id, CancellationToken cancellationToken)
+        {
+            await _repository.DeleteChapterAsync(id, cancellationToken);
+            TempData["Success"] = "Đã xóa chương.";
+            return RedirectToAction(nameof(Index));
         }
 
         public async Task<IActionResult> Chat(CancellationToken cancellationToken)
@@ -254,6 +307,31 @@ namespace PresentationLayer.Controllers
             }
 
             return string.IsNullOrWhiteSpace(message) ? "Không thể xử lý tài liệu." : message;
+        }
+
+        private static string ToVietnameseCatalogError(string message)
+        {
+            if (message.Contains("Subject code is required", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Mã môn học là bắt buộc.";
+            }
+
+            if (message.Contains("Subject code already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Mã môn học đã tồn tại.";
+            }
+
+            if (message.Contains("Chapter title is required", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Tên chương là bắt buộc.";
+            }
+
+            if (message.Contains("Chapter already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Chương này đã tồn tại trong môn học.";
+            }
+
+            return string.IsNullOrWhiteSpace(message) ? "Không thể lưu danh mục môn/chương." : message;
         }
 
         private static string ResolveContentType(IndexedDocument document)
