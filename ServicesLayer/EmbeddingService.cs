@@ -228,9 +228,20 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
             ? "gemini-embedding-001"
             : _options.EmbeddingModel.Trim();
 
-        using var response = await SendGeminiWithRetryAsync(
-            () => CreateEmbeddingRequest(model, text),
-            cancellationToken);
+        HttpResponseMessage response;
+        try
+        {
+            response = await SendGeminiWithRetryAsync(
+                () => CreateEmbeddingRequest(model, text),
+                cancellationToken);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("Gemini embedding request timed out. Check the API key, network connection, or increase Gemini timeout in appsettings.json.");
+        }
+
+        using (response)
+        {
         if (!response.IsSuccessStatusCode)
         {
             throw BuildGeminiEmbeddingException(response);
@@ -243,6 +254,7 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
         }
 
         return NormalizeDenseEmbedding(values);
+        }
     }
 
     private HttpRequestMessage CreateEmbeddingRequest(string model, string text)
@@ -278,6 +290,11 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
                 await Task.Delay(delay, cancellationToken);
             }
             catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
             {
                 response?.Dispose();
                 await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);

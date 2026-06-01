@@ -394,6 +394,11 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                 response?.Dispose();
                 await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
             }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
+            {
+                response?.Dispose();
+                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+            }
             catch
             {
                 response?.Dispose();
