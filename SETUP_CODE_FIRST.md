@@ -1,66 +1,96 @@
-# Setup Code First
+# Setup chạy trên máy mới
 
-Project này dùng EF Core code-first runtime schema initializer. Khi app start, database/tables sẽ được tạo bằng code nếu `DefaultConnection` trỏ tới SQL Server hợp lệ.
+Project đã được chỉnh để người khác chạy mà không cần cấu hình environment variable hay user-secrets.
 
-## Yêu cầu
+## Yêu cầu còn lại
 
-- .NET SDK 9.x
-- SQL Server LocalDB, SQL Server Express, hoặc SQL Server Developer
-- Gemini API key nếu dùng upload/chat/RBL Gemini
+- Cài .NET SDK 9.x.
+- Có SQL Server LocalDB. Máy có Visual Studio thường đã có sẵn `MSSQLLocalDB`.
+- Có mạng Internet nếu dùng Gemini.
 
-## Chạy nhanh trên máy mới
+Không cần tạo database thủ công. App tự tạo database `EduVietRAG`, tự tạo bảng và tự import dữ liệu từ `PresentationLayer/App_Data/rag-store.json` nếu database đang rỗng.
+
+## Cấu hình nằm trong source
+
+File cấu hình chính:
+
+```text
+PresentationLayer/appsettings.json
+```
+
+Database mặc định:
+
+```json
+"DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=EduVietRAG;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"
+```
+
+Gemini API key đặt trực tiếp trong:
+
+```json
+"Gemini": {
+  "Enabled": true,
+  "ApiKey": "PASTE_GEMINI_API_KEY_HERE"
+}
+```
+
+Thay `PASTE_GEMINI_API_KEY_HERE` bằng key thật trước khi gửi project cho người khác. Nếu để placeholder, app vẫn build và mở được, nhưng các chức năng gọi Gemini sẽ lỗi xác thực API.
+
+## Chạy nhanh
 
 ```powershell
 cd C:\Assignment1
 dotnet restore
 dotnet build Group7_SE1950.sln
-dotnet user-secrets set "Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project PresentationLayer\Group07MVC.csproj
 dotnet run --project PresentationLayer\Group07MVC.csproj --urls http://localhost:5097
 ```
 
-Mặc định app dùng SQL Server local theo cấu hình lớp:
-
-```json
-"DefaultConnection": "Server=localhost;Database=EduVietRAG;User Id=sa;Password=;TrustServerCertificate=True;MultipleActiveResultSets=True;"
-```
-
-Nếu máy khác dùng password SQL Server khác, override bằng user-secrets hoặc biến môi trường.
-
-```powershell
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost;Database=EduVietRAG;User Id=sa;Password=YOUR_PASSWORD;TrustServerCertificate=True;MultipleActiveResultSets=True;" --project PresentationLayer\Group07MVC.csproj
-```
-
-Hoặc dùng environment variable:
-
-```powershell
-$env:ConnectionStrings__DefaultConnection="Server=localhost;Database=EduVietRAG;User Id=sa;Password=YOUR_PASSWORD;TrustServerCertificate=True;MultipleActiveResultSets=True;"
-$env:GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-dotnet run --project PresentationLayer\Group07MVC.csproj --urls http://localhost:5097
-```
-
-## Code-first behavior
-
-- `Program.cs` đọc `ConnectionStrings:DefaultConnection`.
-- `SqlKnowledgeRepository` / `SqlResearchRepository` dùng `KnowledgeSqlDbContext`.
-- `KnowledgeSqlSchemaInitializer.EnsureTablesCreated()` gọi `Database.EnsureCreated()`.
-- RBL seed catalog tự tạo Gemini embedding models và chunking strategies.
-- Không cần chạy migration thủ công cho bản hiện tại.
-
-## Lỗi duplicate entity trong Visual Studio
-
-Nếu gặp lỗi:
+Mở:
 
 ```text
-CS0101 The namespace 'DataAccessLayer.Entities' already contains a definition for ...
+http://localhost:5097
 ```
 
-Nguyên nhân là trong `DataAccessLayer/Entities` có các file entity rời cũ như `Document.cs`, `User.cs`, `Experiment.cs` trùng với `DatabaseEntities.cs`.
+## Khi copy sang máy khác
 
-Trong project hiện tại các file legacy này đã bị loại khỏi compile trong `DataAccessLayer.csproj`. Nếu copy project thủ công sang thư mục khác, hãy đảm bảo mở đúng solution mới nhất và không add lại các file legacy vào project.
+Copy các thư mục source chính, không copy cache build:
 
-Build kiểm tra:
+```text
+DataAccessLayer
+ServicesLayer
+PresentationLayer
+Assignment1.sln
+Group7_SE1950.sln
+README.md
+SETUP_CODE_FIRST.md
+```
+
+Không copy:
+
+```text
+.vs
+bin
+obj
+```
+
+Nếu đã lỡ copy cache, chạy:
 
 ```powershell
 dotnet clean
+Remove-Item -Recurse -Force .vs, DataAccessLayer\bin, DataAccessLayer\obj, ServicesLayer\bin, ServicesLayer\obj, PresentationLayer\bin, PresentationLayer\obj -ErrorAction SilentlyContinue
+dotnet restore
 dotnet build Group7_SE1950.sln
 ```
+
+## Lỗi thường gặp
+
+Nếu máy khác vẫn báo:
+
+```text
+ExperimentRun could not be found
+TestQuestion could not be found
+BenchmarkResult.cs
+```
+
+Máy đó đang giữ file entity cũ hoặc chưa copy đúng bản mới. Bản hiện tại đã exclude entity legacy khỏi build trong `DataAccessLayer/DataAccessLayer.csproj`, bao gồm `Entities/BenchmarkResult.cs`.
+
+Nếu máy khác không có dữ liệu, kiểm tra database đang dùng có phải `EduVietRAG` trên `(localdb)\MSSQLLocalDB` không. Nếu database đã tồn tại nhưng rỗng/lỗi, xóa database `EduVietRAG` trong SQL Server Object Explorer rồi chạy lại app để seed lại từ `rag-store.json`.
