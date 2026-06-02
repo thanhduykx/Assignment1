@@ -34,7 +34,7 @@
     else
     {
         <div class="rbl-table-wrap">
-            <table class="rbl-table">
+            <table class="rbl-table rbl-user-role-table">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -53,11 +53,11 @@
                         <td>@user.Email</td>
                         <td>@user.Provider</td>
                         <td>@user.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                        <td>
-                            <form asp-action="UpdateRole" method="post" class="rbl-document-filter">
+                        <td class="rbl-role-cell">
+                            <form asp-action="UpdateRole" method="post" class="rbl-role-form">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="UserId" value="@user.Id" />
-                                <label class="rbl-field">
+                                <label class="rbl-field rbl-role-field">
                                     <span class="visually-hidden">Role</span>
                                     <select name="Role" disabled="@user.IsLastAdmin">
                                         @foreach (var role in Model.Roles)
@@ -76,7 +76,7 @@
                                 <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@user.IsLastAdmin">Save</button>
                             </form>
                         </td>
-                        <td>
+                        <td class="rbl-role-status-cell">
                             @if (user.IsLastAdmin)
                             {
                                 <span class="rbl-status is-success">Last admin</span>
