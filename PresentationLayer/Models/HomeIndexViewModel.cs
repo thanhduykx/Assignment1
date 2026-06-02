@@ -15,6 +15,10 @@ public sealed class HomeIndexViewModel
     public int TotalDocumentCount { get; set; }
     public int TotalChunkCount { get; set; }
     public long TotalUploadedBytes { get; set; }
+    public int IndexedDocumentCount { get; set; }
+    public int ProcessingDocumentCount { get; set; }
+    public int FailedDocumentCount { get; set; }
+    public double AverageChunksPerIndexedDocument { get; set; }
 }
 
 public sealed class ChatIndexViewModel

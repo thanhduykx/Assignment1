@@ -43,11 +43,14 @@ namespace PresentationLayer.Controllers
             _indexJobQueue = indexJobQueue;
         }
 
-        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
+        [Authorize(Policy = AuthorizationPolicies.DocumentRead)]
         public async Task<IActionResult> Index(string? subjectFilter, CancellationToken cancellationToken)
         {
             var allDocuments = await _indexingService.GetDocumentsAsync(cancellationToken);
-            await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
+            if (CanManageDocuments())
+            {
+                await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
+            }
             var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
             var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
             var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
@@ -61,6 +64,9 @@ namespace PresentationLayer.Controllers
             var lecturers = IsAdmin()
                 ? await _users.GetByRoleAsync(AppRoles.Lecturer, cancellationToken)
                 : Array.Empty<UserAccount>();
+            var indexedDocuments = accessibleDocuments
+                .Where(document => document.Status == DocumentIndexStatus.Indexed)
+                .ToList();
 
             var model = new HomeIndexViewModel
             {
@@ -84,7 +90,13 @@ namespace PresentationLayer.Controllers
                 IsLecturer = IsLecturer(),
                 TotalDocumentCount = accessibleDocuments.Count,
                 TotalChunkCount = accessibleDocuments.Sum(document => document.ChunkCount),
-                TotalUploadedBytes = accessibleDocuments.Sum(document => document.FileSizeBytes)
+                TotalUploadedBytes = accessibleDocuments.Sum(document => document.FileSizeBytes),
+                IndexedDocumentCount = indexedDocuments.Count,
+                ProcessingDocumentCount = accessibleDocuments.Count(document => document.Status == DocumentIndexStatus.Processing),
+                FailedDocumentCount = accessibleDocuments.Count(document => document.Status == DocumentIndexStatus.Failed),
+                AverageChunksPerIndexedDocument = indexedDocuments.Count == 0
+                    ? 0
+                    : indexedDocuments.Average(document => document.ChunkCount)
             };
 
             return View(model);
@@ -305,6 +317,15 @@ namespace PresentationLayer.Controllers
                     .ToList();
                 var displayName = User.FindFirstValue(ClaimTypes.Name)
                     ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0];
+                if (currentUser is not null)
+                {
+                    var existingSession = await _repository.GetSessionAsync(sessionId, cancellationToken);
+                    if (existingSession?.OwnerUserId is { } ownerUserId && ownerUserId != currentUser.Id)
+                    {
+                        sessionId = Guid.NewGuid();
+                    }
+                }
+
                 var answer = await _chatService.AskAsync(
                     sessionId,
                     request.Question ?? string.Empty,
@@ -438,7 +459,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
-        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
+        [Authorize(Policy = AuthorizationPolicies.DocumentRead)]
         public async Task<IActionResult> DocumentPreview(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -447,7 +468,7 @@ namespace PresentationLayer.Controllers
                 return NotFound(new { error = "Document not found." });
             }
 
-            if (!await CanManageDocumentAsync(document, cancellationToken))
+            if (!await CanViewDocumentAsync(document, cancellationToken))
             {
                 return Forbid();
             }
@@ -501,7 +522,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
-        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
+        [Authorize(Policy = AuthorizationPolicies.DocumentRead)]
         public async Task<IActionResult> ViewDocument(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -510,7 +531,7 @@ namespace PresentationLayer.Controllers
                 return NotFound();
             }
 
-            if (!await CanManageDocumentAsync(document, cancellationToken))
+            if (!await CanViewDocumentAsync(document, cancellationToken))
             {
                 return Forbid();
             }
@@ -622,6 +643,11 @@ namespace PresentationLayer.Controllers
             return CurrentRole() == AppRoles.Lecturer;
         }
 
+        private bool CanManageDocuments()
+        {
+            return IsAdmin() || IsLecturer();
+        }
+
         private Guid? CurrentUserId()
         {
             return Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
@@ -724,10 +750,8 @@ namespace PresentationLayer.Controllers
 
             if (CurrentRole() == AppRoles.Student)
             {
-                var allowedSubjectIds = currentUser.AssignedSubjectIds.ToHashSet();
                 return documents
-                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject) is { } subject
-                                       && allowedSubjectIds.Contains(subject.Id))
+                    .Where(document => document.Status == DocumentIndexStatus.Indexed)
                     .ToList();
             }
 
@@ -770,6 +794,17 @@ namespace PresentationLayer.Controllers
         private async Task<bool> CanManageDocumentAsync(IndexedDocument document, CancellationToken cancellationToken)
         {
             return await CanManageSubjectAsync(document.Subject, cancellationToken);
+        }
+
+        private async Task<bool> CanViewDocumentAsync(IndexedDocument document, CancellationToken cancellationToken)
+        {
+            if (CanManageDocuments())
+            {
+                return await CanManageDocumentAsync(document, cancellationToken);
+            }
+
+            return CurrentRole() == AppRoles.Student
+                   && document.Status == DocumentIndexStatus.Indexed;
         }
 
         private async Task<bool> CanManageChapterAsync(Guid chapterId, CancellationToken cancellationToken)

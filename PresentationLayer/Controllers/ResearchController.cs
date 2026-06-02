@@ -38,10 +38,18 @@ public sealed class ResearchController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        return View(new ResearchIndexViewModel
+        try
         {
-            Experiments = await _researchService.GetExperimentsAsync(cancellationToken)
-        });
+            return View(new ResearchIndexViewModel
+            {
+                Experiments = await _researchService.GetExperimentsAsync(cancellationToken)
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Research index request was canceled by the client.");
+            return new EmptyResult();
+        }
     }
 
     [HttpGet]

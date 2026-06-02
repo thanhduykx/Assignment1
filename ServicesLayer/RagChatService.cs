@@ -246,6 +246,11 @@ public sealed class RagChatService : IRagChatService
             }
         }
 
+        if (TryBuildExactFactAnswer(resolvedQuestion, scopedChunks, responseLanguage) is { } exactFactAnswer)
+        {
+            return exactFactAnswer with { ResolvedSubject = route.SelectedSubject ?? exactFactAnswer.ResolvedSubject };
+        }
+
         var queryTerms = ExtractTerms(resolvedQuestion);
 
         var contentTerms = RemoveCourseScopeTerms(queryTerms);
@@ -540,6 +545,142 @@ public sealed class RagChatService : IRagChatService
             : $"I found relevant data in multiple subjects. Which subject do you want?\n\n{optionText}";
     }
 
+    private static SingleQuestionAnswer? TryBuildExactFactAnswer(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language)
+    {
+        var factIntent = DetectExactFactIntent(question);
+        if (factIntent != ExactFactIntent.Credits)
+        {
+            return null;
+        }
+
+        var evidence = chunks
+            .Select(chunk => new
+            {
+                Chunk = chunk,
+                Credit = TryExtractCreditFact(chunk.Text),
+                SubjectCodeScore = CountSharedTerms(ExtractCourseCodes(question), BuildChunkMetadataText(chunk))
+            })
+            .Where(item => item.Credit is not null)
+            .OrderByDescending(item => item.SubjectCodeScore)
+            .ThenBy(item => item.Chunk.ChunkIndex)
+            .FirstOrDefault();
+
+        if (evidence?.Credit is null)
+        {
+            return null;
+        }
+
+        var courseLabel = ResolveFactCourseLabel(question, evidence.Chunk);
+        var answer = language == "vi"
+            ? $"{courseLabel} c\u00f3 {FormatCreditValue(evidence.Credit.Value)} t\u00edn ch\u1ec9."
+            : $"{courseLabel} has {FormatCreditValue(evidence.Credit.Value)} credits.";
+        var citations = new[]
+        {
+            new SourceCitation
+            {
+                DocumentId = evidence.Chunk.DocumentId,
+                FileName = evidence.Chunk.FileName,
+                Subject = evidence.Chunk.Subject,
+                Chapter = evidence.Chunk.Chapter,
+                ChunkIndex = evidence.Chunk.ChunkIndex,
+                Score = 0.99,
+                Excerpt = CreateFactExcerpt(evidence.Chunk.Text, evidence.Credit.EvidenceText)
+            }
+        };
+
+        return new SingleQuestionAnswer(question, answer, citations, ResolveSubject(new[] { evidence.Chunk }));
+    }
+
+    private static ExactFactIntent DetectExactFactIntent(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        if (normalized.Contains("tin chi", StringComparison.Ordinal)
+            || normalized.Contains("credit", StringComparison.Ordinal)
+            || normalized.Contains("nocredit", StringComparison.Ordinal))
+        {
+            return ExactFactIntent.Credits;
+        }
+
+        return ExactFactIntent.None;
+    }
+
+    private static CreditFact? TryExtractCreditFact(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var patterns = new[]
+        {
+            @"(?im)^\s*No\s*Credit\s*:\s*(?<value>\d+(?:[.,]\d+)?)\b.*$",
+            @"(?im)^\s*NoCredit\s*:\s*(?<value>\d+(?:[.,]\d+)?)\b.*$",
+            @"(?im)^\s*(?:Credits?|Credit)\s*:\s*(?<value>\d+(?:[.,]\d+)?)\b.*$",
+            @"(?im)^\s*(?:So|S[oố])\s*t[ií]n\s*ch[iỉ]\s*:\s*(?<value>\d+(?:[.,]\d+)?)\b.*$",
+            @"(?im)^\s*(?<value>\d+(?:[.,]\d+)?)\s*(?:t[ií]n\s*ch[iỉ]|credits?)\b.*$"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(text, pattern, RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var rawValue = match.Groups["value"].Value.Replace(',', '.');
+            if (double.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+            {
+                return new CreditFact(value, match.Value.Trim());
+            }
+        }
+
+        return null;
+    }
+
+    private static IReadOnlySet<string> ExtractCourseCodes(string text)
+    {
+        return Regex.Matches(text ?? string.Empty, @"\b[A-Za-z]{2,}\d{2,}\b", RegexOptions.CultureInvariant)
+            .Select(match => match.Value.ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveFactCourseLabel(string question, DocumentChunk chunk)
+    {
+        var code = ExtractCourseCodes(question).FirstOrDefault()
+                   ?? ExtractCourseCodes(chunk.Subject).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(code) ? chunk.Subject : code;
+    }
+
+    private static string FormatCreditValue(double value)
+    {
+        return Math.Abs(value - Math.Round(value)) < 0.0001
+            ? ((int)Math.Round(value)).ToString(CultureInfo.InvariantCulture)
+            : value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static string CreateFactExcerpt(string text, string evidenceText)
+    {
+        var sourceText = text ?? string.Empty;
+        var lines = sourceText
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.TrimEntries);
+        var evidenceIndex = Array.FindIndex(lines, line => line.Equals(evidenceText, StringComparison.OrdinalIgnoreCase));
+        if (evidenceIndex < 0)
+        {
+            return string.IsNullOrWhiteSpace(evidenceText) ? CreateExcerpt(sourceText) : evidenceText;
+        }
+
+        var start = Math.Max(0, evidenceIndex - 2);
+        var end = Math.Min(lines.Length - 1, evidenceIndex + 2);
+        var excerpt = string.Join(" ", lines[start..(end + 1)].Where(line => !string.IsNullOrWhiteSpace(line)));
+        return CreateExcerpt(excerpt);
+    }
+
     private async Task<IReadOnlyList<ScoredChunk>> RerankMatchesAsync(
         string question,
         IReadOnlyList<ScoredChunk> candidates,
@@ -702,6 +843,14 @@ public sealed class RagChatService : IRagChatService
         string? ResolvedSubject = null,
         bool NeedsClarification = false,
         IReadOnlyList<string>? SubjectOptions = null);
+
+    private enum ExactFactIntent
+    {
+        None,
+        Credits
+    }
+
+    private sealed record CreditFact(double Value, string EvidenceText);
 
     private sealed record SubjectRouteResult(
         string? SelectedSubject,

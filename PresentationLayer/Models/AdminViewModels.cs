@@ -43,12 +43,6 @@ public sealed class AssignLecturerSubjectViewModel
     public Guid SubjectId { get; set; }
 }
 
-public sealed class AssignStudentSubjectViewModel
-{
-    public Guid UserId { get; set; }
-    public Guid SubjectId { get; set; }
-}
-
 public sealed class UpdateUserNameViewModel
 {
     public Guid UserId { get; set; }

@@ -160,7 +160,8 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             throw new InvalidOperationException("No readable text could be extracted from this document.");
         }
 
-        var chunkTexts = _chunker.CreateChunks(extractedText);
+        var chunkingResult = await _chunker.CreateChunkingResultAsync(extractedText, cancellationToken);
+        var chunkTexts = chunkingResult.Chunks;
         if (chunkTexts.Count == 0)
         {
             throw new InvalidOperationException("No indexable chunks could be created from this document.");
@@ -189,7 +190,7 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             chunks,
             _embeddingService.ModelName,
             _embeddingService.Dimensions,
-            _chunker.StrategyName,
+            chunkingResult.StrategyName,
             cancellationToken);
     }
 

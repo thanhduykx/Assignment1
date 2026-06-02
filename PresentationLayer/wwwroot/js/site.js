@@ -343,10 +343,38 @@ function readJsonDataAttribute(element, key, fallback) {
   }
 }
 
+function buildDefaultSuggestionItems() {
+  const enSuggestions = readJsonDataAttribute(chatPage, "chatSuggestionsEn", translations.en["chat.suggestions"]);
+  const viSuggestions = readJsonDataAttribute(chatPage, "chatSuggestionsVi", translations.vi["chat.suggestions"]);
+  const total = Math.max(enSuggestions.length, viSuggestions.length);
+
+  return Array.from({ length: total }, (_, index) => ({
+    id: `default-${index}`,
+    en: enSuggestions[index] || viSuggestions[index] || "",
+    vi: viSuggestions[index] || enSuggestions[index] || ""
+  })).filter((item) => item.en || item.vi);
+}
+
+function getChatSuggestionItems() {
+  const selectedSubject = getSelectedSubjectFilter();
+  if (selectedSubject) {
+    return buildSubjectQuestionItems(selectedSubject);
+  }
+
+  if (relatedQuestionPool.length > 0) {
+    return relatedQuestionPool;
+  }
+
+  return buildDefaultSuggestionItems();
+}
+
 function getChatSuggestions(language = getLanguage()) {
-  const key = language === "vi" ? "chatSuggestionsVi" : "chatSuggestionsEn";
-  const suggestions = readJsonDataAttribute(chatPage, key, []);
-  return suggestions.length > 0 ? suggestions : translations[language]["chat.suggestions"];
+  const asked = readAskedQuestions();
+  return getChatSuggestionItems()
+    .filter((item) => !questionWasAsked(item, asked))
+    .slice(0, 4)
+    .map((item) => language === "vi" ? item.vi : item.en)
+    .filter(Boolean);
 }
 
 function readRelatedQuestionPool() {
@@ -463,8 +491,14 @@ function updateSuggestionButtons() {
   const language = getLanguage();
   const suggestions = getChatSuggestions(language);
   document.querySelectorAll(".suggestion-chip").forEach((button, index) => {
-    const localizedQuestion = language === "vi" ? button.dataset.questionVi : button.dataset.questionEn;
-    const question = localizedQuestion || suggestions[index] || button.textContent;
+    const question = suggestions[index];
+    if (!question) {
+      button.hidden = true;
+      button.dataset.question = "";
+      return;
+    }
+
+    button.hidden = false;
     button.textContent = question;
     button.dataset.question = question;
   });
@@ -485,12 +519,28 @@ function setSelectedSubjectFilter(subject) {
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
+  updateSuggestionButtons();
+  renderRelatedQuestions();
 }
 
 function bindSubjectFilterChips() {
   document.querySelectorAll(".chat-subject-chip").forEach((button) => {
     button.addEventListener("click", () => {
       setSelectedSubjectFilter(button.dataset.subjectFilter || "");
+      questionInput?.focus();
+    });
+  });
+}
+
+function bindSubjectSuggestionButtons() {
+  document.querySelectorAll("[data-subject-suggestion]").forEach((button) => {
+    if (button.dataset.subjectSuggestionBound === "true") {
+      return;
+    }
+
+    button.dataset.subjectSuggestionBound = "true";
+    button.addEventListener("click", () => {
+      setSelectedSubjectFilter(button.dataset.subjectSuggestion || "");
       questionInput?.focus();
     });
   });
@@ -548,22 +598,78 @@ function questionWasAsked(item, asked) {
     || asked.has(normalizeQuestionForMemory(item.vi));
 }
 
+function normalizeSubjectForCompare(subject) {
+  return normalizeQuestionForMemory(subject);
+}
+
+function buildSubjectQuestionItems(subject) {
+  const trimmedSubject = (subject || "").trim();
+  if (!trimmedSubject) {
+    return [];
+  }
+
+  return [
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-credits`,
+      en: `How many credits does ${trimmedSubject} have?`,
+      vi: `${trimmedSubject} c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-about`,
+      en: `What is ${trimmedSubject} about?`,
+      vi: `${trimmedSubject} l\u00e0 m\u00f4n g\u00ec?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-contents`,
+      en: `What are the main contents of ${trimmedSubject}?`,
+      vi: `N\u1ed9i dung ch\u00ednh c\u1ee7a ${trimmedSubject} g\u1ed3m nh\u1eefng g\u00ec?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-assessment`,
+      en: `How is ${trimmedSubject} assessed?`,
+      vi: `${trimmedSubject} \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 nh\u01b0 th\u1ebf n\u00e0o?`
+    }
+  ];
+}
+
+function updateRelatedQuestionsLabel(selectedSubject) {
+  const label = document.querySelector(".chat-related-strip > span");
+  if (!label) {
+    return;
+  }
+
+  label.textContent = selectedSubject
+    ? t("chat.relatedLabel")
+    : (getLanguage() === "vi" ? "C\u00e2u h\u1ecfi g\u1ee3i \u00fd" : "Suggested questions");
+}
+
 function renderRelatedQuestions() {
   const list = document.querySelector(".chat-related-list");
   if (!list) {
     return;
   }
 
+  const strip = list.closest(".chat-related-strip");
   collectVisibleUserQuestions();
   const language = getLanguage();
+  const selectedSubject = getSelectedSubjectFilter();
+  updateRelatedQuestionsLabel(selectedSubject);
+
   const asked = readAskedQuestions();
-  const available = relatedQuestionPool.filter((item) => !questionWasAsked(item, asked));
-  const pool = available.length > 0 ? available : relatedQuestionPool;
+  const basePool = selectedSubject ? buildSubjectQuestionItems(selectedSubject) : relatedQuestionPool;
+  const available = basePool.filter((item) => !questionWasAsked(item, asked));
+  const pool = available;
   if (pool.length === 0) {
     list.innerHTML = "";
+    if (strip) {
+      strip.hidden = true;
+    }
     return;
   }
 
+  if (strip) {
+    strip.hidden = false;
+  }
   const offset = getRelatedRotationIndex() % pool.length;
   const ordered = [...pool.slice(offset), ...pool.slice(0, offset)];
   const currentQuestions = new Set(
@@ -579,22 +685,22 @@ function renderRelatedQuestions() {
       continue;
     }
 
-    if (available.length > 3 && currentQuestions.has(normalized)) {
+    if (available.length > 4 && currentQuestions.has(normalized)) {
       continue;
     }
 
     picked.push(item);
-    if (picked.length === 3) {
+    if (picked.length === 4) {
       break;
     }
   }
 
-  if (picked.length < 3) {
+  if (picked.length < 4) {
     for (const item of ordered) {
       if (!picked.some((pickedItem) => pickedItem.id === item.id)) {
         picked.push(item);
       }
-      if (picked.length === 3) {
+      if (picked.length === 4) {
         break;
       }
     }
@@ -640,6 +746,7 @@ function getSessionId() {
 function setSessionId(sessionId) {
   localStorage.setItem("ragChatSessionId", sessionId);
   markActiveSession(sessionId);
+  updateSuggestionButtons();
   renderRelatedQuestions();
 }
 
@@ -778,14 +885,22 @@ function renderDocumentPreview(document) {
   }
 
   const chunks = Array.isArray(document.chunks) ? document.chunks : [];
+  const embeddingLabel = document.embeddingModel
+    ? `Embedding: ${document.embeddingModel}${document.embeddingDimensions ? ` (${document.embeddingDimensions} dims)` : ""}`
+    : "";
+  const indexedLabel = document.indexedAt ? `Indexed: ${formatPreviewDate(document.indexedAt)}` : "";
   const uploader = document.uploadedByName ? `Upload: ${document.uploadedByName}` : "Upload: Không rõ";
   const subjectOwner = document.subjectOwnerName ? `Phụ trách: ${document.subjectOwnerName}` : "Phụ trách: Chưa phân công";
   documentPreviewTitle.textContent = document.fileName || "Tài liệu";
   documentPreviewMeta.textContent = [
     document.subject,
     document.chapter,
+    document.status ? `Status: ${document.status}` : "",
+    indexedLabel,
     uploader,
     subjectOwner,
+    embeddingLabel,
+    document.chunkingStrategy ? `Chunking: ${document.chunkingStrategy}` : "",
     `${chunks.length || document.chunkCount || 0} chunks`,
     formatPreviewBytes(document.fileSizeBytes),
     formatPreviewDate(document.uploadedAt)
@@ -800,10 +915,21 @@ function renderDocumentPreview(document) {
     return;
   }
 
-  documentPreviewBody.innerHTML = chunks.map((chunk) => `
+  const totalChars = chunks.reduce((sum, chunk) => sum + (chunk.text || "").length, 0);
+  const summary = `
+    <div class="rbl-index-summary">
+      <article><span>Chunks</span><strong>${escapeHtml(String(chunks.length))}</strong></article>
+      <article><span>Indexed chars</span><strong>${escapeHtml(String(totalChars))}</strong></article>
+      <article><span>Strategy</span><strong>${escapeHtml(document.chunkingStrategy || "unknown")}</strong></article>
+    </div>`;
+
+  documentPreviewBody.innerHTML = summary + chunks.map((chunk) => `
     <article class="rbl-document-preview-chunk">
       <span>Chunk ${escapeHtml(String(chunk.chunkIndex ?? ""))}${chunk.sectionTitle ? ` / ${escapeHtml(chunk.sectionTitle)}` : ""}</span>
-      ${Number.isInteger(chunk.charStart) && Number.isInteger(chunk.charEnd) ? `<small>${escapeHtml(String(chunk.charStart))}-${escapeHtml(String(chunk.charEnd))}</small>` : ""}
+      <small>${[
+        Number.isInteger(chunk.charStart) && Number.isInteger(chunk.charEnd) ? `${chunk.charStart}-${chunk.charEnd}` : "",
+        chunk.text ? `${chunk.text.length} chars` : ""
+      ].filter(Boolean).map((value) => escapeHtml(String(value))).join(" / ")}</small>
       <p>${escapeHtml(chunk.text || "")}</p>
     </article>
   `).join("");
@@ -927,51 +1053,54 @@ function appendMessageTo(target, role, content, citations = []) {
 
 function appendCitationsToMessage(messageWrapper, citations) {
   const sourceItems = Array.isArray(citations)
-    ? citations.filter((citation) => citation && typeof citation === "object").slice(0, 5)
+    ? citations.filter((citation) => citation && typeof citation === "object")
     : [];
 
   if (!messageWrapper || sourceItems.length === 0) {
     return;
   }
 
-  const list = document.createElement("div");
-  list.className = "citations";
-  list.setAttribute("aria-label", "Sources");
-
-  sourceItems.forEach((citation, index) => {
-    const item = document.createElement("article");
-    item.className = "citation";
-
-    const title = document.createElement("strong");
+  const seenSources = new Set();
+  const compactSources = [];
+  for (const citation of sourceItems) {
     const fileName = citation.fileName || citation.FileName || "Document";
     const chunkIndex = citation.chunkIndex ?? citation.ChunkIndex;
-    title.textContent = chunkIndex
-      ? `${index + 1}. ${fileName} / chunk ${chunkIndex}`
-      : `${index + 1}. ${fileName}`;
-    item.appendChild(title);
+    const sourceKey = `${fileName}|${chunkIndex ?? ""}`;
+    if (seenSources.has(sourceKey)) {
+      continue;
+    }
 
+    seenSources.add(sourceKey);
+    compactSources.push(citation);
+    if (compactSources.length === 3) {
+      break;
+    }
+  }
+
+  if (compactSources.length === 0) {
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "citations compact-citations";
+  list.setAttribute("aria-label", "Sources");
+
+  const label = document.createElement("span");
+  label.className = "citation-label";
+  label.textContent = getLanguage() === "vi" ? "Nguồn:" : "Sources:";
+  list.appendChild(label);
+
+  compactSources.forEach((citation) => {
+    const item = document.createElement("span");
+    item.className = "citation citation-source";
+    const fileName = citation.fileName || citation.FileName || "Document";
+    const chunkIndex = citation.chunkIndex ?? citation.ChunkIndex;
     const metaValues = [
       citation.subject || citation.Subject,
-      citation.chapter || citation.Chapter,
-      Number.isFinite(Number(citation.score ?? citation.Score))
-        ? `score ${Number(citation.score ?? citation.Score).toFixed(3)}`
-        : ""
+      citation.chapter || citation.Chapter
     ].filter(Boolean);
-
-    if (metaValues.length > 0) {
-      const meta = document.createElement("small");
-      meta.className = "citation-meta";
-      meta.textContent = metaValues.join(" / ");
-      item.appendChild(meta);
-    }
-
-    const excerptValue = citation.excerpt || citation.Excerpt || "";
-    if (excerptValue) {
-      const excerpt = document.createElement("p");
-      excerpt.className = "citation-excerpt";
-      excerpt.textContent = excerptValue;
-      item.appendChild(excerpt);
-    }
+    item.textContent = chunkIndex ? `${fileName} / chunk ${chunkIndex}` : fileName;
+    item.title = metaValues.join(" / ");
 
     list.appendChild(item);
   });
@@ -1017,6 +1146,7 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
 
   rememberAskedQuestion(question);
   advanceRelatedRotation();
+  updateSuggestionButtons();
   renderRelatedQuestions();
   appendMessageTo(messagesTarget, "user", question);
   input.value = "";
@@ -1043,6 +1173,7 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
     }
 
     setSessionId(payload.sessionId);
+    rememberAskedQuestion(question);
     if (activeSessionTitle) {
       activeSessionTitle.textContent = question.length <= 56 ? question : `${question.slice(0, 56)}...`;
     }
@@ -1247,6 +1378,9 @@ function bindSuggestionButtons() {
 
       questionInput.value = button.dataset.question || "";
       questionInput.focus();
+      rememberAskedQuestion(questionInput.value);
+      updateSuggestionButtons();
+      renderRelatedQuestions();
       if (button.classList.contains("related-question-chip")) {
         chatForm?.requestSubmit();
       }

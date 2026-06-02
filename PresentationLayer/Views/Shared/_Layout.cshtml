@@ -12,6 +12,7 @@
     var currentRole = AppRoles.Normalize(User.FindFirstValue(ClaimTypes.Role));
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var canChat = isAuthenticated;
+    var canViewDocuments = isAuthenticated;
     var canManageDocuments = currentRole == AppRoles.Lecturer || currentRole == AppRoles.Admin;
     var canManageResearch = currentRole == AppRoles.Admin;
     var canManageUsers = currentRole == AppRoles.Admin;
@@ -94,7 +95,7 @@
                         <span data-i18n="shell.chatbot">Chatbot</span>
                     </a>
                     }
-                    @if (canManageDocuments)
+                    @if (canViewDocuments)
                     {
                     <a class="@documentsNavClass" asp-controller="Home" asp-action="Index">
                         <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
@@ -206,7 +207,7 @@
                     </button>
                     <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                         <ul class="navbar-nav flex-grow-1">
-                            @if (canManageDocuments)
+                            @if (canViewDocuments)
                             {
                                 <li class="nav-item">
                                     <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>

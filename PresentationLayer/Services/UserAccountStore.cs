@@ -16,8 +16,6 @@ public interface IUserAccountStore
     Task<UserAccount> GetOrCreateExternalAsync(string fullName, string email, string provider, CancellationToken cancellationToken = default);
     Task<UserAccount> UpdateFullNameAsync(Guid userId, string fullName, CancellationToken cancellationToken = default);
     Task<UserAccount> UpdateRoleAsync(Guid userId, string role, CancellationToken cancellationToken = default);
-    Task<UserAccount> GrantSubjectAccessAsync(Guid userId, Guid subjectId, CancellationToken cancellationToken = default);
-    Task<UserAccount> RevokeSubjectAccessAsync(Guid userId, Guid subjectId, CancellationToken cancellationToken = default);
     bool VerifyPassword(UserAccount account, string password);
 }
 
@@ -262,54 +260,6 @@ public sealed class UserAccountStore : IUserAccountStore
         }
     }
 
-    public async Task<UserAccount> GrantSubjectAccessAsync(Guid userId, Guid subjectId, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var users = await LoadAsync(cancellationToken);
-            var user = users.FirstOrDefault(item => item.Id == userId)
-                ?? throw new InvalidOperationException("User not found.");
-
-            if (user.Role != AppRoles.Student)
-            {
-                throw new InvalidOperationException("Only students can be granted subject access.");
-            }
-
-            if (!user.AssignedSubjectIds.Contains(subjectId))
-            {
-                user.AssignedSubjectIds.Add(subjectId);
-                user.AssignedSubjectIds = user.AssignedSubjectIds.Distinct().ToList();
-                await SaveAsync(users, cancellationToken);
-            }
-
-            return user;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public async Task<UserAccount> RevokeSubjectAccessAsync(Guid userId, Guid subjectId, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var users = await LoadAsync(cancellationToken);
-            var user = users.FirstOrDefault(item => item.Id == userId)
-                ?? throw new InvalidOperationException("User not found.");
-
-            user.AssignedSubjectIds.RemoveAll(item => item == subjectId);
-            await SaveAsync(users, cancellationToken);
-            return user;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     public async Task<UserAccount> UpdateFullNameAsync(Guid userId, string fullName, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -387,12 +337,6 @@ public sealed class UserAccountStore : IUserAccountStore
                 changed = true;
             }
 
-            var distinctSubjectIds = user.AssignedSubjectIds.Distinct().ToList();
-            if (distinctSubjectIds.Count != user.AssignedSubjectIds.Count)
-            {
-                user.AssignedSubjectIds = distinctSubjectIds;
-                changed = true;
-            }
         }
 
         if (EnsureSeedAdmin(users))

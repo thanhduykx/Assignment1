@@ -58,6 +58,8 @@ namespace PresentationLayer
             {
                 options.AddPolicy(AuthorizationPolicies.ChatAccess, policy =>
                     policy.RequireRole(AppRoles.Student, AppRoles.Lecturer, AppRoles.Admin));
+                options.AddPolicy(AuthorizationPolicies.DocumentRead, policy =>
+                    policy.RequireRole(AppRoles.Student, AppRoles.Lecturer, AppRoles.Admin));
                 options.AddPolicy(AuthorizationPolicies.DocumentManagement, policy =>
                     policy.RequireRole(AppRoles.Lecturer, AppRoles.Admin));
                 options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>
@@ -81,6 +83,23 @@ namespace PresentationLayer
             var geminiTimeoutSeconds = int.TryParse(geminiSection["TimeoutSeconds"], out var parsedGeminiTimeout)
                 ? parsedGeminiTimeout
                 : 120;
+            var semanticChunkingEnabled = bool.TryParse(
+                    builder.Configuration["SemanticChunking:Enabled"] ?? geminiSection["EnableSemanticChunking"],
+                    out var parsedSemanticChunkingEnabled)
+                && parsedSemanticChunkingEnabled;
+            var semanticChunkingModel = builder.Configuration["SemanticChunking:Model"]
+                ?? geminiSection["ChunkingModel"]
+                ?? geminiChatModel;
+            var semanticChunkingMaxPromptCharacters = int.TryParse(
+                    builder.Configuration["SemanticChunking:MaxPromptCharacters"] ?? geminiSection["ChunkingMaxPromptCharacters"],
+                    out var parsedMaxPromptCharacters)
+                ? parsedMaxPromptCharacters
+                : 16000;
+            var semanticChunkingMaxParagraphs = int.TryParse(
+                    builder.Configuration["SemanticChunking:MaxParagraphs"] ?? geminiSection["ChunkingMaxParagraphs"],
+                    out var parsedMaxParagraphs)
+                ? parsedMaxParagraphs
+                : 180;
             builder.Services.AddSingleton(new ServicesLayer.GeminiApiOptions(
                 geminiApiKey,
                 geminiChatModel,
@@ -162,7 +181,23 @@ namespace PresentationLayer
                     geminiEnabled);
             });
             builder.Services.AddSingleton<ServicesLayer.IDocumentTextExtractor, ServicesLayer.DocumentTextExtractor>();
-            builder.Services.AddSingleton<ServicesLayer.ITextChunker, ServicesLayer.ParagraphAwareTextChunker>();
+            builder.Services.AddSingleton<ServicesLayer.ITextChunker>(_ =>
+            {
+                var fallbackChunker = new ServicesLayer.ParagraphAwareTextChunker();
+                return new ServicesLayer.GeminiSemanticTextChunker(
+                    new HttpClient
+                    {
+                        BaseAddress = new Uri("https://generativelanguage.googleapis.com/"),
+                        Timeout = TimeSpan.FromSeconds(Math.Max(5, geminiTimeoutSeconds))
+                    },
+                    new ServicesLayer.GeminiSemanticChunkingOptions(
+                        geminiApiKey,
+                        semanticChunkingModel,
+                        semanticChunkingEnabled && geminiEnabled,
+                        semanticChunkingMaxPromptCharacters,
+                        semanticChunkingMaxParagraphs),
+                    fallbackChunker);
+            });
             builder.Services.AddSingleton<ServicesLayer.IDocumentIndexJobQueue, ServicesLayer.DocumentIndexJobQueue>();
             builder.Services.AddSingleton<ServicesLayer.IWebPageTextExtractor>(_ =>
                 new ServicesLayer.WebPageTextExtractor(new HttpClient

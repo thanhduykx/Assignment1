@@ -15,6 +15,7 @@
     var visibleDocuments = documents.Count;
     var totalChunks = Model.TotalChunkCount > 0 ? Model.TotalChunkCount : documents.Sum(item => item.ChunkCount);
     var totalUploadedBytes = Model.TotalUploadedBytes > 0 ? Model.TotalUploadedBytes : documents.Sum(item => item.FileSizeBytes);
+    var averageChunks = Model.AverageChunksPerIndexedDocument <= 0 ? 0 : Model.AverageChunksPerIndexedDocument;
     var documentSubjectOptions = Model.DocumentSubjectOptions
         .Where(subject => !string.IsNullOrWhiteSpace(subject))
         .OrderBy(subject => subject)
@@ -33,6 +34,7 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(chapter => chapter)
         .ToList();
+    var canManageDocuments = Model.IsAdmin || Model.IsLecturer;
 
     string FormatBytes(long bytes)
     {
@@ -95,8 +97,16 @@
 <section class="rbl-documents-page">
     <div class="rbl-page-heading">
         <div>
-            <h1 data-i18n="documents.manageTitle">Quản lý kho tài liệu</h1>
-            <p data-i18n="documents.manageSubtitle">Upload tài liệu học tập, trích xuất nội dung và index để chatbot trả lời có nguồn.</p>
+            @if (canManageDocuments)
+            {
+                <h1 data-i18n="documents.manageTitle">Quản lý kho tài liệu</h1>
+                <p data-i18n="documents.manageSubtitle">Upload tài liệu học tập, trích xuất nội dung và index để chatbot trả lời có nguồn.</p>
+            }
+            else
+            {
+                <h1>Kho tài liệu</h1>
+                <p>Xem các tài liệu đã được giảng viên upload và index.</p>
+            }
         </div>
         <a class="rbl-secondary-button" asp-controller="Home" asp-action="Chat">
             <span class="material-symbols-outlined" aria-hidden="true">chat</span>
@@ -113,64 +123,69 @@
         <div class="rbl-alert is-error">@error</div>
     }
 
+    @if (canManageDocuments)
+    {
     <div class="rbl-documents-grid">
-        <section class="rbl-upload-panel" id="documents">
-            <div class="rbl-panel-header">
-                <div>
-                    <span class="rbl-section-label" data-i18n="documents.uploadKicker">Upload</span>
-                    <h2 data-i18n="documents.dropTitle">Kéo thả tài liệu vào đây</h2>
-                </div>
-            </div>
-
-            <form asp-action="Upload" method="post" enctype="multipart/form-data" class="rbl-upload-form">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="Language" value="vi" data-language-field />
-
-                <div class="rbl-form-grid">
-                    <label class="rbl-field">
-                        <span data-i18n="documents.subject">Subject</span>
-                        <input name="Subject" list="subjectOptions" placeholder="Mã môn - Tên môn" />
-                    </label>
-                    <label class="rbl-field">
-                        <span data-i18n="documents.chapter">Chapter</span>
-                        <input name="Chapter" list="chapterOptions" placeholder="Chương 1 hoặc Tuần 1" />
-                    </label>
+        @if (canManageDocuments)
+        {
+            <section class="rbl-upload-panel" id="documents">
+                <div class="rbl-panel-header">
+                    <div>
+                        <span class="rbl-section-label" data-i18n="documents.uploadKicker">Upload</span>
+                        <h2 data-i18n="documents.dropTitle">Kéo thả tài liệu vào đây</h2>
+                    </div>
                 </div>
 
-                <datalist id="subjectOptions">
-                    @foreach (var subject in subjectOptions)
-                    {
-                        <option value="@subject"></option>
-                    }
-                </datalist>
-                <datalist id="chapterOptions">
-                    @foreach (var chapter in chapterOptions)
-                    {
-                        <option value="@chapter"></option>
-                    }
-                </datalist>
+                <form asp-action="Upload" method="post" enctype="multipart/form-data" class="rbl-upload-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="Language" value="vi" data-language-field />
 
-                <label id="documentDropzone" class="rbl-dropzone dropzone" for="documentFileInput">
-                    <input id="documentFileInput" name="File" type="file" accept=".pdf,.docx,.pptx,.txt" />
-                    <span class="material-symbols-outlined" aria-hidden="true">cloud_upload</span>
-                    <strong data-i18n="documents.chooseFile">Chọn tệp hoặc kéo thả vào đây</strong>
-                    <small id="documentFileName" data-default-en="Supports PDF, DOCX, PPTX, TXT" data-default-vi="Hỗ trợ PDF, DOCX, PPTX, TXT">Hỗ trợ PDF, DOCX, PPTX, TXT</small>
-                </label>
+                    <div class="rbl-form-grid">
+                        <label class="rbl-field">
+                            <span data-i18n="documents.subject">Subject</span>
+                            <input name="Subject" list="subjectOptions" placeholder="Mã môn - Tên môn" />
+                        </label>
+                        <label class="rbl-field">
+                            <span data-i18n="documents.chapter">Chapter</span>
+                            <input name="Chapter" list="chapterOptions" placeholder="Chương 1 hoặc Tuần 1" />
+                        </label>
+                    </div>
 
-                <div class="rbl-divider"><span data-i18n="documents.or">or</span></div>
+                    <datalist id="subjectOptions">
+                        @foreach (var subject in subjectOptions)
+                        {
+                            <option value="@subject"></option>
+                        }
+                    </datalist>
+                    <datalist id="chapterOptions">
+                        @foreach (var chapter in chapterOptions)
+                        {
+                            <option value="@chapter"></option>
+                        }
+                    </datalist>
 
-                <label class="rbl-field">
-                    <span data-i18n="documents.url">Lecture page URL</span>
-                    <input name="SourceUrl" type="url" placeholder="https://example.com/lecture" />
-                    <small data-i18n="documents.urlRenderHint">Trang SPA/React/Vue sẽ được render trước khi trích xuất DOM.</small>
-                </label>
+                    <label id="documentDropzone" class="rbl-dropzone dropzone" for="documentFileInput">
+                        <input id="documentFileInput" name="File" type="file" accept=".pdf,.docx,.pptx,.txt" />
+                        <span class="material-symbols-outlined" aria-hidden="true">cloud_upload</span>
+                        <strong data-i18n="documents.chooseFile">Chọn tệp hoặc kéo thả vào đây</strong>
+                        <small id="documentFileName" data-default-en="Supports PDF, DOCX, PPTX, TXT" data-default-vi="Hỗ trợ PDF, DOCX, PPTX, TXT">Hỗ trợ PDF, DOCX, PPTX, TXT</small>
+                    </label>
 
-                <button type="submit" class="rbl-submit-button">
-                    <span class="material-symbols-outlined" aria-hidden="true">upload_file</span>
-                    <span data-i18n="documents.submit">Upload and index</span>
-                </button>
-            </form>
-        </section>
+                    <div class="rbl-divider"><span data-i18n="documents.or">or</span></div>
+
+                    <label class="rbl-field">
+                        <span data-i18n="documents.url">Lecture page URL</span>
+                        <input name="SourceUrl" type="url" placeholder="https://example.com/lecture" />
+                        <small data-i18n="documents.urlRenderHint">Trang SPA/React/Vue sẽ được render trước khi trích xuất DOM.</small>
+                    </label>
+
+                    <button type="submit" class="rbl-submit-button">
+                        <span class="material-symbols-outlined" aria-hidden="true">upload_file</span>
+                        <span data-i18n="documents.submit">Upload and index</span>
+                    </button>
+                </form>
+            </section>
+        }
 
         <aside class="rbl-storage-panel">
             <div>
@@ -190,10 +205,29 @@
                     <span>Chunks</span>
                     <strong>@totalChunks</strong>
                 </article>
+                <article>
+                    <span>Indexed</span>
+                    <strong>@Model.IndexedDocumentCount</strong>
+                </article>
+                <article>
+                    <span>Processing</span>
+                    <strong>@Model.ProcessingDocumentCount</strong>
+                </article>
+                <article>
+                    <span>Failed</span>
+                    <strong>@Model.FailedDocumentCount</strong>
+                </article>
+                <article>
+                    <span>Avg chunks/indexed doc</span>
+                    <strong>@averageChunks.ToString("0.#")</strong>
+                </article>
             </div>
         </aside>
     </div>
+    }
 
+    @if (canManageDocuments)
+    {
     <section class="rbl-panel rbl-catalog-panel">
         <div class="rbl-panel-header rbl-catalog-header">
             <div>
@@ -387,6 +421,7 @@
             </div>
         }
     </section>
+    }
 
     <section class="rbl-panel rbl-document-table-panel">
         <div class="rbl-panel-header">
@@ -442,38 +477,41 @@
         }
         else
         {
-            <div class="rbl-table-wrap">
-                <table class="rbl-table">
-                    <thead>
-                        <tr>
-                            <th data-i18n="documents.fileName">Tên file</th>
-                            <th>Subject</th>
-                            <th>Chapter</th>
-                            <th data-i18n="documents.status">Trạng thái</th>
-                            <th data-i18n="documents.uploadDate">Ngày upload</th>
-                            <th data-i18n="documents.uploadedSize">Dung lượng đã upload</th>
-                            <th>Chunks</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var document in documents)
-                    {
-                        <tr>
-                            <td>
-                                <strong>@document.FileName</strong>
-                                <span>@document.ContentType</span>
-                                <span class="rbl-uploader-chip" title="@document.UploadedByEmail">Upload: @PersonLabel(document.UploadedByName, "Không rõ")</span>
-                            </td>
-                            <td>@document.Subject</td>
-                            <td>@document.Chapter</td>
-                            <td>
-                                <span class="rbl-status @StatusClass(document)" title="@StatusTitle(document)">@StatusLabel(document)</span>
-                            </td>
-                            <td>@document.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                            <td class="rbl-mono">@FormatBytes(document.FileSizeBytes)</td>
-                            <td class="rbl-mono">@document.ChunkCount</td>
-                            <td class="rbl-table-actions rbl-document-actions">
+            <div class="rbl-document-card-grid">
+                @foreach (var document in documents)
+                {
+                    <article class="rbl-document-card">
+                        <div class="rbl-document-card-head">
+                            <span class="rbl-document-file-icon material-symbols-outlined" aria-hidden="true">description</span>
+                            <span class="rbl-status @StatusClass(document)" title="@StatusTitle(document)">@StatusLabel(document)</span>
+                        </div>
+
+                        <div class="rbl-document-card-body">
+                            <h3 title="@document.FileName">@document.FileName</h3>
+                            <p title="@document.Subject">@document.Subject</p>
+                            <span title="@document.Chapter">@document.Chapter</span>
+                        </div>
+
+                        <div class="rbl-document-card-meta">
+                            <span>
+                                <span class="material-symbols-outlined" aria-hidden="true">data_object</span>
+                                @document.ChunkCount chunks
+                            </span>
+                            <span>
+                                <span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>
+                                @FormatBytes(document.FileSizeBytes)
+                            </span>
+                            <span class="rbl-document-meta-full">
+                                <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+                                @document.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")
+                            </span>
+                            <span class="rbl-document-meta-full" title="@document.UploadedByEmail">
+                                <span class="material-symbols-outlined" aria-hidden="true">person</span>
+                                <strong>Được up bởi:</strong> @PersonLabel(document.UploadedByName, "Không rõ")
+                            </span>
+                        </div>
+
+                        <div class="rbl-document-card-actions rbl-document-actions">
                                 @if (document.Status == DocumentIndexStatus.Indexed)
                                 {
                                     <button type="button" class="rbl-small-button" data-document-preview-url="@Url.Action("DocumentPreview", "Home", new { id = document.Id })" data-i18n="documents.view">Xem</button>
@@ -482,17 +520,18 @@
                                 {
                                     <button type="button" class="rbl-small-button" disabled title="@StatusTitle(document)" data-i18n="documents.view">Xem</button>
                                 }
-                                <a class="rbl-small-button" asp-controller="Home" asp-action="EditDocument" asp-route-id="@document.Id">Sửa</a>
-                                <form asp-action="DeleteDocument" method="post" onsubmit="return confirm('Xóa tài liệu này khỏi kho index?');">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="id" value="@document.Id" />
-                                    <button type="submit" class="rbl-small-button rbl-small-button--danger">Xóa</button>
-                                </form>
-                            </td>
-                        </tr>
+                                @if (canManageDocuments)
+                                {
+                                    <a class="rbl-small-button" asp-controller="Home" asp-action="EditDocument" asp-route-id="@document.Id">Sửa</a>
+                                    <form asp-action="DeleteDocument" method="post" onsubmit="return confirm('Xóa tài liệu này khỏi kho index?');">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@document.Id" />
+                                        <button type="submit" class="rbl-small-button rbl-small-button--danger">Xóa</button>
+                                    </form>
+                                }
+                        </div>
+                    </article>
                     }
-                    </tbody>
-                </table>
             </div>
         }
     </section>

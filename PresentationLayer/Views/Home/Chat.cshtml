@@ -40,6 +40,9 @@
             .ToArray();
     var suggestionsEn = suggestedQuestions.Select(item => item.En).ToArray();
     var suggestionsVi = suggestedQuestions.Select(item => item.Vi).ToArray();
+    var subjectPayload = subjectOptions
+        .Select((subject, index) => new { id = $"subject-option-{index}", subject, en = subject, vi = subject })
+        .ToArray();
     var relatedPayload = relatedQuestions
         .Select((item, index) => new { id = $"subject-{index}", en = item.Item1, vi = item.Item2 })
         .ToArray();
@@ -64,6 +67,7 @@
 <section class="rbl-chat-page"
          data-chat-suggestions-en='@System.Text.Json.JsonSerializer.Serialize(suggestionsEn)'
          data-chat-suggestions-vi='@System.Text.Json.JsonSerializer.Serialize(suggestionsVi)'
+         data-chat-subject-suggestions='@System.Text.Json.JsonSerializer.Serialize(subjectPayload)'
          data-chat-related-questions='@System.Text.Json.JsonSerializer.Serialize(relatedPayload)'>
     <main class="rbl-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
         <div id="chatMessages" class="chat-messages codex-chat-messages rbl-chat-messages">

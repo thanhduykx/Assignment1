@@ -50,4 +50,17 @@ public sealed class ParagraphAwareTextChunkerTests
             Assert.True(chunks[index].CharStart < chunks[index - 1].CharEnd);
         }
     }
+
+    [Fact]
+    public void CreateChunks_StartsOverlapAtReadableBoundary()
+    {
+        var chunker = new ParagraphAwareTextChunker();
+        var text = string.Join(" ", Enumerable.Range(1, 90).Select(index =>
+            $"Sentence {index} explains indexing boundaries for retrieval quality."));
+
+        var chunks = chunker.CreateChunks(text);
+
+        Assert.True(chunks.Count > 1);
+        Assert.StartsWith("Sentence", chunks[1].Text);
+    }
 }
