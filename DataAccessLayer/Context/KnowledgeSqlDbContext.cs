@@ -34,8 +34,14 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.Property(item => item.FileSizeBytes).HasDefaultValue(0L);
             entity.Property(item => item.UploadedByName).HasMaxLength(255);
             entity.Property(item => item.UploadedByEmail).HasMaxLength(255);
+            entity.Property(item => item.Status).HasMaxLength(32).IsRequired().HasDefaultValue(DocumentIndexStatus.Indexed);
+            entity.Property(item => item.IndexError).HasColumnType("nvarchar(max)");
+            entity.Property(item => item.EmbeddingModel).HasMaxLength(100).IsRequired().HasDefaultValue(string.Empty);
+            entity.Property(item => item.EmbeddingDimensions).HasDefaultValue(0);
+            entity.Property(item => item.ChunkingStrategy).HasMaxLength(100).IsRequired().HasDefaultValue(string.Empty);
             entity.HasIndex(item => item.FileName);
             entity.HasIndex(item => item.UploadedByUserId);
+            entity.HasIndex(item => new { item.Status, item.UploadedAt });
         });
 
         modelBuilder.Entity<KnowledgeSqlChunk>(entity =>
@@ -46,8 +52,12 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.Property(item => item.Subject).HasMaxLength(255).IsRequired();
             entity.Property(item => item.Chapter).HasMaxLength(255).IsRequired();
             entity.Property(item => item.Text).HasColumnType("nvarchar(max)").IsRequired();
+            entity.Property(item => item.SectionTitle).HasMaxLength(255).IsRequired().HasDefaultValue(string.Empty);
+            entity.Property(item => item.CharStart).HasDefaultValue(0);
+            entity.Property(item => item.CharEnd).HasDefaultValue(0);
             entity.Property(item => item.EmbeddingJson).HasColumnType("nvarchar(max)").IsRequired();
             entity.HasIndex(item => new { item.DocumentId, item.ChunkIndex }).IsUnique();
+            entity.HasIndex(item => new { item.Subject, item.Chapter });
             entity.HasOne(item => item.Document)
                 .WithMany(item => item.Chunks)
                 .HasForeignKey(item => item.DocumentId)
@@ -58,7 +68,10 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
         {
             entity.ToTable("rag_chat_sessions");
             entity.HasKey(item => item.Id);
+            entity.Property(item => item.OwnerName).HasMaxLength(255);
+            entity.Property(item => item.OwnerEmail).HasMaxLength(255);
             entity.HasIndex(item => item.UpdatedAt);
+            entity.HasIndex(item => item.OwnerUserId);
         });
 
         modelBuilder.Entity<KnowledgeSqlChatMessage>(entity =>

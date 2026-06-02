@@ -21,6 +21,7 @@ namespace PresentationLayer.Controllers
         private readonly IRagChatService _chatService;
         private readonly IUserAccountStore _users;
         private readonly IWebHostEnvironment _environment;
+        private readonly IDocumentIndexJobQueue _indexJobQueue;
 
         public HomeController(
             ILogger<HomeController> logger,
@@ -29,7 +30,8 @@ namespace PresentationLayer.Controllers
             IWebPageTextExtractor webPageTextExtractor,
             IRagChatService chatService,
             IUserAccountStore users,
-            IWebHostEnvironment environment)
+            IWebHostEnvironment environment,
+            IDocumentIndexJobQueue indexJobQueue)
         {
             _logger = logger;
             _repository = repository;
@@ -38,6 +40,7 @@ namespace PresentationLayer.Controllers
             _chatService = chatService;
             _users = users;
             _environment = environment;
+            _indexJobQueue = indexJobQueue;
         }
 
         [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
@@ -46,8 +49,9 @@ namespace PresentationLayer.Controllers
             var allDocuments = await _indexingService.GetDocumentsAsync(cancellationToken);
             await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
             var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
             var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
-            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog).ToList();
+            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog, currentUser).ToList();
             var normalizedSubjectFilter = subjectFilter?.Trim();
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
                 ? accessibleDocuments
@@ -167,11 +171,20 @@ namespace PresentationLayer.Controllers
         public async Task<IActionResult> Chat(CancellationToken cancellationToken)
         {
             var documents = await _indexingService.GetDocumentsAsync(cancellationToken);
+            var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            var allIndexedDocuments = documents
+                .Where(document => document.Status == DocumentIndexStatus.Indexed)
+                .ToList();
+            var indexedDocuments = FilterDocumentsForCurrentUser(allIndexedDocuments, courseCatalog, currentUser).ToList();
+            var chatSessions = currentUser is null
+                ? Array.Empty<ChatSession>()
+                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
             var model = new ChatIndexViewModel
             {
-                ChatSessions = await _repository.GetSessionsAsync(cancellationToken),
-                Documents = documents,
-                SubjectOptions = documents
+                ChatSessions = chatSessions,
+                Documents = indexedDocuments,
+                SubjectOptions = indexedDocuments
                     .Select(document => document.Subject)
                     .Where(subject => !string.IsNullOrWhiteSpace(subject))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -198,6 +211,14 @@ namespace PresentationLayer.Controllers
 
             try
             {
+                if (string.IsNullOrWhiteSpace(model.Subject) || string.IsNullOrWhiteSpace(model.Chapter))
+                {
+                    TempData["Error"] = isVietnamese
+                        ? "Subject va Chapter la bat buoc khi upload tai lieu."
+                        : "Subject and Chapter are required when uploading a document.";
+                    return RedirectToAction(nameof(Index));
+                }
+
                 if (!await CanManageSubjectAsync(model.Subject, cancellationToken))
                 {
                     return Forbid();
@@ -208,7 +229,7 @@ namespace PresentationLayer.Controllers
                 if (model.File is { Length: > 0 })
                 {
                     await using var stream = model.File.OpenReadStream();
-                    result = await _indexingService.IndexAsync(
+                    result = await _indexingService.QueueFileAsync(
                         stream,
                         model.File.FileName,
                         model.File.ContentType,
@@ -222,7 +243,7 @@ namespace PresentationLayer.Controllers
                 {
                     var extracted = await _webPageTextExtractor.ExtractAsync(model.SourceUrl ?? string.Empty, cancellationToken);
                     var sourceName = $"{extracted.Title} - {new Uri(extracted.SourceUrl).Host}.txt";
-                    result = await _indexingService.IndexTextAsync(
+                    result = await _indexingService.QueueTextAsync(
                         extracted.Text,
                         sourceName,
                         extracted.UsedBrowserRenderer ? "text/html+playwright" : "text/html",
@@ -233,9 +254,11 @@ namespace PresentationLayer.Controllers
                         cancellationToken);
                 }
 
+                await _indexJobQueue.EnqueueAsync(result.DocumentId, cancellationToken);
+
                 TempData["Success"] = isVietnamese
-                    ? "Đã index tài liệu."
-                    : "The document has been indexed.";
+                    ? "Da nhan tai lieu va dang index."
+                    : "The document has been queued for indexing.";
 
                 var indexedDocument = await _repository.GetDocumentAsync(result.DocumentId, cancellationToken);
                 if (indexedDocument is not null)
@@ -269,6 +292,17 @@ namespace PresentationLayer.Controllers
 
             try
             {
+                var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+                var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+                var indexedDocuments = (await _indexingService.GetDocumentsAsync(cancellationToken))
+                    .Where(document => document.Status == DocumentIndexStatus.Indexed)
+                    .ToList();
+                var accessibleDocuments = FilterDocumentsForCurrentUser(indexedDocuments, courseCatalog, currentUser).ToList();
+                var allowedSubjects = accessibleDocuments
+                    .Select(document => document.Subject)
+                    .Where(subject => !string.IsNullOrWhiteSpace(subject))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
                 var displayName = User.FindFirstValue(ClaimTypes.Name)
                     ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0];
                 var answer = await _chatService.AskAsync(
@@ -277,6 +311,8 @@ namespace PresentationLayer.Controllers
                     displayName,
                     request.SubjectFilter,
                     request.Language,
+                    allowedSubjects,
+                    BuildChatSessionOwnerInfo(),
                     cancellationToken);
                 return Json(new
                 {
@@ -299,7 +335,7 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> CreateChatSession(CancellationToken cancellationToken)
         {
-            var session = await _repository.GetOrCreateSessionAsync(Guid.NewGuid(), cancellationToken);
+            var session = await _repository.GetOrCreateSessionAsync(Guid.NewGuid(), cancellationToken, BuildChatSessionOwnerInfo());
             return Json(ToSessionSummary(session));
         }
 
@@ -416,6 +452,17 @@ namespace PresentationLayer.Controllers
                 return Forbid();
             }
 
+            if (document.Status != DocumentIndexStatus.Indexed)
+            {
+                return BadRequest(new
+                {
+                    error = string.IsNullOrWhiteSpace(document.IndexError)
+                        ? "Document is not indexed yet."
+                        : document.IndexError,
+                    status = document.Status
+                });
+            }
+
             var subjectOwner = await ResolveSubjectOwnerAsync(document.Subject, cancellationToken);
             var chunks = await _repository.GetDocumentChunksAsync(document.Id, cancellationToken);
             var preview = new DocumentPreviewViewModel
@@ -430,12 +477,21 @@ namespace PresentationLayer.Controllers
                 FileSizeBytes = document.FileSizeBytes,
                 UploadedByName = document.UploadedByName,
                 UploadedByEmail = document.UploadedByEmail,
+                Status = document.Status,
+                IndexedAt = document.IndexedAt,
+                IndexError = document.IndexError,
+                EmbeddingModel = document.EmbeddingModel,
+                EmbeddingDimensions = document.EmbeddingDimensions,
+                ChunkingStrategy = document.ChunkingStrategy,
                 SubjectOwnerName = subjectOwner.Name,
                 SubjectOwnerEmail = subjectOwner.Email,
                 Chunks = chunks
                     .Select(chunk => new DocumentPreviewChunkViewModel
                     {
                         ChunkIndex = chunk.ChunkIndex,
+                        SectionTitle = chunk.SectionTitle,
+                        CharStart = chunk.CharStart,
+                        CharEnd = chunk.CharEnd,
                         Text = chunk.Text
                     })
                     .ToList()
@@ -483,7 +539,10 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSessions(CancellationToken cancellationToken)
         {
-            var sessions = await _repository.GetSessionsAsync(cancellationToken);
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            var sessions = currentUser is null
+                ? Array.Empty<ChatSession>()
+                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
             return Json(sessions.Select(ToSessionSummary));
         }
 
@@ -491,7 +550,13 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSession(Guid id, CancellationToken cancellationToken)
         {
-            var session = await _repository.GetSessionAsync(id, cancellationToken);
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            if (currentUser is null)
+            {
+                return NotFound(new { error = "Chat session not found." });
+            }
+
+            var session = await _repository.GetSessionForOwnerAsync(id, currentUser.Id, cancellationToken);
             if (session is null)
             {
                 return NotFound(new { error = "Chat session not found." });
@@ -509,7 +574,17 @@ namespace PresentationLayer.Controllers
                     {
                         role = message.Role,
                         content = message.Content,
-                        createdAt = message.CreatedAt
+                        createdAt = message.CreatedAt,
+                        citations = message.Citations.Select(citation => new
+                        {
+                            documentId = citation.DocumentId,
+                            fileName = citation.FileName,
+                            subject = citation.Subject,
+                            chapter = citation.Chapter,
+                            chunkIndex = citation.ChunkIndex,
+                            score = citation.Score,
+                            excerpt = citation.Excerpt
+                        })
                     })
             });
         }
@@ -589,6 +664,25 @@ namespace PresentationLayer.Controllers
                 User.FindFirstValue(ClaimTypes.Email));
         }
 
+        private ChatSessionOwnerInfo BuildChatSessionOwnerInfo()
+        {
+            return new ChatSessionOwnerInfo(
+                CurrentUserId(),
+                User.FindFirstValue(ClaimTypes.Name),
+                User.FindFirstValue(ClaimTypes.Email));
+        }
+
+        private async Task<UserAccount?> GetCurrentUserAccountAsync(CancellationToken cancellationToken)
+        {
+            if (CurrentUserId() is not { } userId)
+            {
+                return null;
+            }
+
+            return (await _users.GetAllAsync(cancellationToken))
+                .FirstOrDefault(user => user.Id == userId);
+        }
+
         private IReadOnlyList<CourseSubject> FilterCourseCatalogForCurrentUser(IReadOnlyList<CourseSubject> catalog)
         {
             if (IsAdmin())
@@ -606,21 +700,38 @@ namespace PresentationLayer.Controllers
                 .ToList();
         }
 
-        private IReadOnlyList<IndexedDocument> FilterDocumentsForCurrentUser(IReadOnlyList<IndexedDocument> documents, IReadOnlyList<CourseSubject> catalog)
+        private IReadOnlyList<IndexedDocument> FilterDocumentsForCurrentUser(
+            IReadOnlyList<IndexedDocument> documents,
+            IReadOnlyList<CourseSubject> catalog,
+            UserAccount? currentUser)
         {
             if (IsAdmin())
             {
                 return documents;
             }
 
-            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            if (currentUser is null)
             {
                 return Array.Empty<IndexedDocument>();
             }
 
-            return documents
-                .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == userId)
-                .ToList();
+            if (IsLecturer())
+            {
+                return documents
+                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == currentUser.Id)
+                    .ToList();
+            }
+
+            if (CurrentRole() == AppRoles.Student)
+            {
+                var allowedSubjectIds = currentUser.AssignedSubjectIds.ToHashSet();
+                return documents
+                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject) is { } subject
+                                       && allowedSubjectIds.Contains(subject.Id))
+                    .ToList();
+            }
+
+            return Array.Empty<IndexedDocument>();
         }
 
         private async Task<bool> CanManageSubjectAsync(Guid subjectId, CancellationToken cancellationToken)

@@ -694,7 +694,7 @@ function renderSessionMessages(messages) {
   }
 
   messages.forEach((message) => {
-    appendMessageTo(chatMessages, message.role, message.content);
+    appendMessageTo(chatMessages, message.role, message.content, message.citations || []);
   });
   renderRelatedQuestions();
 }
@@ -802,7 +802,8 @@ function renderDocumentPreview(document) {
 
   documentPreviewBody.innerHTML = chunks.map((chunk) => `
     <article class="rbl-document-preview-chunk">
-      <span>Chunk ${escapeHtml(String(chunk.chunkIndex ?? ""))}</span>
+      <span>Chunk ${escapeHtml(String(chunk.chunkIndex ?? ""))}${chunk.sectionTitle ? ` / ${escapeHtml(chunk.sectionTitle)}` : ""}</span>
+      ${Number.isInteger(chunk.charStart) && Number.isInteger(chunk.charEnd) ? `<small>${escapeHtml(String(chunk.charStart))}-${escapeHtml(String(chunk.charEnd))}</small>` : ""}
       <p>${escapeHtml(chunk.text || "")}</p>
     </article>
   `).join("");
@@ -901,7 +902,7 @@ function bindSessionButtons() {
   });
 }
 
-function appendMessageTo(target, role, content) {
+function appendMessageTo(target, role, content, citations = []) {
   if (!target) {
     return null;
   }
@@ -918,9 +919,64 @@ function appendMessageTo(target, role, content) {
   bubble.textContent = content;
 
   wrapper.appendChild(bubble);
+  appendCitationsToMessage(wrapper, citations);
   target.appendChild(wrapper);
   target.scrollTop = target.scrollHeight;
   return wrapper;
+}
+
+function appendCitationsToMessage(messageWrapper, citations) {
+  const sourceItems = Array.isArray(citations)
+    ? citations.filter((citation) => citation && typeof citation === "object").slice(0, 5)
+    : [];
+
+  if (!messageWrapper || sourceItems.length === 0) {
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "citations";
+  list.setAttribute("aria-label", "Sources");
+
+  sourceItems.forEach((citation, index) => {
+    const item = document.createElement("article");
+    item.className = "citation";
+
+    const title = document.createElement("strong");
+    const fileName = citation.fileName || citation.FileName || "Document";
+    const chunkIndex = citation.chunkIndex ?? citation.ChunkIndex;
+    title.textContent = chunkIndex
+      ? `${index + 1}. ${fileName} / chunk ${chunkIndex}`
+      : `${index + 1}. ${fileName}`;
+    item.appendChild(title);
+
+    const metaValues = [
+      citation.subject || citation.Subject,
+      citation.chapter || citation.Chapter,
+      Number.isFinite(Number(citation.score ?? citation.Score))
+        ? `score ${Number(citation.score ?? citation.Score).toFixed(3)}`
+        : ""
+    ].filter(Boolean);
+
+    if (metaValues.length > 0) {
+      const meta = document.createElement("small");
+      meta.className = "citation-meta";
+      meta.textContent = metaValues.join(" / ");
+      item.appendChild(meta);
+    }
+
+    const excerptValue = citation.excerpt || citation.Excerpt || "";
+    if (excerptValue) {
+      const excerpt = document.createElement("p");
+      excerpt.className = "citation-excerpt";
+      excerpt.textContent = excerptValue;
+      item.appendChild(excerpt);
+    }
+
+    list.appendChild(item);
+  });
+
+  messageWrapper.appendChild(list);
 }
 
 function renderClarificationOptions(messageWrapper, options, originalQuestion) {
@@ -990,7 +1046,7 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
     if (activeSessionTitle) {
       activeSessionTitle.textContent = question.length <= 56 ? question : `${question.slice(0, 56)}...`;
     }
-    const answerMessage = appendMessageTo(messagesTarget, "assistant", payload.answer);
+    const answerMessage = appendMessageTo(messagesTarget, "assistant", payload.answer, payload.citations || []);
     if (payload.needsClarification && Array.isArray(payload.subjectOptions)) {
       renderClarificationOptions(answerMessage, payload.subjectOptions, question);
     }

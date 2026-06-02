@@ -11,33 +11,49 @@ namespace PresentationLayer
             QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
             var builder = WebApplication.CreateBuilder(args);
 
+            static string FirstConfigured(params string?[] values)
+            {
+                return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+            }
+
             builder.Services.AddControllersWithViews();
-            builder.Services
-                .AddAuthentication(options =>
+            var authenticationBuilder = builder.Services.AddAuthentication(options =>
+            {
+                options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+            });
+            authenticationBuilder.AddCookie(options =>
+            {
+                options.LoginPath = "/Account/Login";
+                options.LogoutPath = "/Account/Logout";
+                options.AccessDeniedPath = "/Account/AccessDenied";
+                options.Cookie.Name = "CourseAssistant.Auth";
+            });
+            authenticationBuilder.AddCookie("External", options =>
+            {
+                options.Cookie.Name = "CourseAssistant.External";
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+            });
+
+            var googleClientId = FirstConfigured(
+                builder.Configuration["Authentication:Google:ClientId"],
+                builder.Configuration["GOOGLE_CLIENT_ID"],
+                Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID"));
+            var googleClientSecret = FirstConfigured(
+                builder.Configuration["Authentication:Google:ClientSecret"],
+                builder.Configuration["GOOGLE_CLIENT_SECRET"],
+                Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET"));
+            if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret))
+            {
+                authenticationBuilder.AddGoogle(options =>
                 {
-                    options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
-                })
-                .AddCookie(options =>
-                {
-                    options.LoginPath = "/Account/Login";
-                    options.LogoutPath = "/Account/Logout";
-                    options.AccessDeniedPath = "/Account/AccessDenied";
-                    options.Cookie.Name = "CourseAssistant.Auth";
-                })
-                .AddCookie("External", options =>
-                {
-                    options.Cookie.Name = "CourseAssistant.External";
-                    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
-                })
-                .AddGoogle(options =>
-                {
-                    options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? string.Empty;
-                    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
+                    options.ClientId = googleClientId;
+                    options.ClientSecret = googleClientSecret;
                     options.CallbackPath = "/signin-google";
                     options.SignInScheme = "External";
                     options.SaveTokens = false;
                 });
+            }
             builder.Services.AddAuthorization(options =>
             {
                 options.AddPolicy(AuthorizationPolicies.ChatAccess, policy =>
@@ -48,10 +64,10 @@ namespace PresentationLayer
                     policy.RequireRole(AppRoles.Admin));
             });
             var geminiSection = builder.Configuration.GetSection("Gemini");
-            var geminiApiKey = geminiSection["ApiKey"]
-                ?? builder.Configuration["GEMINI_API_KEY"]
-                ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                ?? string.Empty;
+            var geminiApiKey = FirstConfigured(
+                geminiSection["ApiKey"],
+                builder.Configuration["GEMINI_API_KEY"],
+                Environment.GetEnvironmentVariable("GEMINI_API_KEY"));
             var geminiEnabled = !bool.TryParse(geminiSection["Enabled"], out var parsedGeminiEnabled) || parsedGeminiEnabled;
             var geminiChatModel = geminiSection["Model"] ?? "gemini-3.5-flash";
             var geminiEmbeddingModel = builder.Configuration["Embedding:Model"]
@@ -71,10 +87,10 @@ namespace PresentationLayer
                 geminiEmbeddingModel,
                 geminiEmbeddingDimensions,
                 geminiEnabled));
-            var huggingFaceApiKey = builder.Configuration["HuggingFace:ApiKey"]
-                ?? builder.Configuration["HUGGINGFACE_API_KEY"]
-                ?? Environment.GetEnvironmentVariable("HUGGINGFACE_API_KEY")
-                ?? string.Empty;
+            var huggingFaceApiKey = FirstConfigured(
+                builder.Configuration["HuggingFace:ApiKey"],
+                builder.Configuration["HUGGINGFACE_API_KEY"],
+                Environment.GetEnvironmentVariable("HUGGINGFACE_API_KEY"));
             var huggingFaceBaseAddress = builder.Configuration["HuggingFace:BaseAddress"]
                 ?? Environment.GetEnvironmentVariable("HUGGINGFACE_BASE_ADDRESS")
                 ?? "https://api-inference.huggingface.co/";
@@ -146,6 +162,8 @@ namespace PresentationLayer
                     geminiEnabled);
             });
             builder.Services.AddSingleton<ServicesLayer.IDocumentTextExtractor, ServicesLayer.DocumentTextExtractor>();
+            builder.Services.AddSingleton<ServicesLayer.ITextChunker, ServicesLayer.ParagraphAwareTextChunker>();
+            builder.Services.AddSingleton<ServicesLayer.IDocumentIndexJobQueue, ServicesLayer.DocumentIndexJobQueue>();
             builder.Services.AddSingleton<ServicesLayer.IWebPageTextExtractor>(_ =>
                 new ServicesLayer.WebPageTextExtractor(new HttpClient
                 {
@@ -154,6 +172,7 @@ namespace PresentationLayer
             builder.Services.AddSingleton<PresentationLayer.Services.IResearchReportPdfService, PresentationLayer.Services.ResearchReportPdfService>();
             builder.Services.AddScoped<ServicesLayer.IDocumentIndexingService, ServicesLayer.DocumentIndexingService>();
             builder.Services.AddScoped<ServicesLayer.IRagChatService, ServicesLayer.RagChatService>();
+            builder.Services.AddHostedService<PresentationLayer.Services.DocumentIndexWorker>();
             builder.Services.AddHttpClient<ServicesLayer.IResearchBenchmarkService, ServicesLayer.ResearchBenchmarkService>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(180);

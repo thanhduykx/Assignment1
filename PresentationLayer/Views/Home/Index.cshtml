@@ -1,3 +1,4 @@
+@using DataAccessLayer
 @model PresentationLayer.Models.HomeIndexViewModel
 @{
     ViewData["Title"] = "Kho tài liệu";
@@ -51,6 +52,43 @@
     string PersonLabel(string name, string fallback)
     {
         return string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
+    }
+
+    string StatusClass(IndexedDocument document)
+    {
+        return document.Status switch
+        {
+            DocumentIndexStatus.Indexed => "is-success",
+            DocumentIndexStatus.Processing => "is-running",
+            DocumentIndexStatus.Failed => "is-error",
+            _ => "is-muted"
+        };
+    }
+
+    string StatusLabel(IndexedDocument document)
+    {
+        return document.Status switch
+        {
+            DocumentIndexStatus.Indexed => "Indexed",
+            DocumentIndexStatus.Processing => "Processing",
+            DocumentIndexStatus.Failed => "Failed",
+            _ => string.IsNullOrWhiteSpace(document.Status) ? "Unknown" : document.Status
+        };
+    }
+
+    string StatusTitle(IndexedDocument document)
+    {
+        if (document.Status == DocumentIndexStatus.Failed && !string.IsNullOrWhiteSpace(document.IndexError))
+        {
+            return document.IndexError;
+        }
+
+        if (document.Status == DocumentIndexStatus.Indexed && document.IndexedAt.HasValue)
+        {
+            return $"Indexed at {document.IndexedAt.Value.LocalDateTime:yyyy-MM-dd HH:mm}";
+        }
+
+        return StatusLabel(document);
     }
 }
 
@@ -429,12 +467,21 @@
                             </td>
                             <td>@document.Subject</td>
                             <td>@document.Chapter</td>
-                            <td><span class="rbl-status is-success" data-i18n="documents.indexedStatus">Đã Index</span></td>
+                            <td>
+                                <span class="rbl-status @StatusClass(document)" title="@StatusTitle(document)">@StatusLabel(document)</span>
+                            </td>
                             <td>@document.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                             <td class="rbl-mono">@FormatBytes(document.FileSizeBytes)</td>
                             <td class="rbl-mono">@document.ChunkCount</td>
                             <td class="rbl-table-actions rbl-document-actions">
-                                <button type="button" class="rbl-small-button" data-document-preview-url="@Url.Action("DocumentPreview", "Home", new { id = document.Id })" data-i18n="documents.view">Xem</button>
+                                @if (document.Status == DocumentIndexStatus.Indexed)
+                                {
+                                    <button type="button" class="rbl-small-button" data-document-preview-url="@Url.Action("DocumentPreview", "Home", new { id = document.Id })" data-i18n="documents.view">Xem</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="rbl-small-button" disabled title="@StatusTitle(document)" data-i18n="documents.view">Xem</button>
+                                }
                                 <a class="rbl-small-button" asp-controller="Home" asp-action="EditDocument" asp-route-id="@document.Id">Sửa</a>
                                 <form asp-action="DeleteDocument" method="post" onsubmit="return confirm('Xóa tài liệu này khỏi kho index?');">
                                     @Html.AntiForgeryToken()

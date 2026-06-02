@@ -9,4 +9,5 @@ public sealed class UserAccount
     public string Provider { get; set; } = "Local";
     public string Role { get; set; } = PresentationLayer.Security.AppRoles.Student;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public List<Guid> AssignedSubjectIds { get; set; } = new();
 }

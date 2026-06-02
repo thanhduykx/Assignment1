@@ -135,7 +135,7 @@
                                 <div class="rbl-lecturer-subjects">
                                     @if (user.AssignedSubjects.Count == 0)
                                     {
-                                        <span class="rbl-muted-chip">Chưa phụ trách môn</span>
+                                        <span class="rbl-muted-chip">No owned subjects</span>
                                     }
                                     else
                                     {
@@ -160,8 +160,8 @@
                                                 foreach (var subject in Model.SubjectOptions)
                                                 {
                                                     var ownerLabel = string.IsNullOrWhiteSpace(subject.OwnerName)
-                                                        ? "Chưa phân công"
-                                                        : $"Đang phụ trách: {subject.OwnerName}";
+                                                        ? "Unassigned"
+                                                        : $"Owner: {subject.OwnerName}";
                                                     <option value="@subject.Id">@subject.DisplayName (@ownerLabel)</option>
                                                 }
                                             }
@@ -170,9 +170,46 @@
                                     <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@(Model.SubjectOptions.Count == 0)">Assign</button>
                                 </form>
                             }
+                            else if (user.Role == PresentationLayer.Security.AppRoles.Student)
+                            {
+                                <div class="rbl-lecturer-subjects">
+                                    @if (user.AssignedSubjects.Count == 0)
+                                    {
+                                        <span class="rbl-muted-chip">No subject access</span>
+                                    }
+                                    else
+                                    {
+                                        foreach (var subject in user.AssignedSubjects)
+                                        {
+                                            <span class="rbl-subject-owner-chip">@subject</span>
+                                        }
+                                    }
+                                </div>
+                                <form asp-action="AssignStudentSubject" method="post" class="rbl-lecturer-subject-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="UserId" value="@user.Id" />
+                                    <label class="rbl-field rbl-lecturer-subject-field">
+                                        <span class="visually-hidden">Subject access</span>
+                                        <select name="SubjectId" disabled="@(Model.SubjectOptions.Count == 0)">
+                                            @if (Model.SubjectOptions.Count == 0)
+                                            {
+                                                <option value="">No subjects</option>
+                                            }
+                                            else
+                                            {
+                                                foreach (var subject in Model.SubjectOptions)
+                                                {
+                                                    <option value="@subject.Id">@subject.DisplayName</option>
+                                                }
+                                            }
+                                        </select>
+                                    </label>
+                                    <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@(Model.SubjectOptions.Count == 0)">Grant</button>
+                                </form>
+                            }
                             else
                             {
-                                <span class="rbl-muted-chip">Không áp dụng</span>
+                                <span class="rbl-muted-chip">Not applicable</span>
                             }
                         </td>
                         <td class="rbl-role-status-cell">

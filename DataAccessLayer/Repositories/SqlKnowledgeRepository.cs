@@ -37,11 +37,24 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         return document is null ? null : KnowledgeSqlMapper.ToModel(document);
     }
 
+    public async Task<IReadOnlyList<IndexedDocument>> GetDocumentsByStatusAsync(string status, CancellationToken cancellationToken = default)
+    {
+        var normalizedStatus = NormalizeRequiredText(status, "Status is required.");
+        await using var context = CreateContext();
+        return await context.Documents
+            .AsNoTracking()
+            .Where(document => document.Status == normalizedStatus)
+            .OrderBy(document => document.UploadedAt)
+            .Select(document => KnowledgeSqlMapper.ToModel(document))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<DocumentChunk>> GetChunksAsync(CancellationToken cancellationToken = default)
     {
         await using var context = CreateContext();
         return await context.Chunks
             .AsNoTracking()
+            .Where(chunk => chunk.Document.Status == DocumentIndexStatus.Indexed)
             .OrderBy(chunk => chunk.ChunkIndex)
             .Select(chunk => KnowledgeSqlMapper.ToModel(chunk))
             .ToListAsync(cancellationToken);
@@ -70,6 +83,66 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         context.Documents.Add(KnowledgeSqlMapper.ToEntity(document));
         context.Chunks.AddRange(chunks.Select(KnowledgeSqlMapper.ToEntity));
 
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task MarkDocumentIndexProcessingAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        var document = await context.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken)
+            ?? throw new InvalidOperationException("Document not found.");
+
+        document.Status = DocumentIndexStatus.Processing;
+        document.IndexError = string.Empty;
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task CompleteDocumentIndexAsync(
+        Guid documentId,
+        IReadOnlyList<DocumentChunk> chunks,
+        string embeddingModel,
+        int embeddingDimensions,
+        string chunkingStrategy,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var document = await context.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken)
+            ?? throw new InvalidOperationException("Document not found.");
+
+        var existingChunks = await context.Chunks
+            .Where(item => item.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+        context.Chunks.RemoveRange(existingChunks);
+        await context.SaveChangesAsync(cancellationToken);
+
+        document.Status = DocumentIndexStatus.Indexed;
+        document.ChunkCount = chunks.Count;
+        document.IndexedAt = DateTimeOffset.UtcNow;
+        document.IndexError = string.Empty;
+        document.EmbeddingModel = embeddingModel.Trim();
+        document.EmbeddingDimensions = Math.Max(0, embeddingDimensions);
+        document.ChunkingStrategy = chunkingStrategy.Trim();
+
+        context.Chunks.AddRange(chunks.Select(KnowledgeSqlMapper.ToEntity));
+
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task MarkDocumentIndexFailedAsync(Guid documentId, string errorMessage, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        var document = await context.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+        if (document is null)
+        {
+            return;
+        }
+
+        document.Status = DocumentIndexStatus.Failed;
+        document.IndexError = (errorMessage ?? string.Empty).Trim();
+        document.IndexedAt = null;
         await context.SaveChangesAsync(cancellationToken);
     }
 
@@ -272,6 +345,20 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         return sessions.Select(KnowledgeSqlMapper.ToModel).ToList();
     }
 
+    public async Task<IReadOnlyList<ChatSession>> GetSessionsForOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        var sessions = await context.Sessions
+            .AsNoTracking()
+            .Where(session => session.OwnerUserId == ownerUserId)
+            .Include(session => session.Messages.OrderBy(message => message.CreatedAt))
+            .ThenInclude(message => message.Citations)
+            .OrderByDescending(session => session.UpdatedAt)
+            .ToListAsync(cancellationToken);
+
+        return sessions.Select(KnowledgeSqlMapper.ToModel).ToList();
+    }
+
     public async Task<ChatSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         await using var context = CreateContext();
@@ -284,7 +371,22 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         return session is null ? null : KnowledgeSqlMapper.ToModel(session);
     }
 
-    public async Task<ChatSession> GetOrCreateSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task<ChatSession?> GetSessionForOwnerAsync(Guid sessionId, Guid ownerUserId, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        var session = await context.Sessions
+            .AsNoTracking()
+            .Include(item => item.Messages.OrderBy(message => message.CreatedAt))
+            .ThenInclude(message => message.Citations)
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.OwnerUserId == ownerUserId, cancellationToken);
+
+        return session is null ? null : KnowledgeSqlMapper.ToModel(session);
+    }
+
+    public async Task<ChatSession> GetOrCreateSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
     {
         await using var context = CreateContext();
         var session = await context.Sessions
@@ -294,6 +396,8 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
 
         if (session is not null)
         {
+            EnsureSessionOwner(session, ownerInfo);
+            await context.SaveChangesAsync(cancellationToken);
             return KnowledgeSqlMapper.ToModel(session);
         }
 
@@ -301,14 +405,21 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         {
             Id = sessionId,
             CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
+            UpdatedAt = DateTimeOffset.UtcNow,
+            OwnerUserId = ownerInfo?.UserId,
+            OwnerName = ownerInfo?.Name?.Trim() ?? string.Empty,
+            OwnerEmail = ownerInfo?.Email?.Trim() ?? string.Empty
         };
         context.Sessions.Add(session);
         await context.SaveChangesAsync(cancellationToken);
         return KnowledgeSqlMapper.ToModel(session);
     }
 
-    public async Task AddMessageAsync(Guid sessionId, ChatMessage message, CancellationToken cancellationToken = default)
+    public async Task AddMessageAsync(
+        Guid sessionId,
+        ChatMessage message,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
     {
         await using var context = CreateContext();
         var session = await context.Sessions.FirstOrDefaultAsync(item => item.Id == sessionId, cancellationToken);
@@ -318,9 +429,16 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             {
                 Id = sessionId,
                 CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
+                UpdatedAt = DateTimeOffset.UtcNow,
+                OwnerUserId = ownerInfo?.UserId,
+                OwnerName = ownerInfo?.Name?.Trim() ?? string.Empty,
+                OwnerEmail = ownerInfo?.Email?.Trim() ?? string.Empty
             };
             context.Sessions.Add(session);
+        }
+        else
+        {
+            EnsureSessionOwner(session, ownerInfo);
         }
 
         session.UpdatedAt = DateTimeOffset.UtcNow;
@@ -362,7 +480,10 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             {
                 Id = session.Id,
                 CreatedAt = session.CreatedAt,
-                UpdatedAt = session.UpdatedAt
+                UpdatedAt = session.UpdatedAt,
+                OwnerUserId = session.OwnerUserId,
+                OwnerName = session.OwnerName,
+                OwnerEmail = session.OwnerEmail
             });
 
             foreach (var message in session.Messages)
@@ -379,6 +500,26 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
     private KnowledgeSqlDbContext CreateContext()
     {
         return new KnowledgeSqlDbContext(_options);
+    }
+
+    private static void EnsureSessionOwner(KnowledgeSqlChatSession session, ChatSessionOwnerInfo? ownerInfo)
+    {
+        if (ownerInfo?.UserId is not { } ownerUserId)
+        {
+            return;
+        }
+
+        if (session.OwnerUserId.HasValue && session.OwnerUserId.Value != ownerUserId)
+        {
+            throw new InvalidOperationException("Chat session is not available for this user.");
+        }
+
+        if (!session.OwnerUserId.HasValue)
+        {
+            session.OwnerUserId = ownerUserId;
+            session.OwnerName = ownerInfo.Name?.Trim() ?? string.Empty;
+            session.OwnerEmail = ownerInfo.Email?.Trim() ?? string.Empty;
+        }
     }
 
     private static CourseSubject ToCourseSubject(KnowledgeSqlCourseSubject subject)

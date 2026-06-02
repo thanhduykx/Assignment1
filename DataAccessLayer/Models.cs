@@ -1,5 +1,12 @@
 namespace DataAccessLayer;
 
+public static class DocumentIndexStatus
+{
+    public const string Processing = "Processing";
+    public const string Indexed = "Indexed";
+    public const string Failed = "Failed";
+}
+
 public sealed class IndexedDocument
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -14,6 +21,12 @@ public sealed class IndexedDocument
     public Guid? UploadedByUserId { get; set; }
     public string UploadedByName { get; set; } = string.Empty;
     public string UploadedByEmail { get; set; } = string.Empty;
+    public string Status { get; set; } = DocumentIndexStatus.Indexed;
+    public DateTimeOffset? IndexedAt { get; set; }
+    public string IndexError { get; set; } = string.Empty;
+    public string EmbeddingModel { get; set; } = string.Empty;
+    public int EmbeddingDimensions { get; set; }
+    public string ChunkingStrategy { get; set; } = string.Empty;
 }
 
 public sealed class DocumentChunk
@@ -25,6 +38,9 @@ public sealed class DocumentChunk
     public string Chapter { get; set; } = string.Empty;
     public int ChunkIndex { get; set; }
     public string Text { get; set; } = string.Empty;
+    public string SectionTitle { get; set; } = string.Empty;
+    public int CharStart { get; set; }
+    public int CharEnd { get; set; }
     public Dictionary<int, double> Embedding { get; set; } = new();
 }
 
@@ -33,8 +49,13 @@ public sealed class ChatSession
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Guid? OwnerUserId { get; set; }
+    public string OwnerName { get; set; } = string.Empty;
+    public string OwnerEmail { get; set; } = string.Empty;
     public List<ChatMessage> Messages { get; set; } = new();
 }
+
+public sealed record ChatSessionOwnerInfo(Guid? UserId, string? Name, string? Email);
 
 public sealed class ChatMessage
 {

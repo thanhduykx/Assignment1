@@ -21,6 +21,8 @@ public interface IRagChatService
         string? userDisplayName = null,
         string? subjectFilter = null,
         string? language = null,
+        IReadOnlyCollection<string>? allowedSubjects = null,
+        ChatSessionOwnerInfo? ownerInfo = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -113,6 +115,8 @@ public sealed class RagChatService : IRagChatService
         string? userDisplayName = null,
         string? subjectFilter = null,
         string? language = null,
+        IReadOnlyCollection<string>? allowedSubjects = null,
+        ChatSessionOwnerInfo? ownerInfo = null,
         CancellationToken cancellationToken = default)
     {
         var trimmedQuestion = question.Trim();
@@ -122,24 +126,24 @@ public sealed class RagChatService : IRagChatService
             throw new InvalidOperationException("Question cannot be empty.");
         }
 
-        var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken);
+        var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken, ownerInfo);
         var historyBeforeQuestion = session.Messages.ToList();
 
         await _repository.AddMessageAsync(sessionId, new ChatMessage
         {
             Role = "user",
             Content = trimmedQuestion
-        }, cancellationToken);
+        }, cancellationToken, ownerInfo);
 
         if (LooksLikePromptInjection(trimmedQuestion))
         {
-            return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken);
+            return await SaveAssistantAnswer(sessionId, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), cancellationToken, ownerInfo);
         }
 
         var questionBatch = SplitQuestionBatch(trimmedQuestion);
         if (questionBatch.Count > 1)
         {
-            var scopedChunks = await GetScopedChunksAsync(cancellationToken);
+            var scopedChunks = await GetScopedChunksAsync(allowedSubjects, cancellationToken);
             var questionsToAnswer = questionBatch.Take(MaxBatchQuestions).ToList();
             var answers = new List<SingleQuestionAnswer>(questionsToAnswer.Count);
 
@@ -151,13 +155,14 @@ public sealed class RagChatService : IRagChatService
                     userDisplayName,
                     responseLanguage,
                     subjectFilter,
+                    allowedSubjects,
                     scopedChunks,
                     cancellationToken));
             }
 
             var answerText = FormatBatchAnswer(answers, questionBatch.Count - questionsToAnswer.Count, responseLanguage);
             var citations = MergeCitations(answers.SelectMany(item => item.Citations));
-            return await SaveAssistantAnswer(sessionId, answerText, citations, cancellationToken);
+            return await SaveAssistantAnswer(sessionId, answerText, citations, cancellationToken, ownerInfo);
         }
 
         var singleAnswer = await BuildSingleQuestionAnswerAsync(
@@ -166,6 +171,7 @@ public sealed class RagChatService : IRagChatService
             userDisplayName,
             responseLanguage,
             subjectFilter,
+            allowedSubjects,
             scopedChunks: null,
             cancellationToken);
 
@@ -174,6 +180,7 @@ public sealed class RagChatService : IRagChatService
             singleAnswer.Answer,
             singleAnswer.Citations,
             cancellationToken,
+            ownerInfo,
             singleAnswer.ResolvedSubject,
             singleAnswer.NeedsClarification,
             singleAnswer.SubjectOptions);
@@ -185,6 +192,7 @@ public sealed class RagChatService : IRagChatService
         string? userDisplayName,
         string responseLanguage,
         string? subjectFilter,
+        IReadOnlyCollection<string>? allowedSubjects,
         IReadOnlyList<DocumentChunk>? scopedChunks,
         CancellationToken cancellationToken)
     {
@@ -209,7 +217,7 @@ public sealed class RagChatService : IRagChatService
             cancellationToken);
         var resolvedQuestion = rewrittenQuestion;
 
-        scopedChunks ??= await GetScopedChunksAsync(cancellationToken);
+        scopedChunks ??= await GetScopedChunksAsync(allowedSubjects, cancellationToken);
         if (scopedChunks.Count == 0)
         {
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
@@ -339,9 +347,23 @@ public sealed class RagChatService : IRagChatService
         return new SingleQuestionAnswer(question, answer, citations, resolvedSubject);
     }
 
-    private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(
+        IReadOnlyCollection<string>? allowedSubjects,
+        CancellationToken cancellationToken)
     {
-        return await _repository.GetChunksAsync(cancellationToken);
+        var chunks = await _repository.GetChunksAsync(cancellationToken);
+        var normalizedAllowedSubjects = allowedSubjects?
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (normalizedAllowedSubjects is null || normalizedAllowedSubjects.Count == 0)
+        {
+            return Array.Empty<DocumentChunk>();
+        }
+
+        return chunks
+            .Where(chunk => normalizedAllowedSubjects.Any(subject => SubjectMatches(chunk.Subject, subject)))
+            .ToList();
     }
 
     private static SubjectRouteResult ResolveSubjectRoute(
@@ -699,6 +721,7 @@ public sealed class RagChatService : IRagChatService
         string answer,
         IReadOnlyList<SourceCitation> citations,
         CancellationToken cancellationToken,
+        ChatSessionOwnerInfo? ownerInfo = null,
         string? resolvedSubject = null,
         bool needsClarification = false,
         IReadOnlyList<string>? subjectOptions = null)
@@ -708,9 +731,9 @@ public sealed class RagChatService : IRagChatService
             Role = "assistant",
             Content = answer,
             Citations = citations.ToList()
-        }, cancellationToken);
+        }, cancellationToken, ownerInfo);
 
-        var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken);
+        var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken, ownerInfo);
         return new ChatAnswer(answer, citations, session.Messages, resolvedSubject, needsClarification, subjectOptions ?? Array.Empty<string>());
     }
 

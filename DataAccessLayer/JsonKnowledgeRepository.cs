@@ -46,12 +46,36 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
+    public async Task<IReadOnlyList<IndexedDocument>> GetDocumentsByStatusAsync(string status, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var normalizedStatus = NormalizeRequiredText(status, "Status is required.");
+            return (await LoadAsync(cancellationToken)).Documents
+                .Where(document => string.Equals(document.Status, normalizedStatus, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(document => document.UploadedAt)
+                .ToList();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<DocumentChunk>> GetChunksAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            return (await LoadAsync(cancellationToken)).Chunks.ToList();
+            var store = await LoadAsync(cancellationToken);
+            var indexedDocumentIds = store.Documents
+                .Where(document => string.Equals(document.Status, DocumentIndexStatus.Indexed, StringComparison.OrdinalIgnoreCase))
+                .Select(document => document.Id)
+                .ToHashSet();
+            return store.Chunks
+                .Where(chunk => indexedDocumentIds.Contains(chunk.DocumentId))
+                .ToList();
         }
         finally
         {
@@ -83,6 +107,82 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
             var store = await LoadAsync(cancellationToken);
             store.Documents.Add(document);
             store.Chunks.AddRange(chunks);
+            await SaveAsync(store, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task MarkDocumentIndexProcessingAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var document = store.Documents.FirstOrDefault(item => item.Id == documentId)
+                ?? throw new InvalidOperationException("Document not found.");
+
+            document.Status = DocumentIndexStatus.Processing;
+            document.IndexError = string.Empty;
+            await SaveAsync(store, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task CompleteDocumentIndexAsync(
+        Guid documentId,
+        IReadOnlyList<DocumentChunk> chunks,
+        string embeddingModel,
+        int embeddingDimensions,
+        string chunkingStrategy,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var document = store.Documents.FirstOrDefault(item => item.Id == documentId)
+                ?? throw new InvalidOperationException("Document not found.");
+
+            store.Chunks.RemoveAll(item => item.DocumentId == documentId);
+            store.Chunks.AddRange(chunks);
+
+            document.Status = DocumentIndexStatus.Indexed;
+            document.ChunkCount = chunks.Count;
+            document.IndexedAt = DateTimeOffset.UtcNow;
+            document.IndexError = string.Empty;
+            document.EmbeddingModel = embeddingModel.Trim();
+            document.EmbeddingDimensions = Math.Max(0, embeddingDimensions);
+            document.ChunkingStrategy = chunkingStrategy.Trim();
+
+            await SaveAsync(store, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task MarkDocumentIndexFailedAsync(Guid documentId, string errorMessage, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var document = store.Documents.FirstOrDefault(item => item.Id == documentId);
+            if (document is null)
+            {
+                return;
+            }
+
+            document.Status = DocumentIndexStatus.Failed;
+            document.IndexError = (errorMessage ?? string.Empty).Trim();
+            document.IndexedAt = null;
             await SaveAsync(store, cancellationToken);
         }
         finally
@@ -308,6 +408,22 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
+    public async Task<IReadOnlyList<ChatSession>> GetSessionsForOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken)).Sessions
+                .Where(session => session.OwnerUserId == ownerUserId)
+                .OrderByDescending(session => session.UpdatedAt)
+                .ToList();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<ChatSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -321,7 +437,23 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
-    public async Task<ChatSession> GetOrCreateSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task<ChatSession?> GetSessionForOwnerAsync(Guid sessionId, Guid ownerUserId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken)).Sessions.FirstOrDefault(item => item.Id == sessionId && item.OwnerUserId == ownerUserId);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<ChatSession> GetOrCreateSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -330,10 +462,18 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
             var session = store.Sessions.FirstOrDefault(item => item.Id == sessionId);
             if (session is not null)
             {
+                EnsureSessionOwner(session, ownerInfo);
+                await SaveAsync(store, cancellationToken);
                 return session;
             }
 
-            session = new ChatSession { Id = sessionId };
+            session = new ChatSession
+            {
+                Id = sessionId,
+                OwnerUserId = ownerInfo?.UserId,
+                OwnerName = ownerInfo?.Name?.Trim() ?? string.Empty,
+                OwnerEmail = ownerInfo?.Email?.Trim() ?? string.Empty
+            };
             store.Sessions.Add(session);
             await SaveAsync(store, cancellationToken);
             return session;
@@ -344,7 +484,11 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
-    public async Task AddMessageAsync(Guid sessionId, ChatMessage message, CancellationToken cancellationToken = default)
+    public async Task AddMessageAsync(
+        Guid sessionId,
+        ChatMessage message,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -353,8 +497,18 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
             var session = store.Sessions.FirstOrDefault(item => item.Id == sessionId);
             if (session is null)
             {
-                session = new ChatSession { Id = sessionId };
+                session = new ChatSession
+                {
+                    Id = sessionId,
+                    OwnerUserId = ownerInfo?.UserId,
+                    OwnerName = ownerInfo?.Name?.Trim() ?? string.Empty,
+                    OwnerEmail = ownerInfo?.Email?.Trim() ?? string.Empty
+                };
                 store.Sessions.Add(session);
+            }
+            else
+            {
+                EnsureSessionOwner(session, ownerInfo);
             }
 
             session.Messages.Add(message);
@@ -414,5 +568,25 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
 
         return normalized;
+    }
+
+    private static void EnsureSessionOwner(ChatSession session, ChatSessionOwnerInfo? ownerInfo)
+    {
+        if (ownerInfo?.UserId is not { } ownerUserId)
+        {
+            return;
+        }
+
+        if (session.OwnerUserId.HasValue && session.OwnerUserId.Value != ownerUserId)
+        {
+            throw new InvalidOperationException("Chat session is not available for this user.");
+        }
+
+        if (!session.OwnerUserId.HasValue)
+        {
+            session.OwnerUserId = ownerUserId;
+            session.OwnerName = ownerInfo.Name?.Trim() ?? string.Empty;
+            session.OwnerEmail = ownerInfo.Email?.Trim() ?? string.Empty;
+        }
     }
 }

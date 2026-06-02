@@ -10,7 +10,7 @@ public sealed record DocumentUploaderInfo(Guid? UserId, string? Name, string? Em
 public interface IDocumentIndexingService
 {
     Task<IReadOnlyList<IndexedDocument>> GetDocumentsAsync(CancellationToken cancellationToken = default);
-    Task<DocumentUploadResult> IndexAsync(
+    Task<DocumentUploadResult> QueueFileAsync(
         Stream fileStream,
         string fileName,
         string contentType,
@@ -19,7 +19,7 @@ public interface IDocumentIndexingService
         string uploadsRoot,
         DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default);
-    Task<DocumentUploadResult> IndexTextAsync(
+    Task<DocumentUploadResult> QueueTextAsync(
         string text,
         string sourceName,
         string contentType,
@@ -28,25 +28,26 @@ public interface IDocumentIndexingService
         string uploadsRoot,
         DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default);
+    Task ProcessDocumentAsync(Guid documentId, CancellationToken cancellationToken = default);
 }
 
 public sealed class DocumentIndexingService : IDocumentIndexingService
 {
-    private const int ChunkSize = 950;
-    private const int ChunkOverlap = 160;
-
     private readonly IKnowledgeRepository _repository;
     private readonly IDocumentTextExtractor _extractor;
     private readonly IEmbeddingService _embeddingService;
+    private readonly ITextChunker _chunker;
 
     public DocumentIndexingService(
         IKnowledgeRepository repository,
         IDocumentTextExtractor extractor,
-        IEmbeddingService embeddingService)
+        IEmbeddingService embeddingService,
+        ITextChunker chunker)
     {
         _repository = repository;
         _extractor = extractor;
         _embeddingService = embeddingService;
+        _chunker = chunker;
     }
 
     public Task<IReadOnlyList<IndexedDocument>> GetDocumentsAsync(CancellationToken cancellationToken = default)
@@ -54,7 +55,7 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
         return _repository.GetDocumentsAsync(cancellationToken);
     }
 
-    public async Task<DocumentUploadResult> IndexAsync(
+    public async Task<DocumentUploadResult> QueueFileAsync(
         Stream fileStream,
         string fileName,
         string contentType,
@@ -64,71 +65,37 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
         DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default)
     {
-        if (fileStream.Length == 0)
+        Directory.CreateDirectory(uploadsRoot);
+
+        await using var copy = new MemoryStream();
+        await fileStream.CopyToAsync(copy, cancellationToken);
+        if (copy.Length == 0)
         {
             throw new InvalidOperationException("The selected file is empty and cannot be indexed.");
         }
 
-        Directory.CreateDirectory(uploadsRoot);
-        await using var copy = new MemoryStream();
-        await fileStream.CopyToAsync(copy, cancellationToken);
+        var safeFileName = NormalizeFileName(fileName);
+        var storedPath = Path.Combine(uploadsRoot, $"{Guid.NewGuid():N}{Path.GetExtension(safeFileName)}");
         copy.Position = 0;
-
-        var extractedText = await _extractor.ExtractAsync(copy, fileName, cancellationToken);
-        if (string.IsNullOrWhiteSpace(extractedText))
+        await using (var savedFile = File.Create(storedPath))
         {
-            throw new InvalidOperationException("No readable text could be extracted from this document.");
-        }
-
-        var document = new IndexedDocument
-        {
-            FileName = Path.GetFileName(fileName),
-            Subject = string.IsNullOrWhiteSpace(subject) ? "Demo course" : subject.Trim(),
-            Chapter = string.IsNullOrWhiteSpace(chapter) ? "Uncategorized" : chapter.Trim(),
-            ContentType = contentType,
-            StoredPath = Path.Combine(uploadsRoot, $"{Guid.NewGuid():N}{Path.GetExtension(fileName)}"),
-            UploadedAt = DateTimeOffset.UtcNow,
-            FileSizeBytes = copy.Length,
-            UploadedByUserId = uploader.UserId,
-            UploadedByName = uploader.Name?.Trim() ?? string.Empty,
-            UploadedByEmail = uploader.Email?.Trim() ?? string.Empty
-        };
-
-        if (Path.GetExtension(fileName).Equals(".txt", StringComparison.OrdinalIgnoreCase))
-        {
-            await File.WriteAllTextAsync(document.StoredPath, extractedText, Encoding.UTF8, cancellationToken);
-        }
-        else
-        {
-            copy.Position = 0;
-            await using var savedFile = File.Create(document.StoredPath);
             await copy.CopyToAsync(savedFile, cancellationToken);
         }
 
-        var chunkTexts = CreateChunks(extractedText);
-        var chunks = new List<DocumentChunk>(chunkTexts.Count);
-        for (var index = 0; index < chunkTexts.Count; index++)
-        {
-            var chunk = chunkTexts[index];
-            chunks.Add(new DocumentChunk
-            {
-                DocumentId = document.Id,
-                FileName = document.FileName,
-                Subject = document.Subject,
-                Chapter = document.Chapter,
-                ChunkIndex = index + 1,
-                Text = chunk,
-                Embedding = await _embeddingService.EmbedAsync(chunk, cancellationToken)
-            });
-        }
+        var document = CreateProcessingDocument(
+            safeFileName,
+            contentType,
+            subject,
+            chapter,
+            storedPath,
+            copy.Length,
+            uploader);
 
-        document.ChunkCount = chunks.Count;
-        await _repository.AddDocumentAsync(document, chunks, cancellationToken);
-
-        return new DocumentUploadResult(document.Id, chunks.Count, $"Indexed {chunks.Count} chunks from {document.FileName}.");
+        await _repository.AddDocumentAsync(document, Array.Empty<DocumentChunk>(), cancellationToken);
+        return new DocumentUploadResult(document.Id, 0, $"Queued {document.FileName} for indexing.");
     }
 
-    public async Task<DocumentUploadResult> IndexTextAsync(
+    public async Task<DocumentUploadResult> QueueTextAsync(
         string text,
         string sourceName,
         string contentType,
@@ -148,87 +115,148 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
         var storedPath = Path.Combine(uploadsRoot, $"{Guid.NewGuid():N}.txt");
         await File.WriteAllTextAsync(storedPath, text, Encoding.UTF8, cancellationToken);
 
-        var document = new IndexedDocument
-        {
-            FileName = safeSourceName,
-            Subject = string.IsNullOrWhiteSpace(subject) ? "Demo course" : subject.Trim(),
-            Chapter = string.IsNullOrWhiteSpace(chapter) ? "Uncategorized" : chapter.Trim(),
-            ContentType = contentType,
-            StoredPath = storedPath,
-            UploadedAt = DateTimeOffset.UtcNow,
-            FileSizeBytes = Encoding.UTF8.GetByteCount(text),
-            UploadedByUserId = uploader.UserId,
-            UploadedByName = uploader.Name?.Trim() ?? string.Empty,
-            UploadedByEmail = uploader.Email?.Trim() ?? string.Empty
-        };
+        var document = CreateProcessingDocument(
+            safeSourceName,
+            contentType,
+            subject,
+            chapter,
+            storedPath,
+            Encoding.UTF8.GetByteCount(text),
+            uploader);
 
-        var chunkTexts = CreateChunks(text);
-        var chunks = new List<DocumentChunk>(chunkTexts.Count);
-        for (var index = 0; index < chunkTexts.Count; index++)
+        await _repository.AddDocumentAsync(document, Array.Empty<DocumentChunk>(), cancellationToken);
+        return new DocumentUploadResult(document.Id, 0, $"Queued {document.FileName} for indexing.");
+    }
+
+    public async Task ProcessDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        var document = await _repository.GetDocumentAsync(documentId, cancellationToken);
+        if (document is null)
         {
-            var chunk = chunkTexts[index];
+            return;
+        }
+
+        if (document.Status == DocumentIndexStatus.Indexed && document.ChunkCount > 0)
+        {
+            return;
+        }
+
+        await _repository.MarkDocumentIndexProcessingAsync(document.Id, cancellationToken);
+
+        var storedPath = Path.GetFullPath(document.StoredPath);
+        if (!File.Exists(storedPath))
+        {
+            throw new InvalidOperationException("Stored file was not found for indexing.");
+        }
+
+        string extractedText;
+        await using (var stream = File.OpenRead(storedPath))
+        {
+            extractedText = await _extractor.ExtractAsync(stream, document.FileName, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(extractedText))
+        {
+            throw new InvalidOperationException("No readable text could be extracted from this document.");
+        }
+
+        var chunkTexts = _chunker.CreateChunks(extractedText);
+        if (chunkTexts.Count == 0)
+        {
+            throw new InvalidOperationException("No indexable chunks could be created from this document.");
+        }
+
+        var chunks = new List<DocumentChunk>(chunkTexts.Count);
+        foreach (var chunk in chunkTexts)
+        {
             chunks.Add(new DocumentChunk
             {
                 DocumentId = document.Id,
                 FileName = document.FileName,
                 Subject = document.Subject,
                 Chapter = document.Chapter,
-                ChunkIndex = index + 1,
-                Text = chunk,
-                Embedding = await _embeddingService.EmbedAsync(chunk, cancellationToken)
+                ChunkIndex = chunk.ChunkIndex,
+                Text = chunk.Text,
+                SectionTitle = chunk.SectionTitle,
+                CharStart = chunk.CharStart,
+                CharEnd = chunk.CharEnd,
+                Embedding = await _embeddingService.EmbedAsync(chunk.Text, cancellationToken)
             });
         }
 
-        document.ChunkCount = chunks.Count;
-        await _repository.AddDocumentAsync(document, chunks, cancellationToken);
-
-        return new DocumentUploadResult(document.Id, chunks.Count, $"Indexed {chunks.Count} chunks from {document.FileName}.");
+        await _repository.CompleteDocumentIndexAsync(
+            document.Id,
+            chunks,
+            _embeddingService.ModelName,
+            _embeddingService.Dimensions,
+            _chunker.StrategyName,
+            cancellationToken);
     }
 
-    private static IReadOnlyList<string> CreateChunks(string text)
+    private IndexedDocument CreateProcessingDocument(
+        string fileName,
+        string contentType,
+        string subject,
+        string chapter,
+        string storedPath,
+        long fileSizeBytes,
+        DocumentUploaderInfo uploader)
     {
-        var normalized = text.Replace("\r\n", "\n").Trim();
-        var chunks = new List<string>();
-        var start = 0;
-
-        while (start < normalized.Length)
+        return new IndexedDocument
         {
-            var remaining = normalized.Length - start;
-            var length = Math.Min(ChunkSize, remaining);
-            var end = start + length;
+            FileName = NormalizeFileName(fileName),
+            Subject = NormalizeRequiredText(subject, "Subject is required."),
+            Chapter = NormalizeRequiredText(chapter, "Chapter is required."),
+            ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType.Trim(),
+            StoredPath = storedPath,
+            UploadedAt = DateTimeOffset.UtcNow,
+            FileSizeBytes = fileSizeBytes,
+            UploadedByUserId = uploader.UserId,
+            UploadedByName = uploader.Name?.Trim() ?? string.Empty,
+            UploadedByEmail = uploader.Email?.Trim() ?? string.Empty,
+            Status = DocumentIndexStatus.Processing,
+            ChunkCount = 0,
+            IndexedAt = null,
+            IndexError = string.Empty,
+            EmbeddingModel = _embeddingService.ModelName,
+            EmbeddingDimensions = _embeddingService.Dimensions,
+            ChunkingStrategy = _chunker.StrategyName
+        };
+    }
 
-            if (end < normalized.Length)
-            {
-                var paragraphBreak = normalized.LastIndexOf("\n", end, length, StringComparison.Ordinal);
-                if (paragraphBreak > start + ChunkSize / 2)
-                {
-                    end = paragraphBreak;
-                }
-            }
-
-            var chunk = normalized[start..end].Trim();
-            if (!string.IsNullOrWhiteSpace(chunk))
-            {
-                chunks.Add(chunk);
-            }
-
-            if (end >= normalized.Length)
-            {
-                break;
-            }
-
-            start = Math.Max(0, end - ChunkOverlap);
+    private static string NormalizeFileName(string fileName)
+    {
+        var normalized = Path.GetFileName((fileName ?? string.Empty).Trim());
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("File name is required.");
         }
 
-        return chunks;
+        return normalized;
+    }
+
+    private static string NormalizeRequiredText(string value, string errorMessage)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        return normalized;
     }
 
     private static string MakeSafeSourceName(string sourceName)
     {
-        var name = string.IsNullOrWhiteSpace(sourceName) ? "web-page" : sourceName.Trim();
+        var name = string.IsNullOrWhiteSpace(sourceName) ? "web-page.txt" : sourceName.Trim();
         foreach (var invalidCharacter in Path.GetInvalidFileNameChars())
         {
             name = name.Replace(invalidCharacter, '-');
+        }
+
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(name)))
+        {
+            name += ".txt";
         }
 
         return name.Length <= 120 ? name : name[..120];

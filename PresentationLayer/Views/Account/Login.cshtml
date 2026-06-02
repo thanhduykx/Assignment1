@@ -33,16 +33,19 @@
             <button type="submit" class="btn btn-primary">Đăng nhập</button>
         </form>
 
-        <form asp-action="GoogleLogin" method="post" class="google-form">
-            @Html.AntiForgeryToken()
-            <input name="returnUrl" value="@Model.ReturnUrl" type="hidden" />
-            <button type="submit" class="btn btn-outline-dark google-button">
-                <img src="~/img/google-g.svg" alt="" class="google-icon" />
-                <span>Đăng nhập với Google</span>
-            </button>
-        </form>
+        @if (Model.IsGoogleLoginEnabled)
+        {
+            <form asp-action="GoogleLogin" method="post" class="google-form">
+                @Html.AntiForgeryToken()
+                <input name="returnUrl" value="@Model.ReturnUrl" type="hidden" />
+                <button type="submit" class="btn btn-outline-dark google-button">
+                    <img src="~/img/google-g.svg" alt="" class="google-icon" />
+                    <span>Đăng nhập với Google</span>
+                </button>
+            </form>
+        }
 
-        <p class="auth-switch">Chưa có tài khoản? <a asp-action="Register">Tạo tài khoản</a></p>
+        <p class="auth-switch">Chưa có tài khoản? Vui lòng liên hệ Nhà trường để xin cấp tài khoản.</p>
     </div>
 </section>
 

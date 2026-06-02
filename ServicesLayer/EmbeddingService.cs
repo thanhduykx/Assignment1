@@ -10,6 +10,8 @@ namespace ServicesLayer;
 
 public interface IEmbeddingService
 {
+    string ModelName { get; }
+    int Dimensions { get; }
     Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default);
     double CosineSimilarity(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right);
 }
@@ -24,6 +26,9 @@ public sealed class FallbackEmbeddingService : IEmbeddingService
         _primary = primary;
         _fallback = fallback;
     }
+
+    public string ModelName => _primary.ModelName;
+    public int Dimensions => _primary.Dimensions;
 
     public async Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default)
     {
@@ -63,6 +68,9 @@ public sealed class HashingEmbeddingService : IEmbeddingService
         "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "that", "the", "to",
         "va", "la", "cua", "cho", "trong", "khi", "voi", "mot", "cac", "nhung", "duoc", "tu", "theo", "nay", "do", "thi", "o"
     };
+
+    string IEmbeddingService.ModelName => "hashing-embedding-512";
+    int IEmbeddingService.Dimensions => Dimensions;
 
     public Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default)
     {
@@ -151,6 +159,12 @@ public sealed class GeminiEmbeddingService : IEmbeddingService
         _httpClient = httpClient;
         _options = options;
     }
+
+    public string ModelName => string.IsNullOrWhiteSpace(_options.EmbeddingModel)
+        ? "gemini-embedding-001"
+        : _options.EmbeddingModel.Trim();
+
+    public int Dimensions => Math.Max(1, _options.EmbeddingOutputDimensionality);
 
     public async Task<Dictionary<int, double>> EmbedAsync(string text, CancellationToken cancellationToken = default)
     {

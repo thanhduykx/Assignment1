@@ -165,6 +165,40 @@ public sealed class AdminController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AssignStudentSubject(AssignStudentSubjectViewModel model, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var user = (await _users.GetAllAsync(cancellationToken))
+                .FirstOrDefault(item => item.Id == model.UserId)
+                ?? throw new InvalidOperationException("User not found.");
+            if (user.Role != AppRoles.Student)
+            {
+                throw new InvalidOperationException("Only students can be granted subject access.");
+            }
+
+            var subject = (await _knowledge.GetCourseCatalogAsync(cancellationToken))
+                .FirstOrDefault(item => item.Id == model.SubjectId)
+                ?? throw new InvalidOperationException("Subject not found.");
+
+            await _users.GrantSubjectAccessAsync(user.Id, subject.Id, cancellationToken);
+            TempData["Success"] = $"Granted {user.FullName} access to {subject.DisplayName}.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            TempData["Error"] = ToAdminUserError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not grant subject {SubjectId} to student {UserId}", model.SubjectId, model.UserId);
+            TempData["Error"] = "Could not grant this subject access.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
     private async Task<AdminUsersViewModel> BuildUsersViewModelAsync(CancellationToken cancellationToken)
     {
         var users = await _users.GetAllAsync(cancellationToken);
@@ -205,11 +239,35 @@ public sealed class AdminController : Controller
                 Role = user.Role,
                 CreatedAt = user.CreatedAt,
                 IsLastAdmin = user.Role == AppRoles.Admin && adminCount <= 1,
-                AssignedSubjects = assignedSubjectsByUser.TryGetValue(user.Id, out var assignedSubjects)
-                    ? assignedSubjects
-                    : Array.Empty<string>()
+                AssignedSubjects = ResolveAssignedSubjectLabels(user, subjects, assignedSubjectsByUser)
             }).ToList()
         };
+    }
+
+    private static IReadOnlyList<string> ResolveAssignedSubjectLabels(
+        UserAccount user,
+        IReadOnlyList<CourseSubject> subjects,
+        IReadOnlyDictionary<Guid, IReadOnlyList<string>> lecturerSubjectsByUser)
+    {
+        if (user.Role == AppRoles.Lecturer)
+        {
+            return lecturerSubjectsByUser.TryGetValue(user.Id, out var assignedSubjects)
+                ? assignedSubjects
+                : Array.Empty<string>();
+        }
+
+        if (user.Role != AppRoles.Student)
+        {
+            return Array.Empty<string>();
+        }
+
+        var assignedSubjectIds = user.AssignedSubjectIds.ToHashSet();
+        return subjects
+            .Where(subject => assignedSubjectIds.Contains(subject.Id))
+            .OrderBy(subject => subject.Code)
+            .ThenBy(subject => subject.Name)
+            .Select(subject => subject.DisplayName)
+            .ToList();
     }
 
     private bool IsCurrentUser(Guid userId)
@@ -267,6 +325,11 @@ public sealed class AdminController : Controller
         if (message.Contains("Only lecturers", StringComparison.OrdinalIgnoreCase))
         {
             return "Only lecturers can be assigned to subjects.";
+        }
+
+        if (message.Contains("Only students", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Only students can be granted subject access.";
         }
 
         if (message.Contains("last admin", StringComparison.OrdinalIgnoreCase))

@@ -11,6 +11,10 @@ internal static class KnowledgeSqlSchemaInitializer
         context.Database.EnsureCreated();
         EnsureDocumentFileSizeColumn(context);
         EnsureDocumentAuditColumns(context);
+        EnsureDocumentIndexingColumns(context);
+        EnsureChunkIndexingColumns(context);
+        EnsureChatSessionOwnerColumns(context);
+        EnsureKnowledgeIndexes(context);
         EnsureCourseCatalogTables(context);
         EnsureSubjectOwnerColumns(context);
         BackfillDocumentFileSizes(context);
@@ -48,6 +52,156 @@ internal static class KnowledgeSqlSchemaInitializer
             IF COL_LENGTH('rag_documents', 'UploadedByEmail') IS NULL
             BEGIN
                 ALTER TABLE rag_documents ADD UploadedByEmail NVARCHAR(255) NULL
+            END
+            """);
+    }
+
+    private static void EnsureDocumentIndexingColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'Status') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD Status NVARCHAR(32) NOT NULL CONSTRAINT DF_rag_documents_Status DEFAULT 'Indexed'
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'IndexedAt') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD IndexedAt DATETIMEOFFSET NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'IndexError') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD IndexError NVARCHAR(MAX) NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'EmbeddingModel') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD EmbeddingModel NVARCHAR(100) NOT NULL CONSTRAINT DF_rag_documents_EmbeddingModel DEFAULT ''
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'EmbeddingDimensions') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD EmbeddingDimensions INT NOT NULL CONSTRAINT DF_rag_documents_EmbeddingDimensions DEFAULT 0
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'ChunkingStrategy') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD ChunkingStrategy NVARCHAR(100) NOT NULL CONSTRAINT DF_rag_documents_ChunkingStrategy DEFAULT ''
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            UPDATE rag_documents
+            SET Status = 'Indexed'
+            WHERE Status IS NULL OR LTRIM(RTRIM(Status)) = ''
+            """);
+    }
+
+    private static void EnsureChunkIndexingColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chunks', 'SectionTitle') IS NULL
+            BEGIN
+                ALTER TABLE rag_chunks ADD SectionTitle NVARCHAR(255) NOT NULL CONSTRAINT DF_rag_chunks_SectionTitle DEFAULT ''
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chunks', 'CharStart') IS NULL
+            BEGIN
+                ALTER TABLE rag_chunks ADD CharStart INT NOT NULL CONSTRAINT DF_rag_chunks_CharStart DEFAULT 0
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chunks', 'CharEnd') IS NULL
+            BEGIN
+                ALTER TABLE rag_chunks ADD CharEnd INT NOT NULL CONSTRAINT DF_rag_chunks_CharEnd DEFAULT 0
+            END
+            """);
+    }
+
+    private static void EnsureChatSessionOwnerColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chat_sessions', 'OwnerUserId') IS NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions ADD OwnerUserId UNIQUEIDENTIFIER NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chat_sessions', 'OwnerName') IS NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions ADD OwnerName NVARCHAR(255) NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chat_sessions', 'OwnerEmail') IS NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions ADD OwnerEmail NVARCHAR(255) NULL
+            END
+            """);
+    }
+
+    private static void EnsureKnowledgeIndexes(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_chunks', 'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_rag_chunks_DocumentId_ChunkIndex'
+                      AND object_id = OBJECT_ID('rag_chunks'))
+            BEGIN
+                CREATE UNIQUE INDEX IX_rag_chunks_DocumentId_ChunkIndex ON rag_chunks (DocumentId, ChunkIndex)
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_documents', 'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_rag_documents_Status_UploadedAt'
+                      AND object_id = OBJECT_ID('rag_documents'))
+            BEGIN
+                CREATE INDEX IX_rag_documents_Status_UploadedAt ON rag_documents (Status, UploadedAt)
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_chunks', 'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_rag_chunks_Subject_Chapter'
+                      AND object_id = OBJECT_ID('rag_chunks'))
+            BEGIN
+                CREATE INDEX IX_rag_chunks_Subject_Chapter ON rag_chunks (Subject, Chapter)
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_chat_sessions', 'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_rag_chat_sessions_OwnerUserId'
+                      AND object_id = OBJECT_ID('rag_chat_sessions'))
+            BEGIN
+                CREATE INDEX IX_rag_chat_sessions_OwnerUserId ON rag_chat_sessions (OwnerUserId)
             END
             """);
     }

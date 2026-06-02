@@ -12,23 +12,31 @@ namespace PresentationLayer.Controllers;
 
 public sealed class AccountController : Controller
 {
-    private readonly IUserAccountStore _users;
+    private const string AccountProvisioningMessage = "Tài khoản được cấp bởi Nhà trường. Vui lòng liên hệ Nhà trường để xin cấp tài khoản.";
 
-    public AccountController(IUserAccountStore users)
+    private readonly IUserAccountStore _users;
+    private readonly IAuthenticationSchemeProvider _schemes;
+
+    public AccountController(IUserAccountStore users, IAuthenticationSchemeProvider schemes)
     {
         _users = users;
+        _schemes = schemes;
     }
 
     [HttpGet]
     [AllowAnonymous]
-    public IActionResult Login(string? returnUrl = null)
+    public async Task<IActionResult> Login(string? returnUrl = null)
     {
         if (User.Identity?.IsAuthenticated == true)
         {
             return RedirectToDefaultDashboard(User.FindFirstValue(ClaimTypes.Role));
         }
 
-        return View(new LoginViewModel { ReturnUrl = returnUrl });
+        return View(new LoginViewModel
+        {
+            ReturnUrl = returnUrl,
+            IsGoogleLoginEnabled = await IsGoogleLoginEnabledAsync()
+        });
     }
 
     [HttpPost]
@@ -38,13 +46,22 @@ public sealed class AccountController : Controller
     {
         if (!ModelState.IsValid)
         {
+            model.IsGoogleLoginEnabled = await IsGoogleLoginEnabledAsync();
             return View(model);
         }
 
         var user = await _users.FindByEmailAsync(model.Email, cancellationToken);
-        if (user is null || !_users.VerifyPassword(user, model.Password))
+        if (user is null)
+        {
+            ModelState.AddModelError(string.Empty, AccountProvisioningMessage);
+            model.IsGoogleLoginEnabled = await IsGoogleLoginEnabledAsync();
+            return View(model);
+        }
+
+        if (!_users.VerifyPassword(user, model.Password))
         {
             ModelState.AddModelError(string.Empty, "The email or password is incorrect.");
+            model.IsGoogleLoginEnabled = await IsGoogleLoginEnabledAsync();
             return View(model);
         }
 
@@ -56,42 +73,30 @@ public sealed class AccountController : Controller
     [AllowAnonymous]
     public IActionResult Register()
     {
-        if (User.Identity?.IsAuthenticated == true)
-        {
-            return RedirectToDefaultDashboard(User.FindFirstValue(ClaimTypes.Role));
-        }
-
-        return View(new RegisterViewModel());
+        TempData["AuthError"] = AccountProvisioningMessage;
+        return RedirectToAction(nameof(Login));
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [AllowAnonymous]
-    public async Task<IActionResult> Register(RegisterViewModel model, CancellationToken cancellationToken)
+    public IActionResult Register(RegisterViewModel model, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        try
-        {
-            var user = await _users.CreateLocalAsync(model.FullName, model.Email, model.Password, cancellationToken);
-            await SignInAsync(user);
-            return RedirectToDefaultDashboard(user.Role);
-        }
-        catch (InvalidOperationException ex)
-        {
-            ModelState.AddModelError(nameof(model.Email), ex.Message);
-            return View(model);
-        }
+        TempData["AuthError"] = AccountProvisioningMessage;
+        return RedirectToAction(nameof(Login));
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [AllowAnonymous]
-    public IActionResult GoogleLogin(string? returnUrl = null)
+    public async Task<IActionResult> GoogleLogin(string? returnUrl = null)
     {
+        if (!await IsGoogleLoginEnabledAsync())
+        {
+            TempData["AuthError"] = "Google sign-in is not configured.";
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
         var properties = new AuthenticationProperties
         {
             RedirectUri = Url.Action(nameof(GoogleCallback), new { returnUrl })
@@ -118,8 +123,13 @@ public sealed class AccountController : Controller
             return RedirectToAction(nameof(Login), new { returnUrl });
         }
 
-        var name = result.Principal.FindFirstValue(ClaimTypes.Name) ?? email;
-        var user = await _users.GetOrCreateExternalAsync(name, email, "Google", cancellationToken);
+        var user = await _users.FindByEmailAsync(email, cancellationToken);
+        if (user is null)
+        {
+            TempData["AuthError"] = AccountProvisioningMessage;
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
         await SignInAsync(user);
         await HttpContext.SignOutAsync("External");
         return RedirectAfterSignIn(user, returnUrl);
@@ -205,5 +215,10 @@ public sealed class AccountController : Controller
 
         return path.Equals("/Home/Chat", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/Home/Chat/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<bool> IsGoogleLoginEnabledAsync()
+    {
+        return await _schemes.GetSchemeAsync(GoogleDefaults.AuthenticationScheme) is not null;
     }
 }

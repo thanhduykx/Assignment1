@@ -83,6 +83,12 @@ public sealed class DocumentPreviewViewModel
     public long FileSizeBytes { get; set; }
     public string UploadedByName { get; set; } = string.Empty;
     public string UploadedByEmail { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTimeOffset? IndexedAt { get; set; }
+    public string IndexError { get; set; } = string.Empty;
+    public string EmbeddingModel { get; set; } = string.Empty;
+    public int EmbeddingDimensions { get; set; }
+    public string ChunkingStrategy { get; set; } = string.Empty;
     public string SubjectOwnerName { get; set; } = string.Empty;
     public string SubjectOwnerEmail { get; set; } = string.Empty;
     public IReadOnlyList<DocumentPreviewChunkViewModel> Chunks { get; set; } = Array.Empty<DocumentPreviewChunkViewModel>();
@@ -91,6 +97,9 @@ public sealed class DocumentPreviewViewModel
 public sealed class DocumentPreviewChunkViewModel
 {
     public int ChunkIndex { get; set; }
+    public string SectionTitle { get; set; } = string.Empty;
+    public int CharStart { get; set; }
+    public int CharEnd { get; set; }
     public string Text { get; set; } = string.Empty;
 }
 

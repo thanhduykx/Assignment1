@@ -22,7 +22,13 @@ internal static class KnowledgeSqlMapper
             FileSizeBytes = document.FileSizeBytes,
             UploadedByUserId = document.UploadedByUserId,
             UploadedByName = document.UploadedByName ?? string.Empty,
-            UploadedByEmail = document.UploadedByEmail ?? string.Empty
+            UploadedByEmail = document.UploadedByEmail ?? string.Empty,
+            Status = string.IsNullOrWhiteSpace(document.Status) ? DocumentIndexStatus.Indexed : document.Status,
+            IndexedAt = document.IndexedAt,
+            IndexError = document.IndexError ?? string.Empty,
+            EmbeddingModel = document.EmbeddingModel,
+            EmbeddingDimensions = document.EmbeddingDimensions,
+            ChunkingStrategy = document.ChunkingStrategy
         };
     }
 
@@ -41,7 +47,13 @@ internal static class KnowledgeSqlMapper
             FileSizeBytes = document.FileSizeBytes,
             UploadedByUserId = document.UploadedByUserId,
             UploadedByName = document.UploadedByName ?? string.Empty,
-            UploadedByEmail = document.UploadedByEmail ?? string.Empty
+            UploadedByEmail = document.UploadedByEmail ?? string.Empty,
+            Status = string.IsNullOrWhiteSpace(document.Status) ? DocumentIndexStatus.Indexed : document.Status,
+            IndexedAt = document.IndexedAt,
+            IndexError = document.IndexError ?? string.Empty,
+            EmbeddingModel = document.EmbeddingModel,
+            EmbeddingDimensions = document.EmbeddingDimensions,
+            ChunkingStrategy = document.ChunkingStrategy
         };
     }
 
@@ -56,6 +68,9 @@ internal static class KnowledgeSqlMapper
             Chapter = chunk.Chapter,
             ChunkIndex = chunk.ChunkIndex,
             Text = chunk.Text,
+            SectionTitle = chunk.SectionTitle,
+            CharStart = chunk.CharStart,
+            CharEnd = chunk.CharEnd,
             Embedding = DeserializeEmbedding(chunk.EmbeddingJson)
         };
     }
@@ -71,6 +86,9 @@ internal static class KnowledgeSqlMapper
             Chapter = chunk.Chapter,
             ChunkIndex = chunk.ChunkIndex,
             Text = chunk.Text,
+            SectionTitle = chunk.SectionTitle,
+            CharStart = chunk.CharStart,
+            CharEnd = chunk.CharEnd,
             EmbeddingJson = JsonSerializer.Serialize(chunk.Embedding, JsonOptions)
         };
     }
@@ -82,6 +100,9 @@ internal static class KnowledgeSqlMapper
             Id = session.Id,
             CreatedAt = session.CreatedAt,
             UpdatedAt = session.UpdatedAt,
+            OwnerUserId = session.OwnerUserId,
+            OwnerName = session.OwnerName ?? string.Empty,
+            OwnerEmail = session.OwnerEmail ?? string.Empty,
             Messages = session.Messages
                 .OrderBy(message => message.CreatedAt)
                 .Select(ToModel)
