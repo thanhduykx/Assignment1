@@ -41,7 +41,14 @@
 
                 <label class="rbl-field">
                     <span data-i18n="config.subjectFilter">Subject filter</span>
-                    <input asp-for="Subject" placeholder="DBA103" />
+                    @if (Model.SubjectOptions.Count > 0)
+                    {
+                        <select asp-for="Subject" asp-items="Model.SubjectOptions"></select>
+                    }
+                    else
+                    {
+                        <input asp-for="Subject" placeholder="DBA103" />
+                    }
                     <small><span asp-validation-for="Subject"></span></small>
                 </label>
             </div>

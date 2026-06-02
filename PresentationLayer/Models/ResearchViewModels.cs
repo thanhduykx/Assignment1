@@ -19,6 +19,7 @@ public sealed class ResearchCreateViewModel
     public string? FineTunedTrainingText { get; set; }
     public string? FineTunedModelName { get; set; }
     public string? FineTunedEndpoint { get; set; }
+    public IReadOnlyList<SelectListItem> SubjectOptions { get; set; } = Array.Empty<SelectListItem>();
     public IReadOnlyList<SelectListItem> EmbeddingModels { get; set; } = Array.Empty<SelectListItem>();
     public IReadOnlyList<SelectListItem> ChunkingStrategies { get; set; } = Array.Empty<SelectListItem>();
 }

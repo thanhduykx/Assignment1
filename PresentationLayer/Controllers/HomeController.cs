@@ -43,7 +43,7 @@ namespace PresentationLayer.Controllers
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
                 ? allDocuments
                 : allDocuments
-                    .Where(document => document.Subject.Equals(normalizedSubjectFilter, StringComparison.OrdinalIgnoreCase))
+                    .Where(document => SubjectMatchesFilter(document.Subject, normalizedSubjectFilter))
                     .ToList();
 
             var model = new HomeIndexViewModel
@@ -511,6 +511,21 @@ namespace PresentationLayer.Controllers
             return string.IsNullOrWhiteSpace(code)
                 ? (string.Empty, string.Empty)
                 : (code, trimmed);
+        }
+
+        private static bool SubjectMatchesFilter(string documentSubject, string subjectFilter)
+        {
+            var normalizedDocumentSubject = (documentSubject ?? string.Empty).Trim();
+            var normalizedSubjectFilter = (subjectFilter ?? string.Empty).Trim();
+            if (normalizedDocumentSubject.Equals(normalizedSubjectFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var documentCode = ParseSubjectForCatalog(normalizedDocumentSubject).Code;
+            var filterCode = ParseSubjectForCatalog(normalizedSubjectFilter).Code;
+            return !string.IsNullOrWhiteSpace(documentCode)
+                && documentCode.Equals(filterCode, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeCatalogCode(string code)

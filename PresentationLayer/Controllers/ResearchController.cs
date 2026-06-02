@@ -16,17 +16,20 @@ public sealed class ResearchController : Controller
 
     private readonly IResearchBenchmarkService _researchService;
     private readonly IResearchReportPdfService _reportPdfService;
+    private readonly IKnowledgeRepository _knowledgeRepository;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ResearchController> _logger;
 
     public ResearchController(
         IResearchBenchmarkService researchService,
         IResearchReportPdfService reportPdfService,
+        IKnowledgeRepository knowledgeRepository,
         IServiceScopeFactory scopeFactory,
         ILogger<ResearchController> logger)
     {
         _researchService = researchService;
         _reportPdfService = reportPdfService;
+        _knowledgeRepository = knowledgeRepository;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -175,6 +178,12 @@ public sealed class ResearchController : Controller
     private async Task<ResearchCreateViewModel> BuildCreateViewModelAsync(ResearchCreateViewModel model, CancellationToken cancellationToken)
     {
         var catalog = await _researchService.GetCatalogAsync(cancellationToken);
+        var subjectOptions = await BuildSubjectOptionValuesAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(model.Subject) && subjectOptions.Count > 0)
+        {
+            model.Subject = subjectOptions[0];
+        }
+
         if (model.EmbeddingModelIds.Count == 0)
         {
             model.EmbeddingModelIds = catalog.EmbeddingModels.Select(item => item.Id).ToList();
@@ -197,8 +206,28 @@ public sealed class ResearchController : Controller
             Text = $"{item.Name} - {item.Provider} {item.ModelId}",
             Selected = model.ChunkingStrategyIds.Contains(item.Id)
         }).ToList();
+        model.SubjectOptions = subjectOptions.Select(subject => new SelectListItem
+        {
+            Value = subject,
+            Text = subject,
+            Selected = subject.Equals(model.Subject, StringComparison.OrdinalIgnoreCase)
+        }).ToList();
 
         return model;
+    }
+
+    private async Task<IReadOnlyList<string>> BuildSubjectOptionValuesAsync(CancellationToken cancellationToken)
+    {
+        var courseCatalog = await _knowledgeRepository.GetCourseCatalogAsync(cancellationToken);
+        var documents = await _knowledgeRepository.GetDocumentsAsync(cancellationToken);
+
+        return courseCatalog
+            .Select(subject => subject.DisplayName)
+            .Concat(documents.Select(document => document.Subject))
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(subject => subject)
+            .ToList();
     }
 
     private static IReadOnlyList<ResearchQuestionInput> ParseQuestions(string? questionsText)
