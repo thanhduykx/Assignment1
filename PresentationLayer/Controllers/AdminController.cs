@@ -29,6 +29,72 @@ public sealed class AdminController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateUser(CreateAdminUserViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["Error"] = FirstModelError("Could not create this user.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var user = await _users.CreateLocalForAdminAsync(
+                model.FullName,
+                model.Email,
+                model.Password,
+                model.Role,
+                cancellationToken);
+            TempData["Success"] = $"Created {user.Email} as {user.Role}.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            TempData["Error"] = ToAdminUserError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not create user {Email}", model.Email);
+            TempData["Error"] = "Could not create this user.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateName(UpdateUserNameViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["Error"] = FirstModelError("Could not update this user name.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var user = await _users.UpdateFullNameAsync(model.UserId, model.FullName, cancellationToken);
+            TempData["Success"] = $"Updated {user.Email}'s name.";
+
+            if (IsCurrentUser(user.Id))
+            {
+                await RefreshCurrentUserClaimsAsync(user);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            TempData["Error"] = ToAdminUserError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not update user name for {UserId}", model.UserId);
+            TempData["Error"] = "Could not update this user name.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateRole(UpdateUserRoleViewModel model, CancellationToken cancellationToken)
     {
         try
@@ -82,6 +148,35 @@ public sealed class AdminController : Controller
                && currentUserId == userId;
     }
 
+    private async Task RefreshCurrentUserClaimsAsync(UserAccount user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.FullName),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, AppRoles.Normalize(user.Role))
+        };
+
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)),
+            new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7)
+            });
+    }
+
+    private string FirstModelError(string fallback)
+    {
+        return ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(error => error.ErrorMessage)
+            .FirstOrDefault(error => !string.IsNullOrWhiteSpace(error))
+            ?? fallback;
+    }
+
     private static string ToAdminUserError(string message)
     {
         if (message.Contains("Role is invalid", StringComparison.OrdinalIgnoreCase))
@@ -97,6 +192,16 @@ public sealed class AdminController : Controller
         if (message.Contains("last admin", StringComparison.OrdinalIgnoreCase))
         {
             return "Cannot demote the last admin.";
+        }
+
+        if (message.Contains("email is already registered", StringComparison.OrdinalIgnoreCase))
+        {
+            return "This email is already registered.";
+        }
+
+        if (message.Contains("Full name", StringComparison.OrdinalIgnoreCase))
+        {
+            return message;
         }
 
         return string.IsNullOrWhiteSpace(message) ? "Could not update this user role." : message;

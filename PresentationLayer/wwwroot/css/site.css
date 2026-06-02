@@ -3734,8 +3734,65 @@ body.rbl-body {
   min-width: min(420px, 100%);
 }
 
+.rbl-admin-create-user {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid #d8deee;
+  border-radius: var(--rbl-radius);
+  background: var(--rbl-surface-low);
+}
+
+.rbl-admin-create-user h3 {
+  margin: 3px 0 0;
+  color: var(--rbl-text);
+  font-size: 1.02rem;
+  font-weight: 950;
+}
+
+.rbl-admin-create-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) minmax(190px, 1.2fr) minmax(150px, 0.9fr) minmax(140px, 0.8fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.rbl-admin-create-form .rbl-field {
+  min-width: 0;
+}
+
+.rbl-admin-create-form .rbl-submit-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .rbl-user-role-table {
-  min-width: 940px;
+  min-width: 1160px;
+}
+
+.rbl-user-name-cell {
+  min-width: 270px;
+}
+
+.rbl-user-name-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: min(360px, 100%);
+  margin: 0;
+}
+
+.rbl-user-name-form .rbl-field,
+.rbl-user-name-field {
+  min-width: 0;
+  gap: 0;
+}
+
+.rbl-user-name-form input {
+  width: 100%;
+  min-width: 0;
 }
 
 .rbl-role-cell {
@@ -4618,6 +4675,14 @@ body.rbl-body {
     height: auto;
   }
 
+  .rbl-admin-create-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rbl-admin-create-form .rbl-submit-button {
+    justify-self: start;
+  }
+
   .rbl-catalog-create-grid,
   .rbl-catalog-fields--subject,
   .rbl-catalog-fields--chapter,
@@ -4706,6 +4771,7 @@ body.rbl-body {
   .rbl-metric-grid,
   .rbl-storage-stats,
   .rbl-form-grid,
+  .rbl-admin-create-form,
   .rbl-catalog-create-grid,
   .rbl-catalog-fields--subject,
   .rbl-catalog-fields--chapter,

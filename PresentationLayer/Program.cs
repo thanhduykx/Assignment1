@@ -96,8 +96,19 @@ namespace PresentationLayer
                 new DataAccessLayer.Repositories.SqlResearchRepository(
                     builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty));
             builder.Services.AddSingleton<PresentationLayer.Services.IUserAccountStore>(_ =>
-                new PresentationLayer.Services.UserAccountStore(
-                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "users.json")));
+            {
+                var seedAdminSection = builder.Configuration.GetSection("SeedAdmin");
+                var seedAdminEnabled = !bool.TryParse(seedAdminSection["Enabled"], out var parsedSeedAdminEnabled)
+                                       || parsedSeedAdminEnabled;
+
+                return new PresentationLayer.Services.UserAccountStore(
+                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "users.json"),
+                    new PresentationLayer.Services.SeedAdminOptions(
+                        seedAdminEnabled,
+                        seedAdminSection["FullName"] ?? "System Admin",
+                        seedAdminSection["Email"] ?? "admin@eduvietrag.local",
+                        seedAdminSection["Password"] ?? "Admin@12345"));
+            });
             builder.Services.AddSingleton<ServicesLayer.IEmbeddingService>(_ =>
             {
                 var embedding = builder.Configuration.GetSection("Embedding");
@@ -150,6 +161,10 @@ namespace PresentationLayer
 
             var app = builder.Build();
             _ = app.Services.GetRequiredService<DataAccessLayer.IKnowledgeRepository>();
+            _ = app.Services.GetRequiredService<PresentationLayer.Services.IUserAccountStore>()
+                .HasAnyUsersAsync()
+                .GetAwaiter()
+                .GetResult();
 
             if (!app.Environment.IsDevelopment())
             {

@@ -1,9 +1,12 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace PresentationLayer.Models;
 
 public sealed class AdminUsersViewModel
 {
     public IReadOnlyList<AdminUserRowViewModel> Users { get; set; } = Array.Empty<AdminUserRowViewModel>();
     public IReadOnlyList<string> Roles { get; set; } = Array.Empty<string>();
+    public CreateAdminUserViewModel CreateUser { get; set; } = new();
 }
 
 public sealed class AdminUserRowViewModel
@@ -21,4 +24,32 @@ public sealed class UpdateUserRoleViewModel
 {
     public Guid UserId { get; set; }
     public string Role { get; set; } = string.Empty;
+}
+
+public sealed class UpdateUserNameViewModel
+{
+    public Guid UserId { get; set; }
+
+    [Required(ErrorMessage = "Full name is required.")]
+    [StringLength(120, ErrorMessage = "Full name must be 120 characters or fewer.")]
+    public string FullName { get; set; } = string.Empty;
+}
+
+public sealed class CreateAdminUserViewModel
+{
+    [Required(ErrorMessage = "Full name is required.")]
+    [StringLength(120, ErrorMessage = "Full name must be 120 characters or fewer.")]
+    public string FullName { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Password is required.")]
+    [MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
+    [DataType(DataType.Password)]
+    public string Password { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Role is required.")]
+    public string Role { get; set; } = PresentationLayer.Security.AppRoles.Student;
 }

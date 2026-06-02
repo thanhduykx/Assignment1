@@ -24,6 +24,48 @@
         <div class="rbl-alert is-error">@error</div>
     }
 
+    <section class="rbl-admin-create-user">
+        <div>
+            <span class="rbl-section-label">Create account</span>
+            <h3>Register a user</h3>
+        </div>
+        <form asp-action="CreateUser" method="post" class="rbl-admin-create-form">
+            @Html.AntiForgeryToken()
+            <label class="rbl-field">
+                <span>Full name</span>
+                <input name="FullName" maxlength="120" autocomplete="name" />
+            </label>
+            <label class="rbl-field">
+                <span>Email</span>
+                <input name="Email" type="email" autocomplete="email" />
+            </label>
+            <label class="rbl-field">
+                <span>Password</span>
+                <input name="Password" type="password" minlength="8" autocomplete="new-password" />
+            </label>
+            <label class="rbl-field">
+                <span>Role</span>
+                <select name="Role">
+                    @foreach (var role in Model.Roles)
+                    {
+                        if (role.Equals(PresentationLayer.Security.AppRoles.Student, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@role" selected>@role</option>
+                        }
+                        else
+                        {
+                            <option value="@role">@role</option>
+                        }
+                    }
+                </select>
+            </label>
+            <button type="submit" class="rbl-submit-button">
+                <span class="material-symbols-outlined" aria-hidden="true">person_add</span>
+                Create
+            </button>
+        </form>
+    </section>
+
     @if (Model.Users.Count == 0)
     {
         <div class="rbl-empty-state compact">
@@ -49,7 +91,17 @@
                 @foreach (var user in Model.Users)
                 {
                     <tr>
-                        <td><strong>@user.FullName</strong></td>
+                        <td class="rbl-user-name-cell">
+                            <form asp-action="UpdateName" method="post" class="rbl-user-name-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                <label class="rbl-field rbl-user-name-field">
+                                    <span class="visually-hidden">Full name</span>
+                                    <input name="FullName" value="@user.FullName" maxlength="120" autocomplete="name" />
+                                </label>
+                                <button type="submit" class="rbl-small-button rbl-small-button--primary">Save</button>
+                            </form>
+                        </td>
                         <td>@user.Email</td>
                         <td>@user.Provider</td>
                         <td>@user.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>

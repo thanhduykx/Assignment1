@@ -12,10 +12,14 @@ public interface IUserAccountStore
     Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default);
     Task<UserAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<UserAccount> CreateLocalAsync(string fullName, string email, string password, CancellationToken cancellationToken = default);
+    Task<UserAccount> CreateLocalForAdminAsync(string fullName, string email, string password, string role, CancellationToken cancellationToken = default);
     Task<UserAccount> GetOrCreateExternalAsync(string fullName, string email, string provider, CancellationToken cancellationToken = default);
+    Task<UserAccount> UpdateFullNameAsync(Guid userId, string fullName, CancellationToken cancellationToken = default);
     Task<UserAccount> UpdateRoleAsync(Guid userId, string role, CancellationToken cancellationToken = default);
     bool VerifyPassword(UserAccount account, string password);
 }
+
+public sealed record SeedAdminOptions(bool Enabled, string FullName, string Email, string Password);
 
 public sealed class UserAccountStore : IUserAccountStore
 {
@@ -30,10 +34,12 @@ public sealed class UserAccountStore : IUserAccountStore
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _path;
+    private readonly SeedAdminOptions _seedAdmin;
 
-    public UserAccountStore(string path)
+    public UserAccountStore(string path, SeedAdminOptions? seedAdmin = null)
     {
         _path = path;
+        _seedAdmin = NormalizeSeedAdminOptions(seedAdmin);
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
     }
 
@@ -128,6 +134,47 @@ public sealed class UserAccountStore : IUserAccountStore
         }
     }
 
+    public async Task<UserAccount> CreateLocalForAdminAsync(
+        string fullName,
+        string email,
+        string password,
+        string role,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppRoles.IsKnown(role))
+        {
+            throw new InvalidOperationException("Role is invalid.");
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var users = await LoadAsync(cancellationToken);
+            var normalizedEmail = NormalizeEmail(email);
+            if (users.Any(user => string.Equals(user.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException("This email is already registered.");
+            }
+
+            var user = new UserAccount
+            {
+                FullName = NormalizeFullName(fullName),
+                Email = normalizedEmail,
+                PasswordHash = HashPassword(password),
+                Provider = "Local",
+                Role = AppRoles.Normalize(role)
+            };
+
+            users.Add(user);
+            await SaveAsync(users, cancellationToken);
+            return user;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<UserAccount> GetOrCreateExternalAsync(string fullName, string email, string provider, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -191,6 +238,25 @@ public sealed class UserAccountStore : IUserAccountStore
         }
     }
 
+    public async Task<UserAccount> UpdateFullNameAsync(Guid userId, string fullName, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var users = await LoadAsync(cancellationToken);
+            var user = users.FirstOrDefault(item => item.Id == userId)
+                ?? throw new InvalidOperationException("User not found.");
+
+            user.FullName = NormalizeFullName(fullName);
+            await SaveAsync(users, cancellationToken);
+            return user;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public bool VerifyPassword(UserAccount account, string password)
     {
         if (string.IsNullOrWhiteSpace(account.PasswordHash))
@@ -221,16 +287,43 @@ public sealed class UserAccountStore : IUserAccountStore
 
     private async Task<List<UserAccount>> LoadAsync(CancellationToken cancellationToken)
     {
+        List<UserAccount> users;
+        var changed = false;
+
         if (!File.Exists(_path))
         {
-            return new List<UserAccount>();
+            users = new List<UserAccount>();
+        }
+        else
+        {
+            await using var stream = File.OpenRead(_path);
+            users = await JsonSerializer.DeserializeAsync<List<UserAccount>>(stream, JsonOptions, cancellationToken) ?? new List<UserAccount>();
         }
 
-        await using var stream = File.OpenRead(_path);
-        var users = await JsonSerializer.DeserializeAsync<List<UserAccount>>(stream, JsonOptions, cancellationToken) ?? new List<UserAccount>();
         foreach (var user in users)
         {
-            user.Role = AppRoles.Normalize(user.Role);
+            var normalizedRole = AppRoles.Normalize(user.Role);
+            if (user.Role != normalizedRole)
+            {
+                user.Role = normalizedRole;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(user.FullName))
+            {
+                user.FullName = user.Email;
+                changed = true;
+            }
+        }
+
+        if (EnsureSeedAdmin(users))
+        {
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await SaveAsync(users, cancellationToken);
         }
 
         return users;
@@ -250,5 +343,56 @@ public sealed class UserAccountStore : IUserAccountStore
     private static string NormalizeEmail(string email)
     {
         return email.Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeFullName(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new InvalidOperationException("Full name is required.");
+        }
+
+        var normalized = fullName.Trim();
+        return normalized.Length <= 120
+            ? normalized
+            : throw new InvalidOperationException("Full name must be 120 characters or fewer.");
+    }
+
+    private bool EnsureSeedAdmin(List<UserAccount> users)
+    {
+        if (!_seedAdmin.Enabled || users.Any(user => user.Role == AppRoles.Admin))
+        {
+            return false;
+        }
+
+        var seedEmail = NormalizeEmail(_seedAdmin.Email);
+        var existing = users.FirstOrDefault(user => string.Equals(user.Email, seedEmail, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.FullName = string.IsNullOrWhiteSpace(existing.FullName) ? _seedAdmin.FullName : existing.FullName.Trim();
+            existing.Provider = string.IsNullOrWhiteSpace(existing.Provider) ? "Local" : existing.Provider;
+            existing.PasswordHash = string.IsNullOrWhiteSpace(existing.PasswordHash) ? HashPassword(_seedAdmin.Password) : existing.PasswordHash;
+            existing.Role = AppRoles.Admin;
+            return true;
+        }
+
+        users.Add(new UserAccount
+        {
+            FullName = _seedAdmin.FullName,
+            Email = seedEmail,
+            PasswordHash = HashPassword(_seedAdmin.Password),
+            Provider = "Local",
+            Role = AppRoles.Admin
+        });
+
+        return true;
+    }
+
+    private static SeedAdminOptions NormalizeSeedAdminOptions(SeedAdminOptions? options)
+    {
+        var fullName = string.IsNullOrWhiteSpace(options?.FullName) ? "System Admin" : options.FullName.Trim();
+        var email = string.IsNullOrWhiteSpace(options?.Email) ? "admin@eduvietrag.local" : NormalizeEmail(options.Email);
+        var password = string.IsNullOrWhiteSpace(options?.Password) ? "Admin@12345" : options.Password;
+        return new SeedAdminOptions(options?.Enabled ?? true, fullName, email, password);
     }
 }
