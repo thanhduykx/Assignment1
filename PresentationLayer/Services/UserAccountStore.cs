@@ -8,6 +8,7 @@ namespace PresentationLayer.Services;
 public interface IUserAccountStore
 {
     Task<IReadOnlyList<UserAccount>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<UserAccount>> GetByRoleAsync(string role, CancellationToken cancellationToken = default);
     Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default);
     Task<UserAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<UserAccount> CreateLocalAsync(string fullName, string email, string password, CancellationToken cancellationToken = default);
@@ -43,6 +44,24 @@ public sealed class UserAccountStore : IUserAccountStore
         {
             return (await LoadAsync(cancellationToken))
                 .OrderBy(user => user.Email)
+                .ToList();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<UserAccount>> GetByRoleAsync(string role, CancellationToken cancellationToken = default)
+    {
+        var normalizedRole = AppRoles.Normalize(role);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken))
+                .Where(user => user.Role == normalizedRole)
+                .OrderBy(user => user.FullName)
+                .ThenBy(user => user.Email)
                 .ToList();
         }
         finally

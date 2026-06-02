@@ -7,36 +7,42 @@
     ViewData["ShellTitleI18n"] = "chat.title";
     ViewData["HideAssistantLauncher"] = true;
 
-    var suggestedQuestions = new[]
-    {
-        new { En = "How many credits does DBA103 have?", Vi = "Môn DBA103 có bao nhiêu tín chỉ?" },
-        new { En = "What is DBA103 about?", Vi = "DBA103 là môn gì?" },
-        new { En = "What should students learn in DBA103?", Vi = "Sinh viên sẽ học những gì trong DBA103?" },
-        new { En = "What is the time allocation of DBA103?", Vi = "Thời lượng học của DBA103 là bao nhiêu?" }
-    };
-
-    var primaryDocument = Model.Documents
-        .OrderByDescending(document =>
-            document.FileName.StartsWith("FLM-", StringComparison.OrdinalIgnoreCase)
-            || document.FileName.Contains("Syllabus-11835", StringComparison.OrdinalIgnoreCase)
-                ? 3
-                : document.Subject.Contains("DBA103", StringComparison.OrdinalIgnoreCase)
-                  || document.Chapter.Contains("Syllabus 11835", StringComparison.OrdinalIgnoreCase)
-                    ? 2
-                    : 1)
-        .ThenByDescending(document => document.UploadedAt)
-        .FirstOrDefault();
-    var primarySubject = string.IsNullOrWhiteSpace(primaryDocument?.Subject) ? "this course" : primaryDocument.Subject;
-    var primaryChapter = string.IsNullOrWhiteSpace(primaryDocument?.Chapter) ? "the current chapter" : primaryDocument.Chapter;
-    var relatedQuestions = primaryDocument is null
-        ? Array.Empty<(string En, string Vi)>()
-        : new[]
+    var subjectOptions = Model.SubjectOptions
+        .Where(subject => !string.IsNullOrWhiteSpace(subject))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(subject => subject)
+        .ToList();
+    var suggestedQuestions = subjectOptions.Count == 0
+        ? new[]
         {
-            ($"What is {primarySubject} about?", $"{primarySubject} là môn gì?"),
-            ($"How many credits does {primarySubject} have?", $"{primarySubject} có bao nhiêu tín chỉ?"),
-            ($"What are the main contents of {primarySubject}?", $"Nội dung chính của {primarySubject} gồm những gì?"),
-            ($"What should students practice in {primaryChapter}?", $"Sinh viên cần luyện tập gì trong {primaryChapter}?")
-        };
+            new { En = "Which subjects have indexed documents?", Vi = "Hiện có những môn nào đã index tài liệu?" },
+            new { En = "Summarize the uploaded documents.", Vi = "Tóm tắt các tài liệu đã upload." },
+            new { En = "What can I ask from the document repository?", Vi = "Tôi có thể hỏi gì từ kho tài liệu?" }
+        }
+        : subjectOptions
+            .Take(4)
+            .Select(subject => new
+            {
+                En = $"What is {subject} about?",
+                Vi = $"{subject} là môn gì?"
+            })
+            .ToArray();
+    var relatedQuestions = subjectOptions.Count == 0
+        ? Array.Empty<(string En, string Vi)>()
+        : subjectOptions
+            .Take(8)
+            .SelectMany(subject => new[]
+            {
+                ($"What is {subject} about?", $"{subject} là môn gì?"),
+                ($"What are the main contents of {subject}?", $"Nội dung chính của {subject} gồm những gì?"),
+                ($"How is {subject} assessed?", $"{subject} được đánh giá như thế nào?")
+            })
+            .ToArray();
+    var suggestionsEn = suggestedQuestions.Select(item => item.En).ToArray();
+    var suggestionsVi = suggestedQuestions.Select(item => item.Vi).ToArray();
+    var relatedPayload = relatedQuestions
+        .Select((item, index) => new { id = $"subject-{index}", en = item.Item1, vi = item.Item2 })
+        .ToArray();
     var totalUploadedBytes = Model.Documents.Sum(item => item.FileSizeBytes);
 
     string FormatBytes(long bytes)
@@ -55,7 +61,10 @@
     }
 }
 
-<section class="rbl-chat-page">
+<section class="rbl-chat-page"
+         data-chat-suggestions-en='@System.Text.Json.JsonSerializer.Serialize(suggestionsEn)'
+         data-chat-suggestions-vi='@System.Text.Json.JsonSerializer.Serialize(suggestionsVi)'
+         data-chat-related-questions='@System.Text.Json.JsonSerializer.Serialize(relatedPayload)'>
     <main class="rbl-chat-main" aria-label="Document chat" data-i18n-aria-label="chat.mainAria">
         <div id="chatMessages" class="chat-messages codex-chat-messages rbl-chat-messages">
             <div class="chat-empty-state rbl-chat-empty">
@@ -75,6 +84,16 @@
         </div>
 
         <form id="chatForm" class="chat-form codex-chat-form rbl-chat-form">
+            @if (subjectOptions.Count > 0)
+            {
+                <div class="chat-subject-filter" aria-label="Subject filter">
+                    <button type="button" class="chat-subject-chip is-active" data-subject-filter="">Tất cả môn</button>
+                    @foreach (var subject in subjectOptions)
+                    {
+                        <button type="button" class="chat-subject-chip" data-subject-filter="@subject">@subject</button>
+                    }
+                </div>
+            }
             @if (relatedQuestions.Length > 0)
             {
                 <div class="chat-related-strip rbl-related-strip" aria-label="Related questions" data-i18n-aria-label="chat.relatedAria">
@@ -87,7 +106,7 @@
                     </div>
                 </div>
             }
-            <textarea id="questionInput" rows="2" placeholder="Example: How many credits does DBA103 have?" data-i18n-placeholder="chat.placeholder"></textarea>
+            <textarea id="questionInput" rows="2" placeholder="Hỏi về môn, chương hoặc tài liệu đã index..." data-i18n-placeholder="chat.placeholder"></textarea>
             <button type="submit" class="rbl-submit-button" data-i18n="chat.send">
                 <span class="material-symbols-outlined" aria-hidden="true">send</span>
                 Send

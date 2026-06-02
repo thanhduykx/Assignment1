@@ -47,6 +47,17 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<DocumentChunk>> GetDocumentChunksAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        return await context.Chunks
+            .AsNoTracking()
+            .Where(chunk => chunk.DocumentId == documentId)
+            .OrderBy(chunk => chunk.ChunkIndex)
+            .Select(chunk => KnowledgeSqlMapper.ToModel(chunk))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task AddDocumentAsync(IndexedDocument document, IReadOnlyList<DocumentChunk> chunks, CancellationToken cancellationToken = default)
     {
         await using var context = CreateContext();
@@ -125,7 +136,8 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         string code,
         string name,
         string? description,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        SubjectOwnerInfo? ownerInfo = null)
     {
         var normalizedCode = NormalizeCode(code);
         var trimmedName = string.IsNullOrWhiteSpace(name) ? normalizedCode : name.Trim();
@@ -161,6 +173,13 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         subject.Code = normalizedCode;
         subject.Name = trimmedName;
         subject.Description = description?.Trim() ?? string.Empty;
+        if (ownerInfo is not null)
+        {
+            subject.OwnerUserId = ownerInfo.UserId;
+            subject.OwnerName = ownerInfo.Name?.Trim() ?? string.Empty;
+            subject.OwnerEmail = ownerInfo.Email?.Trim() ?? string.Empty;
+        }
+
         await context.SaveChangesAsync(cancellationToken);
         await context.Entry(subject).Collection(item => item.Chapters).LoadAsync(cancellationToken);
         return ToCourseSubject(subject);
@@ -371,6 +390,9 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             Name = subject.Name,
             Description = subject.Description,
             CreatedAt = subject.CreatedAt,
+            OwnerUserId = subject.OwnerUserId,
+            OwnerName = subject.OwnerName ?? string.Empty,
+            OwnerEmail = subject.OwnerEmail ?? string.Empty,
             Chapters = subject.Chapters
                 .OrderBy(item => item.SortOrder)
                 .ThenBy(item => item.Title)

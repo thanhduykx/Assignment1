@@ -7,6 +7,9 @@ internal sealed class KnowledgeSqlCourseSubject
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Guid? OwnerUserId { get; set; }
+    public string? OwnerName { get; set; }
+    public string? OwnerEmail { get; set; }
     public List<KnowledgeSqlCourseChapter> Chapters { get; set; } = new();
 }
 

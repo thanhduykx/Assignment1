@@ -19,7 +19,10 @@ internal static class KnowledgeSqlMapper
             ContentType = document.ContentType,
             UploadedAt = document.UploadedAt,
             ChunkCount = document.ChunkCount,
-            FileSizeBytes = document.FileSizeBytes
+            FileSizeBytes = document.FileSizeBytes,
+            UploadedByUserId = document.UploadedByUserId,
+            UploadedByName = document.UploadedByName ?? string.Empty,
+            UploadedByEmail = document.UploadedByEmail ?? string.Empty
         };
     }
 
@@ -35,7 +38,10 @@ internal static class KnowledgeSqlMapper
             ContentType = document.ContentType,
             UploadedAt = document.UploadedAt,
             ChunkCount = document.ChunkCount,
-            FileSizeBytes = document.FileSizeBytes
+            FileSizeBytes = document.FileSizeBytes,
+            UploadedByUserId = document.UploadedByUserId,
+            UploadedByName = document.UploadedByName ?? string.Empty,
+            UploadedByEmail = document.UploadedByEmail ?? string.Empty
         };
     }
 

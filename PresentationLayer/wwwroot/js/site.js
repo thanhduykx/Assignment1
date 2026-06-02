@@ -104,8 +104,8 @@ const translations = {
     "documents.subject": "Subject",
     "documents.chapter": "Chapter",
     "documents.source": "Source",
-    "documents.subjectPlaceholder": "Example: DBA103 - Traditional musical instrument",
-    "documents.chapterPlaceholder": "Example: Syllabus 11835 or Chapter 1",
+    "documents.subjectPlaceholder": "Example: CODE - Subject name",
+    "documents.chapterPlaceholder": "Example: Chapter 1 or Week 1",
     "documents.dropzoneTitle": "Drag and drop a document or click to choose a file",
     "documents.dropzoneDefault": "Supports PDF, DOCX, PPTX, TXT",
     "documents.or": "or",
@@ -135,7 +135,7 @@ const translations = {
     "chat.emptyText": "Choose a suggestion below or type your question. If the documents do not contain enough data, the chatbot will say so instead of guessing.",
     "chat.suggestionsAria": "Question suggestions",
     "chat.welcome": "You can ask about uploaded document content. I will answer concisely when there is enough data.",
-    "chat.placeholder": "Example: How many credits does DBA103 have?",
+    "chat.placeholder": "Ask about a subject, chapter, or indexed document...",
     "chat.send": "Send",
     "chat.relatedLabel": "Related questions",
     "chat.relatedAria": "Related questions",
@@ -144,10 +144,10 @@ const translations = {
     "chat.requestError": "Could not process the question.",
     "chat.connectionError": "Could not connect to the server. Check the app and try again.",
     "chat.suggestions": [
-      "How many credits does DBA103 have?",
-      "What is DBA103 about?",
-      "What should students learn in DBA103?",
-      "What is the time allocation of DBA103?"
+      "Which subjects have indexed documents?",
+      "Summarize the uploaded documents.",
+      "What can I ask from the document repository?",
+      "Which document should I read first?"
     ]
   },
   vi: {
@@ -255,8 +255,8 @@ const translations = {
     "documents.subject": "M\u00f4n h\u1ecdc",
     "documents.chapter": "Ch\u01b0\u01a1ng",
     "documents.source": "Ngu\u1ed3n",
-    "documents.subjectPlaceholder": "VD: DBA103 - Traditional musical instrument",
-    "documents.chapterPlaceholder": "VD: Syllabus 11835 ho\u1eb7c Chapter 1",
+    "documents.subjectPlaceholder": "VD: M\u00e3 m\u00f4n - T\u00ean m\u00f4n",
+    "documents.chapterPlaceholder": "VD: Ch\u01b0\u01a1ng 1 ho\u1eb7c Tu\u1ea7n 1",
     "documents.dropzoneTitle": "K\u00e9o th\u1ea3 t\u00e0i li\u1ec7u ho\u1eb7c b\u1ea5m \u0111\u1ec3 ch\u1ecdn file",
     "documents.dropzoneDefault": "H\u1ed7 tr\u1ee3 PDF, DOCX, PPTX, TXT",
     "documents.or": "ho\u1eb7c",
@@ -286,7 +286,7 @@ const translations = {
     "chat.emptyText": "Ch\u1ecdn g\u1ee3i \u00fd b\u00ean d\u01b0\u1edbi ho\u1eb7c nh\u1eadp c\u00e2u h\u1ecfi c\u1ee7a b\u1ea1n. N\u1ebfu t\u00e0i li\u1ec7u kh\u00f4ng \u0111\u1ee7 d\u1eef li\u1ec7u, chatbot s\u1ebd b\u00e1o r\u00f5 thay v\u00ec \u0111o\u00e1n.",
     "chat.suggestionsAria": "G\u1ee3i \u00fd c\u00e2u h\u1ecfi",
     "chat.welcome": "B\u1ea1n c\u00f3 th\u1ec3 h\u1ecfi v\u1ec1 n\u1ed9i dung \u0111\u00e3 upload. M\u00ecnh s\u1ebd tr\u1ea3 l\u1eddi ng\u1eafn g\u1ecdn khi c\u00f3 \u0111\u1ee7 d\u1eef li\u1ec7u.",
-    "chat.placeholder": "V\u00ed d\u1ee5: M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?",
+    "chat.placeholder": "H\u1ecfi v\u1ec1 m\u00f4n, ch\u01b0\u01a1ng ho\u1eb7c t\u00e0i li\u1ec7u \u0111\u00e3 index...",
     "chat.send": "G\u1eedi",
     "chat.relatedLabel": "C\u00e2u h\u1ecfi li\u00ean quan",
     "chat.relatedAria": "C\u00e2u h\u1ecfi li\u00ean quan",
@@ -295,15 +295,16 @@ const translations = {
     "chat.requestError": "Kh\u00f4ng x\u1eed l\u00fd \u0111\u01b0\u1ee3c c\u00e2u h\u1ecfi.",
     "chat.connectionError": "Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c server. Ki\u1ec3m tra l\u1ea1i \u1ee9ng d\u1ee5ng r\u1ed3i th\u1eed ti\u1ebfp.",
     "chat.suggestions": [
-      "M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?",
-      "DBA103 l\u00e0 m\u00f4n g\u00ec?",
-      "Sinh vi\u00ean s\u1ebd h\u1ecdc nh\u1eefng g\u00ec trong DBA103?",
-      "Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 bao nhi\u00eau?"
+      "Hi\u1ec7n c\u00f3 nh\u1eefng m\u00f4n n\u00e0o \u0111\u00e3 index t\u00e0i li\u1ec7u?",
+      "T\u00f3m t\u1eaft c\u00e1c t\u00e0i li\u1ec7u \u0111\u00e3 upload.",
+      "T\u00f4i c\u00f3 th\u1ec3 h\u1ecfi g\u00ec t\u1eeb kho t\u00e0i li\u1ec7u?",
+      "N\u00ean \u0111\u1ecdc t\u00e0i li\u1ec7u n\u00e0o tr\u01b0\u1edbc?"
     ]
   }
 };
 
 const languageKey = "courseAssistantLanguage";
+const chatPage = document.querySelector(".rbl-chat-page");
 const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("questionInput");
 const chatMessages = document.getElementById("chatMessages");
@@ -313,72 +314,14 @@ const activeSessionTitle = document.getElementById("activeSessionTitle");
 const documentDropzone = document.getElementById("documentDropzone");
 const documentFileInput = document.getElementById("documentFileInput");
 const documentFileName = document.getElementById("documentFileName");
+const documentPreviewModal = document.getElementById("documentPreviewModal");
+const documentPreviewTitle = document.getElementById("documentPreviewTitle");
+const documentPreviewMeta = document.getElementById("documentPreviewMeta");
+const documentPreviewBody = document.getElementById("documentPreviewBody");
 const assistantLauncher = document.getElementById("chatbotHelper");
 const assistantLauncherButton = document.getElementById("chatbotHelperButton");
 let isSending = false;
-
-const relatedQuestionPool = [
-  {
-    id: "credits",
-    en: "How many credits does DBA103 have?",
-    vi: "M\u00f4n DBA103 c\u00f3 bao nhi\u00eau t\u00edn ch\u1ec9?"
-  },
-  {
-    id: "overview",
-    en: "What is DBA103 about?",
-    vi: "DBA103 l\u00e0 m\u00f4n g\u00ec?"
-  },
-  {
-    id: "main-content",
-    en: "What are the main contents of DBA103?",
-    vi: "N\u1ed9i dung ch\u00ednh c\u1ee7a DBA103 g\u1ed3m nh\u1eefng g\u00ec?"
-  },
-  {
-    id: "time-allocation",
-    en: "What is the time allocation of DBA103?",
-    vi: "Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 bao nhi\u00eau?"
-  },
-  {
-    id: "prerequisite",
-    en: "Does DBA103 have any prerequisite?",
-    vi: "DBA103 c\u00f3 m\u00f4n ti\u00ean quy\u1ebft kh\u00f4ng?"
-  },
-  {
-    id: "knowledge",
-    en: "What knowledge should students gain from DBA103?",
-    vi: "Sinh vi\u00ean c\u1ea7n n\u1eafm ki\u1ebfn th\u1ee9c g\u00ec trong DBA103?"
-  },
-  {
-    id: "skills",
-    en: "What skills should students practice in DBA103?",
-    vi: "Sinh vi\u00ean c\u1ea7n luy\u1ec7n t\u1eadp k\u1ef9 n\u0103ng g\u00ec trong DBA103?"
-  },
-  {
-    id: "songs",
-    en: "Which songs are practiced in DBA103?",
-    vi: "DBA103 luy\u1ec7n t\u1eadp nh\u1eefng b\u00e0i n\u00e0o?"
-  },
-  {
-    id: "assessment",
-    en: "How is DBA103 assessed?",
-    vi: "DBA103 \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 nh\u01b0 th\u1ebf n\u00e0o?"
-  },
-  {
-    id: "assignment-weight",
-    en: "What is the assignment weight in DBA103?",
-    vi: "B\u00e0i t\u1eadp trong DBA103 chi\u1ebfm bao nhi\u00eau ph\u1ea7n tr\u0103m?"
-  },
-  {
-    id: "final-exam",
-    en: "When is the DBA103 final exam held?",
-    vi: "DBA103 thi cu\u1ed1i kh\u00f3a v\u00e0o l\u00fac n\u00e0o?"
-  },
-  {
-    id: "online-resources",
-    en: "How does DBA103 use online resources?",
-    vi: "DBA103 s\u1eed d\u1ee5ng t\u00e0i nguy\u00ean tr\u00ean m\u1ea1ng nh\u01b0 th\u1ebf n\u00e0o?"
-  }
-];
+const relatedQuestionPool = readRelatedQuestionPool();
 
 function getLanguage() {
   return localStorage.getItem(languageKey) === "en" ? "en" : "vi";
@@ -386,6 +329,55 @@ function getLanguage() {
 
 function t(key) {
   return translations[getLanguage()][key] || translations.en[key] || key;
+}
+
+function readJsonDataAttribute(element, key, fallback) {
+  if (!element?.dataset?.[key]) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(element.dataset[key]);
+  } catch {
+    return fallback;
+  }
+}
+
+function getChatSuggestions(language = getLanguage()) {
+  const key = language === "vi" ? "chatSuggestionsVi" : "chatSuggestionsEn";
+  const suggestions = readJsonDataAttribute(chatPage, key, []);
+  return suggestions.length > 0 ? suggestions : translations[language]["chat.suggestions"];
+}
+
+function readRelatedQuestionPool() {
+  const items = readJsonDataAttribute(chatPage, "chatRelatedQuestions", []);
+  if (Array.isArray(items) && items.length > 0) {
+    return items
+      .filter((item) => item?.en && item?.vi)
+      .map((item, index) => ({
+        id: item.id || `subject-${index}`,
+        en: item.en,
+        vi: item.vi
+      }));
+  }
+
+  return [
+    {
+      id: "available-subjects",
+      en: "Which subjects have indexed documents?",
+      vi: "Hiện có những môn nào đã index tài liệu?"
+    },
+    {
+      id: "summarize-documents",
+      en: "Summarize the uploaded documents.",
+      vi: "Tóm tắt các tài liệu đã upload."
+    },
+    {
+      id: "askable-content",
+      en: "What can I ask from the document repository?",
+      vi: "Tôi có thể hỏi gì từ kho tài liệu?"
+    }
+  ];
 }
 
 async function ensureVietnameseFontReady() {
@@ -468,9 +460,11 @@ function applyLanguage() {
 }
 
 function updateSuggestionButtons() {
-  const suggestions = translations[getLanguage()]["chat.suggestions"];
+  const language = getLanguage();
+  const suggestions = getChatSuggestions(language);
   document.querySelectorAll(".suggestion-chip").forEach((button, index) => {
-    const question = suggestions[index] || button.dataset.questionEn || button.textContent;
+    const localizedQuestion = language === "vi" ? button.dataset.questionVi : button.dataset.questionEn;
+    const question = localizedQuestion || suggestions[index] || button.textContent;
     button.textContent = question;
     button.dataset.question = question;
   });
@@ -478,6 +472,28 @@ function updateSuggestionButtons() {
 
 function updateRelatedQuestionButtons() {
   renderRelatedQuestions();
+}
+
+function getSelectedSubjectFilter() {
+  return document.querySelector(".chat-subject-chip.is-active")?.dataset.subjectFilter || "";
+}
+
+function setSelectedSubjectFilter(subject) {
+  const normalizedSubject = subject || "";
+  document.querySelectorAll(".chat-subject-chip").forEach((button) => {
+    const isActive = (button.dataset.subjectFilter || "") === normalizedSubject;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function bindSubjectFilterChips() {
+  document.querySelectorAll(".chat-subject-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedSubjectFilter(button.dataset.subjectFilter || "");
+      questionInput?.focus();
+    });
+  });
 }
 
 function normalizeQuestionForMemory(question) {
@@ -543,6 +559,11 @@ function renderRelatedQuestions() {
   const asked = readAskedQuestions();
   const available = relatedQuestionPool.filter((item) => !questionWasAsked(item, asked));
   const pool = available.length > 0 ? available : relatedQuestionPool;
+  if (pool.length === 0) {
+    list.innerHTML = "";
+    return;
+  }
+
   const offset = getRelatedRotationIndex() % pool.length;
   const ordered = [...pool.slice(offset), ...pool.slice(0, offset)];
   const currentQuestions = new Set(
@@ -644,7 +665,7 @@ function renderWelcomeMessage() {
     return;
   }
 
-  const suggestions = translations[getLanguage()]["chat.suggestions"];
+  const suggestions = getChatSuggestions();
   chatMessages.innerHTML = `
     <div class="chat-empty-state">
       <span class="empty-state-mark">AI</span>
@@ -716,6 +737,126 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
+function formatPreviewBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, Number(bytes) || 0);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return unitIndex === 0 ? `${value} ${units[unitIndex]}` : `${value.toFixed(value >= 10 ? 1 : 2).replace(/\.0+$/, "")} ${units[unitIndex]}`;
+}
+
+function formatPreviewDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toLocaleString(getLanguage() === "vi" ? "vi-VN" : "en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function closeDocumentPreview() {
+  if (!documentPreviewModal) {
+    return;
+  }
+
+  documentPreviewModal.classList.remove("is-open");
+  documentPreviewModal.setAttribute("aria-hidden", "true");
+}
+
+function renderDocumentPreview(document) {
+  if (!documentPreviewTitle || !documentPreviewMeta || !documentPreviewBody) {
+    return;
+  }
+
+  const chunks = Array.isArray(document.chunks) ? document.chunks : [];
+  const uploader = document.uploadedByName ? `Upload: ${document.uploadedByName}` : "Upload: Không rõ";
+  const subjectOwner = document.subjectOwnerName ? `Phụ trách: ${document.subjectOwnerName}` : "Phụ trách: Chưa phân công";
+  documentPreviewTitle.textContent = document.fileName || "Tài liệu";
+  documentPreviewMeta.textContent = [
+    document.subject,
+    document.chapter,
+    uploader,
+    subjectOwner,
+    `${chunks.length || document.chunkCount || 0} chunks`,
+    formatPreviewBytes(document.fileSizeBytes),
+    formatPreviewDate(document.uploadedAt)
+  ].filter(Boolean).join(" / ");
+
+  if (chunks.length === 0) {
+    documentPreviewBody.innerHTML = `
+      <div class="rbl-empty-state compact">
+        <strong>Chưa có nội dung index.</strong>
+        <p>Tài liệu này chưa có chunk text để hiển thị.</p>
+      </div>`;
+    return;
+  }
+
+  documentPreviewBody.innerHTML = chunks.map((chunk) => `
+    <article class="rbl-document-preview-chunk">
+      <span>Chunk ${escapeHtml(String(chunk.chunkIndex ?? ""))}</span>
+      <p>${escapeHtml(chunk.text || "")}</p>
+    </article>
+  `).join("");
+}
+
+async function openDocumentPreview(url) {
+  if (!documentPreviewModal || !documentPreviewBody) {
+    return;
+  }
+
+  documentPreviewModal.classList.add("is-open");
+  documentPreviewModal.setAttribute("aria-hidden", "false");
+  if (documentPreviewTitle) {
+    documentPreviewTitle.textContent = "Tài liệu";
+  }
+  if (documentPreviewMeta) {
+    documentPreviewMeta.textContent = "";
+  }
+  documentPreviewBody.innerHTML = `<p class="rbl-catalog-muted">Đang tải nội dung đã index...</p>`;
+
+  try {
+    const response = await fetch(url, { headers: { "Accept": "application/json" } });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Could not load document preview.");
+    }
+
+    renderDocumentPreview(payload);
+  } catch (error) {
+    documentPreviewBody.innerHTML = `
+      <div class="rbl-alert is-error">
+        ${escapeHtml(error.message || "Không tải được nội dung tài liệu.")}
+      </div>`;
+  }
+}
+
+function bindDocumentPreviewButtons() {
+  document.querySelectorAll("[data-document-preview-url]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openDocumentPreview(button.dataset.documentPreviewUrl);
+    });
+  });
+
+  document.querySelectorAll("[data-document-preview-close]").forEach((button) => {
+    button.addEventListener("click", closeDocumentPreview);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && documentPreviewModal?.classList.contains("is-open")) {
+      closeDocumentPreview();
+    }
+  });
+}
+
 async function refreshSessionList() {
   if (!chatSessionList) {
     return;
@@ -782,6 +923,36 @@ function appendMessageTo(target, role, content) {
   return wrapper;
 }
 
+function renderClarificationOptions(messageWrapper, options, originalQuestion) {
+  const subjects = Array.isArray(options)
+    ? options.filter((subject) => typeof subject === "string" && subject.trim().length > 0).slice(0, 6)
+    : [];
+
+  if (!messageWrapper || subjects.length === 0) {
+    return;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "chat-clarification-options";
+  subjects.forEach((subject) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-clarification-chip";
+    button.textContent = subject;
+    button.addEventListener("click", () => {
+      setSelectedSubjectFilter(subject);
+      if (questionInput && chatForm) {
+        questionInput.value = originalQuestion;
+        chatForm.requestSubmit();
+      }
+    });
+    actions.appendChild(button);
+  });
+
+  messageWrapper.appendChild(actions);
+  messageWrapper.parentElement.scrollTop = messageWrapper.parentElement.scrollHeight;
+}
+
 async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
   const question = input?.value.trim();
   if (!question || !messagesTarget) {
@@ -799,7 +970,12 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
     const response = await fetch("/Home/Ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: getSessionId(), question, language: getLanguage() })
+      body: JSON.stringify({
+        sessionId: getSessionId(),
+        question,
+        subjectFilter: getSelectedSubjectFilter(),
+        language: getLanguage()
+      })
     });
 
     const payload = await response.json();
@@ -814,7 +990,11 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
     if (activeSessionTitle) {
       activeSessionTitle.textContent = question.length <= 56 ? question : `${question.slice(0, 56)}...`;
     }
-    appendMessageTo(messagesTarget, "assistant", payload.answer);
+    const answerMessage = appendMessageTo(messagesTarget, "assistant", payload.answer);
+    if (payload.needsClarification && Array.isArray(payload.subjectOptions)) {
+      renderClarificationOptions(answerMessage, payload.subjectOptions, question);
+    }
+
     advanceRelatedRotation();
     renderRelatedQuestions();
     refreshSessionList();
@@ -1020,6 +1200,8 @@ function bindSuggestionButtons() {
 
 bindSuggestionButtons();
 bindSessionButtons();
+bindSubjectFilterChips();
+bindDocumentPreviewButtons();
 initAssistantLauncherDrag();
 markActiveSession(getSessionId());
 applyLanguage();

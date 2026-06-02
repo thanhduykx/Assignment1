@@ -60,6 +60,10 @@
                 <span>Ngày upload</span>
                 <strong>@Model.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</strong>
             </article>
+            <article>
+                <span>Người upload</span>
+                <strong title="@Model.UploadedByEmail">@(string.IsNullOrWhiteSpace(Model.UploadedByName) ? "Không rõ" : Model.UploadedByName)</strong>
+            </article>
         </div>
 
         <form asp-action="EditDocument" method="post" class="rbl-document-edit-form">
@@ -98,8 +102,27 @@
 
             <div class="rbl-form-actions">
                 <button type="submit" class="rbl-submit-button">Lưu thay đổi</button>
-                <a class="rbl-secondary-button" asp-controller="Home" asp-action="ViewDocument" asp-route-id="@Model.Id" target="_blank" rel="noopener">Xem tài liệu</a>
+                <button type="button" class="rbl-secondary-button" data-document-preview-url="@Url.Action("DocumentPreview", "Home", new { id = Model.Id })">Xem t&#224;i li&#7879;u</button>
             </div>
         </form>
     </section>
+
+    <div id="documentPreviewModal" class="rbl-document-preview-modal" aria-hidden="true">
+        <div class="rbl-document-preview-backdrop" data-document-preview-close></div>
+        <section class="rbl-document-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="documentPreviewTitle">
+            <header class="rbl-document-preview-header">
+                <div>
+                    <span class="rbl-section-label">Indexed content</span>
+                    <h2 id="documentPreviewTitle">T&#224;i li&#7879;u</h2>
+                    <p id="documentPreviewMeta"></p>
+                </div>
+                <button type="button" class="rbl-icon-button" aria-label="Close preview" data-document-preview-close>
+                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                </button>
+            </header>
+            <div id="documentPreviewBody" class="rbl-document-preview-body">
+                <p class="rbl-catalog-muted">&#272;ang t&#7843;i n&#7897;i dung &#273;&#227; index...</p>
+            </div>
+        </section>
+    </div>
 </section>

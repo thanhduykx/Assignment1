@@ -5,11 +5,23 @@ using DataAccessLayer;
 
 namespace ServicesLayer;
 
-public sealed record ChatAnswer(string Answer, IReadOnlyList<SourceCitation> Citations, IReadOnlyList<ChatMessage> History);
+public sealed record ChatAnswer(
+    string Answer,
+    IReadOnlyList<SourceCitation> Citations,
+    IReadOnlyList<ChatMessage> History,
+    string? ResolvedSubject = null,
+    bool NeedsClarification = false,
+    IReadOnlyList<string>? SubjectOptions = null);
 
 public interface IRagChatService
 {
-    Task<ChatAnswer> AskAsync(Guid sessionId, string question, string? userDisplayName = null, string? language = null, CancellationToken cancellationToken = default);
+    Task<ChatAnswer> AskAsync(
+        Guid sessionId,
+        string question,
+        string? userDisplayName = null,
+        string? subjectFilter = null,
+        string? language = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class RagChatService : IRagChatService
@@ -99,6 +111,7 @@ public sealed class RagChatService : IRagChatService
         Guid sessionId,
         string question,
         string? userDisplayName = null,
+        string? subjectFilter = null,
         string? language = null,
         CancellationToken cancellationToken = default)
     {
@@ -137,6 +150,7 @@ public sealed class RagChatService : IRagChatService
                     historyBeforeQuestion,
                     userDisplayName,
                     responseLanguage,
+                    subjectFilter,
                     scopedChunks,
                     cancellationToken));
             }
@@ -151,10 +165,18 @@ public sealed class RagChatService : IRagChatService
             historyBeforeQuestion,
             userDisplayName,
             responseLanguage,
+            subjectFilter,
             scopedChunks: null,
             cancellationToken);
 
-        return await SaveAssistantAnswer(sessionId, singleAnswer.Answer, singleAnswer.Citations, cancellationToken);
+        return await SaveAssistantAnswer(
+            sessionId,
+            singleAnswer.Answer,
+            singleAnswer.Citations,
+            cancellationToken,
+            singleAnswer.ResolvedSubject,
+            singleAnswer.NeedsClarification,
+            singleAnswer.SubjectOptions);
     }
 
     private async Task<SingleQuestionAnswer> BuildSingleQuestionAnswerAsync(
@@ -162,6 +184,7 @@ public sealed class RagChatService : IRagChatService
         IReadOnlyList<ChatMessage> historyBeforeQuestion,
         string? userDisplayName,
         string responseLanguage,
+        string? subjectFilter,
         IReadOnlyList<DocumentChunk>? scopedChunks,
         CancellationToken cancellationToken)
     {
@@ -184,10 +207,7 @@ public sealed class RagChatService : IRagChatService
             question,
             historyBeforeQuestion,
             cancellationToken);
-        var resolvedQuestion = ResolveKnownCourseAliases(rewrittenQuestion);
-        var correctionPrefix = resolvedQuestion.Equals(rewrittenQuestion, StringComparison.Ordinal)
-            ? string.Empty
-            : BuildAliasCorrectionPrefix(responseLanguage);
+        var resolvedQuestion = rewrittenQuestion;
 
         scopedChunks ??= await GetScopedChunksAsync(cancellationToken);
         if (scopedChunks.Count == 0)
@@ -195,82 +215,30 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
-        if (TryBuildDba103SyllabusFactAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var syllabusFactAnswer, out var syllabusFactCitation))
+        var route = ResolveSubjectRoute(resolvedQuestion, subjectFilter, scopedChunks);
+        if (route.NeedsClarification)
         {
-            return new SingleQuestionAnswer(question, correctionPrefix + syllabusFactAnswer, new[] { syllabusFactCitation });
+            return new SingleQuestionAnswer(
+                question,
+                BuildSubjectClarificationAnswer(route.CandidateSubjects, responseLanguage),
+                Array.Empty<SourceCitation>(),
+                null,
+                true,
+                route.CandidateSubjects);
+        }
+
+        if (!string.IsNullOrWhiteSpace(route.SelectedSubject))
+        {
+            scopedChunks = scopedChunks
+                .Where(chunk => SubjectMatches(chunk.Subject, route.SelectedSubject))
+                .ToList();
+            if (scopedChunks.Count == 0)
+            {
+                return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), route.SelectedSubject);
+            }
         }
 
         var queryTerms = ExtractTerms(resolvedQuestion);
-
-        if (TryBuildCreditAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var creditAnswer, out var creditCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + creditAnswer, new[] { creditCitation });
-        }
-
-        if (TryBuildCourseOverviewAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var overviewAnswer, out var overviewCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + overviewAnswer, new[] { overviewCitation });
-        }
-
-        if (TryBuildPrerequisiteAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var prerequisiteAnswer, out var prerequisiteCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + prerequisiteAnswer, new[] { prerequisiteCitation });
-        }
-
-        if (TryBuildTimeAllocationAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var timeAnswer, out var timeCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + timeAnswer, new[] { timeCitation });
-        }
-
-        if (TryBuildAssignmentWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var assignmentAnswer, out var assignmentCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + assignmentAnswer, new[] { assignmentCitation });
-        }
-
-        if (TryBuildParticipationWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var participationAnswer, out var participationCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + participationAnswer, new[] { participationCitation });
-        }
-
-        if (TryBuildFinalExamWeightAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var finalWeightAnswer, out var finalWeightCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + finalWeightAnswer, new[] { finalWeightCitation });
-        }
-
-        if (TryBuildAssessmentAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var assessmentAnswer, out var assessmentCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + assessmentAnswer, new[] { assessmentCitation });
-        }
-
-        if (TryBuildMainContentAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var mainContentAnswer, out var mainContentCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + mainContentAnswer, new[] { mainContentCitation });
-        }
-
-        if (TryBuildKnowledgeAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var knowledgeAnswer, out var knowledgeCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + knowledgeAnswer, new[] { knowledgeCitation });
-        }
-
-        if (TryBuildSkillsAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var skillsAnswer, out var skillsCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + skillsAnswer, new[] { skillsCitation });
-        }
-
-        if (TryBuildSongsAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var songsAnswer, out var songsCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + songsAnswer, new[] { songsCitation });
-        }
-
-        if (TryBuildOnlineResourcesAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var onlineAnswer, out var onlineCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + onlineAnswer, new[] { onlineCitation });
-        }
-
-        if (TryBuildFinalExamAnswer(resolvedQuestion, scopedChunks, responseLanguage, out var finalExamAnswer, out var finalExamCitation))
-        {
-            return new SingleQuestionAnswer(question, correctionPrefix + finalExamAnswer, new[] { finalExamCitation });
-        }
 
         var contentTerms = RemoveCourseScopeTerms(queryTerms);
         var needsContentEvidence = contentTerms.Count > 0;
@@ -314,6 +282,21 @@ public sealed class RagChatService : IRagChatService
             return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
         }
 
+        if (string.IsNullOrWhiteSpace(route.SelectedSubject))
+        {
+            var ambiguousSubjects = FindAmbiguousCandidateSubjects(candidateMatches);
+            if (ambiguousSubjects.Count > 1)
+            {
+                return new SingleQuestionAnswer(
+                    question,
+                    BuildSubjectClarificationAnswer(ambiguousSubjects, responseLanguage),
+                    Array.Empty<SourceCitation>(),
+                    null,
+                    true,
+                    ambiguousSubjects);
+            }
+        }
+
         var matches = await RerankMatchesAsync(resolvedQuestion, candidateMatches, responseLanguage, cancellationToken);
 
         var citations = matches.Select(item => new SourceCitation
@@ -328,9 +311,10 @@ public sealed class RagChatService : IRagChatService
         }).ToList();
 
         var matchedChunks = matches.Select(item => item.Chunk).ToList();
+        var resolvedSubject = route.SelectedSubject ?? ResolveSubject(matchedChunks);
         var answer = await _chatCompletionService.GenerateAnswerAsync(
                          resolvedQuestion,
-                         ResolveSubject(matchedChunks),
+                         resolvedSubject,
                          historyBeforeQuestion,
                          matchedChunks,
                          responseLanguage,
@@ -352,12 +336,186 @@ public sealed class RagChatService : IRagChatService
             }
         }
 
-        return new SingleQuestionAnswer(question, correctionPrefix + answer, citations);
+        return new SingleQuestionAnswer(question, answer, citations, resolvedSubject);
     }
 
     private async Task<IReadOnlyList<DocumentChunk>> GetScopedChunksAsync(CancellationToken cancellationToken)
     {
         return await _repository.GetChunksAsync(cancellationToken);
+    }
+
+    private static SubjectRouteResult ResolveSubjectRoute(
+        string question,
+        string? subjectFilter,
+        IReadOnlyList<DocumentChunk> chunks)
+    {
+        var subjects = chunks
+            .Select(chunk => chunk.Subject)
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(subject => subject)
+            .ToList();
+
+        if (subjects.Count == 0)
+        {
+            return new SubjectRouteResult(null, false, Array.Empty<string>());
+        }
+
+        if (!string.IsNullOrWhiteSpace(subjectFilter) && !IsAllSubjectsFilter(subjectFilter))
+        {
+            var selected = subjects.FirstOrDefault(subject => SubjectMatches(subject, subjectFilter))
+                ?? subjectFilter.Trim();
+            return new SubjectRouteResult(selected, false, Array.Empty<string>());
+        }
+
+        if (subjects.Count == 1)
+        {
+            return new SubjectRouteResult(subjects[0], false, Array.Empty<string>());
+        }
+
+        var normalizedQuestion = NormalizeQuestion(question);
+        var explicitMatches = subjects
+            .Where(subject => GetSubjectAliases(subject).Any(alias => normalizedQuestion.Contains(alias, StringComparison.Ordinal)))
+            .ToList();
+
+        if (explicitMatches.Count == 1)
+        {
+            return new SubjectRouteResult(explicitMatches[0], false, Array.Empty<string>());
+        }
+
+        if (explicitMatches.Count > 1 && !IsMultiSubjectQuestion(normalizedQuestion))
+        {
+            return new SubjectRouteResult(null, true, explicitMatches.Take(5).ToList());
+        }
+
+        return new SubjectRouteResult(null, false, Array.Empty<string>());
+    }
+
+    private static IReadOnlyList<string> FindAmbiguousCandidateSubjects(IReadOnlyList<ScoredChunk> candidates)
+    {
+        var ranked = candidates
+            .GroupBy(item => string.IsNullOrWhiteSpace(item.Chunk.Subject) ? "Không rõ môn" : item.Chunk.Subject.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Subject = group.Key,
+                Score = group.Max(item => item.Score) + Math.Min(0.03, group.Count() * 0.005)
+            })
+            .OrderByDescending(item => item.Score)
+            .Take(5)
+            .ToList();
+
+        if (ranked.Count < 2)
+        {
+            return Array.Empty<string>();
+        }
+
+        var top = ranked[0];
+        var second = ranked[1];
+        return top.Score - second.Score <= 0.08
+            ? ranked.Select(item => item.Subject).ToList()
+            : Array.Empty<string>();
+    }
+
+    private static bool SubjectMatches(string subject, string filter)
+    {
+        var normalizedSubject = (subject ?? string.Empty).Trim();
+        var normalizedFilter = (filter ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSubject) || string.IsNullOrWhiteSpace(normalizedFilter))
+        {
+            return false;
+        }
+
+        if (normalizedSubject.Equals(normalizedFilter, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var subjectCode = ExtractSubjectCode(normalizedSubject);
+        var filterCode = ExtractSubjectCode(normalizedFilter);
+        return !string.IsNullOrWhiteSpace(subjectCode)
+               && subjectCode.Equals(filterCode, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAllSubjectsFilter(string value)
+    {
+        var normalized = NormalizeQuestion(value);
+        return normalized is "all" or "all subjects" or "tat ca" or "tat ca mon";
+    }
+
+    private static IReadOnlyList<string> GetSubjectAliases(string subject)
+    {
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalizedSubject = NormalizeQuestion(subject);
+        if (normalizedSubject.Length >= 3)
+        {
+            aliases.Add(normalizedSubject);
+        }
+
+        var code = ExtractSubjectCode(subject);
+        var normalizedCode = NormalizeQuestion(code);
+        if (normalizedCode.Length >= 3)
+        {
+            aliases.Add(normalizedCode);
+            aliases.Add(normalizedCode.Replace(" ", string.Empty, StringComparison.Ordinal));
+        }
+
+        var separatorIndex = subject.IndexOf('-', StringComparison.Ordinal);
+        if (separatorIndex >= 0 && separatorIndex + 1 < subject.Length)
+        {
+            var name = NormalizeQuestion(subject[(separatorIndex + 1)..]);
+            if (name.Length >= 6)
+            {
+                aliases.Add(name);
+            }
+        }
+
+        return aliases.ToList();
+    }
+
+    private static string ExtractSubjectCode(string subject)
+    {
+        var trimmed = (subject ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        var separatorIndex = trimmed.IndexOf('-', StringComparison.Ordinal);
+        var candidate = separatorIndex > 0
+            ? trimmed[..separatorIndex]
+            : trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? trimmed;
+        return new string(candidate
+            .Where(character => char.IsLetterOrDigit(character) || character is '_' or '.')
+            .ToArray())
+            .ToUpperInvariant();
+    }
+
+    private static bool IsMultiSubjectQuestion(string normalizedQuestion)
+    {
+        return normalizedQuestion.Contains("so sanh", StringComparison.Ordinal)
+               || normalizedQuestion.Contains("compare", StringComparison.Ordinal)
+               || normalizedQuestion.Contains("tat ca mon", StringComparison.Ordinal)
+               || normalizedQuestion.Contains("cac mon", StringComparison.Ordinal)
+               || normalizedQuestion.Contains("all subjects", StringComparison.Ordinal);
+    }
+
+    private static string BuildSubjectClarificationAnswer(IReadOnlyList<string> subjects, string language)
+    {
+        var options = subjects
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
+
+        if (options.Count == 0)
+        {
+            return BuildOutOfScopeAnswer(language);
+        }
+
+        var optionText = string.Join("\n", options.Select(subject => $"- {subject}"));
+        return language == "vi"
+            ? $"Mình tìm thấy dữ liệu liên quan ở nhiều môn. Bạn muốn hỏi môn nào?\n\n{optionText}"
+            : $"I found relevant data in multiple subjects. Which subject do you want?\n\n{optionText}";
     }
 
     private async Task<IReadOnlyList<ScoredChunk>> RerankMatchesAsync(
@@ -518,7 +676,15 @@ public sealed class RagChatService : IRagChatService
     private sealed record SingleQuestionAnswer(
         string Question,
         string Answer,
-        IReadOnlyList<SourceCitation> Citations);
+        IReadOnlyList<SourceCitation> Citations,
+        string? ResolvedSubject = null,
+        bool NeedsClarification = false,
+        IReadOnlyList<string>? SubjectOptions = null);
+
+    private sealed record SubjectRouteResult(
+        string? SelectedSubject,
+        bool NeedsClarification,
+        IReadOnlyList<string> CandidateSubjects);
 
     private sealed record ScoredChunk(
         DocumentChunk Chunk,
@@ -532,7 +698,10 @@ public sealed class RagChatService : IRagChatService
         Guid sessionId,
         string answer,
         IReadOnlyList<SourceCitation> citations,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? resolvedSubject = null,
+        bool needsClarification = false,
+        IReadOnlyList<string>? subjectOptions = null)
     {
         await _repository.AddMessageAsync(sessionId, new ChatMessage
         {
@@ -542,1226 +711,7 @@ public sealed class RagChatService : IRagChatService
         }, cancellationToken);
 
         var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken);
-        return new ChatAnswer(answer, citations, session.Messages);
-    }
-
-    private static bool TryBuildDba103SyllabusFactAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        var normalized = NormalizeQuestion(question);
-        var mentionsKnownSyllabus = normalized.Contains("dba103", StringComparison.Ordinal)
-                                    || normalized.Contains("syllabus", StringComparison.Ordinal)
-                                    || normalized.Contains("clo", StringComparison.Ordinal)
-                                    || normalized.Contains("session", StringComparison.Ordinal);
-
-        if (!mentionsKnownSyllabus && !LooksLikeDba103ImplicitQuestion(normalized))
-        {
-            return false;
-        }
-
-        if (ContainsAny(normalized, "ten tieng anh", "syllabus english", "english name"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Syllabus English:");
-            var englishName = chunk is null ? string.Empty : ExtractField(chunk.Text, "Syllabus English");
-            if (chunk is not null && !string.IsNullOrWhiteSpace(englishName))
-            {
-                return SetFactAnswer(
-                    language,
-                    $"Tên tiếng Anh của syllabus DBA103 là {englishName}.",
-                    $"The English syllabus name of DBA103 is {englishName}.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        if (IsCourseOverviewQuestion(question) || ContainsAny(normalized, "mon hoc gi", "mon gi", "ten mon"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Subject Code:", "Syllabus Name:");
-            if (chunk is not null)
-            {
-                var subjectCode = ExtractField(chunk.Text, "Subject Code");
-                var syllabusName = ExtractField(chunk.Text, "Syllabus Name");
-                var syllabusEnglish = ExtractField(chunk.Text, "Syllabus English");
-
-                if (!string.IsNullOrWhiteSpace(subjectCode) && !string.IsNullOrWhiteSpace(syllabusName))
-                {
-                    var vietnameseAnswer = string.IsNullOrWhiteSpace(syllabusEnglish)
-                        ? $"{subjectCode} là môn {syllabusName}."
-                        : $"{subjectCode} là môn {syllabusName}, tên tiếng Anh là {syllabusEnglish}.";
-                    var englishAnswer = string.IsNullOrWhiteSpace(syllabusEnglish)
-                        ? $"{subjectCode} is the course {syllabusName}."
-                        : $"{subjectCode} is {syllabusEnglish} ({syllabusName}).";
-
-                    return SetFactAnswer(language, vietnameseAnswer, englishAnswer, chunk, out answer, out citation);
-                }
-            }
-        }
-
-        if (ContainsAny(normalized, "cap do", "degree level"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Degree Level:");
-            var degreeLevel = chunk is null ? string.Empty : NormalizeDegreeLevel(ExtractField(chunk.Text, "Degree Level"));
-            if (chunk is not null && !string.IsNullOrWhiteSpace(degreeLevel))
-            {
-                return SetFactAnswer(
-                    language,
-                    $"Degree Level của DBA103 là {degreeLevel}.",
-                    $"The degree level of DBA103 is {degreeLevel}.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        if (ContainsAny(normalized, "thang diem", "scoring scale"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Scoring Scale:");
-            var scoringScale = chunk is null ? string.Empty : ExtractField(chunk.Text, "Scoring Scale");
-            if (chunk is not null && !string.IsNullOrWhiteSpace(scoringScale))
-            {
-                return SetFactAnswer(
-                    language,
-                    $"Scoring Scale của DBA103 là {scoringScale}.",
-                    $"The scoring scale of DBA103 is {scoringScale}.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        if (ContainsAny(normalized, "tong diem fe", "final result"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Final Result:");
-            var finalResult = chunk is null ? string.Empty : ExtractField(chunk.Text, "Final Result");
-            if (chunk is not null && !string.IsNullOrWhiteSpace(finalResult))
-            {
-                return SetFactAnswer(
-                    language,
-                    $"Final Result của DBA103 yêu cầu {finalResult}.",
-                    $"The final result requirement of DBA103 is {finalResult}.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        if (ContainsAny(normalized, "minavgmarktopass", "avg mark", "diem trung binh"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "MinAvgMarkToPass:");
-            var passMark = chunk is null ? string.Empty : ExtractField(chunk.Text, "MinAvgMarkToPass");
-            if (chunk is not null && !string.IsNullOrWhiteSpace(passMark))
-            {
-                return SetFactAnswer(
-                    language,
-                    $"MinAvgMarkToPass của DBA103 là {passMark}.",
-                    $"The MinAvgMarkToPass of DBA103 is {passMark}.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        if (ContainsAny(normalized, "danh muc bai nhac", "co bao nhieu bai"))
-        {
-            var chunk = FindSyllabusChunk(chunks, "Danh mục các bài nhạc");
-            var count = chunk is null ? 0 : CountNumberedLines(chunk.Text);
-            if (chunk is not null && count > 0)
-            {
-                return SetFactAnswer(
-                    language,
-                    $"Danh mục có {count} bài nhạc có thể sử dụng trong học phần.",
-                    $"The catalog contains {count} songs that can be used in the course.",
-                    chunk,
-                    out answer,
-                    out citation);
-            }
-        }
-
-        foreach (var rule in GetDba103SyllabusFactRules())
-        {
-            if (!RuleMatches(normalized, rule))
-            {
-                continue;
-            }
-
-            var chunk = FindSyllabusChunk(chunks, rule.EvidenceTerms);
-            if (chunk is null)
-            {
-                continue;
-            }
-
-            return SetFactAnswer(language, rule.VietnameseAnswer, rule.EnglishAnswer, chunk, out answer, out citation);
-        }
-
-        return false;
-    }
-
-    private static IEnumerable<SyllabusFactRule> GetDba103SyllabusFactRules()
-    {
-        yield return new SyllabusFactRule(
-            new[] { "thoi luong thi cuoi", "5 phut", "duration" },
-            new[] { "sinh vien" },
-            new[] { "5 min/students" },
-            "Final exam có thời lượng 5 phút mỗi sinh viên.",
-            "The final exam duration is 5 minutes per student.");
-        yield return new SyllabusFactRule(
-            new[] { "choi may bai", "how many songs" },
-            Array.Empty<string>(),
-            new[] { "3 songs", "2 Vietnamese folk songs" },
-            "Sinh viên chơi 3 bài gồm 2 bài hòa tấu và 1 bài độc tấu, trong đó có 2 bài dân ca Việt Nam và 1 bài quốc tế.",
-            "Students play 3 songs: 2 ensemble performances and 1 solo song, including 2 Vietnamese folk songs and 1 foreign song.");
-        yield return new SyllabusFactRule(
-            new[] { "thoi luong hoc tren lop", "thoi luong hoc", "bao nhieu slot", "time allocation" },
-            Array.Empty<string>(),
-            new[] { "Time Allocation:" },
-            "DBA103 có 30 slot trên lớp, mỗi slot 90 phút.",
-            "DBA103 has 30 in-class slots, 90 minutes per slot.");
-        yield return new SyllabusFactRule(
-            new[] { "tien quyet", "pre requisite", "prerequisite" },
-            Array.Empty<string>(),
-            new[] { "Pre-Requisite:" },
-            "Pre-Requisite của DBA103 là Không / None.",
-            "The prerequisite of DBA103 is None.");
-        yield return new SyllabusFactRule(
-            new[] { "muc tieu kien thuc", "knowledge" },
-            Array.Empty<string>(),
-            new[] { "Kiến thức/ Knowledge:" },
-            "Sinh viên DBA103 cần nắm đặc trưng lịch sử phát triển và cấu trúc Đàn Bầu, đồng thời làm quen với nhạc lý và kỹ thuật cơ bản của Đàn Bầu.",
-            "DBA103 students should understand the historical development and structure of Dan Bau, and become familiar with music theory and basic Dan Bau techniques.");
-        yield return new SyllabusFactRule(
-            new[] { "muc tieu ky nang", "skills" },
-            Array.Empty<string>(),
-            new[] { "Kỹ năng/ Skills:" },
-            "Sinh viên DBA103 cần đánh được tối thiểu 3 bài, trong đó có 1 bài nhạc nước ngoài thông dụng, và vận dụng đúng các kỹ thuật cơ bản.",
-            "DBA103 students should be able to play at least 3 songs, including 1 common foreign song, and properly apply basic techniques.");
-        yield return new SyllabusFactRule(
-            new[] { "quy mo lop", "bao nhieu sinh vien", "sinh vien lop" },
-            Array.Empty<string>(),
-            new[] { "15 students/class" },
-            "DBA103 được triển khai theo lớp có khoảng 15 sinh viên/lớp.",
-            "DBA103 is organized in classes of about 15 students.");
-        yield return new SyllabusFactRule(
-            new[] { "noi dung chinh", "gom nhung gi", "students will learn" },
-            Array.Empty<string>(),
-            new[] { "In the course, students will learn:" },
-            "Nội dung chính của DBA103 gồm lịch sử Đàn Bầu ở Việt Nam, cấu trúc và đặc điểm Đàn Bầu, tư thế đánh đàn, nhạc lý, kỹ thuật cơ bản và luyện tập các bài nhạc.",
-            "The main contents of DBA103 cover Dan Bau history in Vietnam, structure and characteristics, playing posture, music theory, basic techniques, and song practice.");
-        yield return new SyllabusFactRule(
-            new[] { "ky thuat co ban", "day nhung ky thuat" },
-            Array.Empty<string>(),
-            new[] { "Gảy dây buông", "quãng 2" },
-            "Kỹ thuật cơ bản trong DBA103 gồm gảy dây buông và nhấn lên/xuống quãng 2.",
-            "The basic techniques in DBA103 include plucking open strings and raising/lowering pitch by a major second interval.");
-        yield return new SyllabusFactRule(
-            new[] { "bai viet nam", "luyen tap bai viet nam" },
-            Array.Empty<string>(),
-            new[] { "Cò lả", "lý cây đa" },
-            "Sinh viên luyện tập Cò lả và Lý cây đa theo hình thức hòa tấu.",
-            "Students practice Co la and Ly cay da as ensemble performances.");
-        yield return new SyllabusFactRule(
-            new[] { "bai quoc te", "bai nuoc ngoai", "foreign song" },
-            Array.Empty<string>(),
-            new[] { "Auld lang syne", "Scotland" },
-            "Bài quốc tế trong DBA103 là Auld lang syne, dân ca Scotland.",
-            "The foreign song in DBA103 is Auld Lang Syne, a Scottish folk song.");
-        yield return new SyllabusFactRule(
-            new[] { "ap dung cntt", "su dung cntt", "apply it" },
-            Array.Empty<string>(),
-            new[] { "Apply IT in the course" },
-            "DBA103 áp dụng CNTT bằng cách cung cấp website, clip nhạc truyền thống và tài nguyên trên mạng cho sinh viên.",
-            "DBA103 applies IT by providing websites, traditional music clips, and online resources for students.");
-        yield return new SyllabusFactRule(
-            new[] { "tai nguyen online", "tai nguyen tren mang", "nguyen tac" },
-            Array.Empty<string>(),
-            new[] { "Use of online resources" },
-            "Giảng viên sử dụng tài nguyên có chọn lọc theo nguyên tắc học phần và hướng dẫn sinh viên tìm thông tin theo chủ đề trên Internet.",
-            "Lecturers selectively use online resources based on course regulations and guide students to search topic-based information on the Internet.");
-        yield return new SyllabusFactRule(
-            new[] { "ky nang mem", "phat trien ca nhan", "soft skills" },
-            Array.Empty<string>(),
-            new[] { "Soft skills development" },
-            "DBA103 rèn luyện tính kiên trì và giúp sinh viên tự tin hơn trước đám đông.",
-            "DBA103 improves students' perseverance and confidence in front of a crowd.");
-        yield return new SyllabusFactRule(
-            new[] { "lam viec nhom", "teamwork" },
-            Array.Empty<string>(),
-            new[] { "work in groups", "work independently" },
-            "Có. DBA103 phát triển kỹ năng làm việc nhóm và làm việc độc lập qua các nhiệm vụ giảng viên giao.",
-            "Yes. DBA103 develops group-work and independent-work skills through lecturer-assigned tasks.");
-        yield return new SyllabusFactRule(
-            new[] { "dieu kien tham du thi", "du dieu kien thi", "80" },
-            Array.Empty<string>(),
-            new[] { "80% of class hours" },
-            "Sinh viên phải tham dự tối thiểu 80% thời lượng môn học để đủ điều kiện thi cuối môn.",
-            "Students must attend at least 80% of class hours to be eligible for the final exam.");
-        yield return new SyllabusFactRule(
-            new[] { "truoc khi den lop", "on tap bai cu" },
-            Array.Empty<string>(),
-            new[] { "Review previous lessons" },
-            "Trước khi đến lớp, sinh viên cần ôn tập bài cũ và tìm hiểu tài liệu bài học mới.",
-            "Before class, students should review previous lessons and study materials for new lessons.");
-        yield return new SyllabusFactRule(
-            new[] { "luyen tap dba103 o dau", "luyen tap o dau", "thuc hanh o dau" },
-            Array.Empty<string>(),
-            new[] { "Practice in class and at home" },
-            "Sinh viên cần luyện tập và thực hành trên lớp và ở nhà.",
-            "Students should practice in class and at home.");
-        yield return new SyllabusFactRule(
-            new[] { "tham gia hoat dong lop", "hoat dong lop nhu the nao", "portfolio" },
-            Array.Empty<string>(),
-            new[] { "Actively participate in class activities" },
-            "Sinh viên cần tích cực phát biểu, hỏi đáp, trao đổi, làm việc nhóm, thực hành và làm Portfolio cho môn học.",
-            "Students should actively express ideas, ask questions, discuss, work in groups, practice, and make a portfolio for the subject.");
-        yield return new SyllabusFactRule(
-            new[] { "cong cu hoc tap", "cong cu", "tools" },
-            Array.Empty<string>(),
-            new[] { "Tools:" },
-            "Công cụ học tập của DBA103 là nhạc cụ cho từng sinh viên.",
-            "The learning tool for DBA103 is a musical instrument for each student.");
-        yield return new SyllabusFactRule(
-            new[] { "assignment", "diem assignment" },
-            new[] { "phan tram" },
-            new[] { "Assignment:", "15%" },
-            "Assignment chiếm 15% tổng điểm DBA103.",
-            "The assignment component accounts for 15% of DBA103.");
-        yield return new SyllabusFactRule(
-            new[] { "diem tham gia", "participation" },
-            new[] { "phan tram" },
-            new[] { "Participation:", "15%" },
-            "Participation chiếm 15% tổng điểm DBA103.",
-            "Participation accounts for 15% of DBA103.");
-        yield return new SyllabusFactRule(
-            new[] { "thi cuoi mon", "final exam" },
-            new[] { "phan tram" },
-            new[] { "Final exam:", "70%" },
-            "Final exam chiếm 70% tổng điểm và là phần thực hành chơi nhạc cụ theo yêu cầu.",
-            "The final exam accounts for 70% and is a required musical-instrument performance.");
-        yield return new SyllabusFactRule(
-            new[] { "tai lieu chinh", "main material" },
-            Array.Empty<string>(),
-            new[] { "Sách học Đàn Bầu" },
-            "Tài liệu chính của DBA103 là Sách học Đàn Bầu.",
-            "The main material of DBA103 is the Dan Bau textbook.");
-        yield return new SyllabusFactRule(
-            new[] { "tac gia", "author" },
-            Array.Empty<string>(),
-            new[] { "Nguyễn Thanh Tâm", "Trần Quốc Lộc" },
-            "Tác giả Sách học Đàn Bầu là Nguyễn Thanh Tâm và Trần Quốc Lộc.",
-            "The authors of the Dan Bau textbook are Nguyen Thanh Tam and Tran Quoc Loc.");
-        yield return new SyllabusFactRule(
-            new[] { "tai lieu luyen tap", "luyen tap ky thuat", "exercises" },
-            Array.Empty<string>(),
-            new[] { "Bài tập luyện kỹ thuật đàn Bầu" },
-            "Tài liệu luyện tập kỹ thuật là Bài tập luyện kỹ thuật đàn Bầu / Exercises to practice techniques of Dan Bau.",
-            "The technique-practice material is Exercises to practice techniques of Dan Bau.");
-        yield return new SyllabusFactRule(
-            new[] { "ke ten", "mot so bai nhac" },
-            Array.Empty<string>(),
-            new[] { "Bắc Kim Thang", "Auld lang syne" },
-            "Một số bài trong danh mục DBA103 gồm Bắc Kim Thang, Inh lả ơi, Xòe hoa, Lý cây đa, Trống cơm, Đội kèn tí hon và Auld lang syne.",
-            "Some DBA103 catalog songs are Bac Kim Thang, Inh la oi, Xoe hoa, Ly cay da, Trong com, Doi ken ti hon, and Auld Lang Syne.");
-        yield return new SyllabusFactRule(
-            new[] { "clo1" },
-            Array.Empty<string>(),
-            new[] { "CLO1" },
-            "CLO1 là hiểu biết cơ bản về lịch sử và sự phát triển hình thành của nền âm nhạc truyền thống Việt Nam.",
-            "CLO1 is basic understanding of the history and development of Vietnamese traditional music.");
-        yield return new SyllabusFactRule(
-            new[] { "clo2" },
-            Array.Empty<string>(),
-            new[] { "CLO2" },
-            "CLO2 là chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài.",
-            "CLO2 is the ability to play some basic Vietnamese and foreign traditional songs.");
-        yield return new SyllabusFactRule(
-            new[] { "bao nhieu session", "30 sessions" },
-            Array.Empty<string>(),
-            new[] { "30 sessions" },
-            "Syllabus DBA103 ghi có 30 sessions.",
-            "The DBA103 syllabus lists 30 sessions.");
-        yield return new SyllabusFactRule(
-            new[] { "session 1" },
-            Array.Empty<string>(),
-            new[] { "1 Phần Lý thuyết" },
-            "Session 1 gồm tìm hiểu lịch sử, tên gọi nhạc cụ, cấu tạo cây đàn, tư thế ngồi chơi đàn và cách gảy đàn.",
-            "Session 1 covers the instrument history and names, Dan Bau structure, playing posture, and plucking technique.");
-        yield return new SyllabusFactRule(
-            new[] { "bai dau tien", "bat dau hoc" },
-            Array.Empty<string>(),
-            new[] { "Bắt đầu đi vào học bài đầu tiên" },
-            "Bài đầu tiên sinh viên bắt đầu học là Đội kèn tí hon, ở session 7.",
-            "The first song students start learning is Doi ken ti hon in session 7.");
-        yield return new SyllabusFactRule(
-            new[] { "ly cay da" },
-            new[] { "session" },
-            new[] { "Learn new song: Ly cay da" },
-            "Lý cây đa được giới thiệu ở session 9.",
-            "Ly cay da is introduced in session 9.");
-        yield return new SyllabusFactRule(
-            new[] { "kiem tra giua ky", "mid term" },
-            Array.Empty<string>(),
-            new[] { "15 Kiểm tra giữa kỳ" },
-            "Kiểm tra giữa kỳ diễn ra ở session 15, với nội dung 2 bài Lý cây đa và Đội kèn tí hon.",
-            "The mid-term test is in session 15 and covers Ly cay da and Doi ken ti hon.");
-        yield return new SyllabusFactRule(
-            new[] { "co la" },
-            new[] { "session" },
-            new[] { "17", "Cò lả" },
-            "Bài Cò lả được áp dụng/luyện tập trong các session 17 đến 19.",
-            "Co la is practiced from sessions 17 to 19.");
-        yield return new SyllabusFactRule(
-            new[] { "auld lang syne" },
-            new[] { "session" },
-            new[] { "Learning foreign song: Auld lang syne" },
-            "Auld lang syne được học và luyện từ session 20 đến 23.",
-            "Auld Lang Syne is learned and practiced from sessions 20 to 23.");
-        yield return new SyllabusFactRule(
-            new[] { "session 25", "25 den 27" },
-            Array.Empty<string>(),
-            new[] { "25 Hòa tấu", "27 Hòa tấu" },
-            "Session 25 đến 27 tập trung vào hòa tấu Lý cây đa và Cò lả cùng các lớp khác.",
-            "Sessions 25 to 27 focus on ensemble practice of Ly cay da and Co la with other classes.");
-        yield return new SyllabusFactRule(
-            new[] { "session 28" },
-            Array.Empty<string>(),
-            new[] { "28", "Thu bài luận" },
-            "Session 28 có hòa tấu Lý cây đa, Cò lả cùng các lớp khác và thu bài luận / submit essays.",
-            "Session 28 includes ensemble practice of Ly cay da and Co la with other classes, and essay submission.");
-        yield return new SyllabusFactRule(
-            new[] { "thi ket thuc khoa", "thi cuoi khoa" },
-            Array.Empty<string>(),
-            new[] { "29 Tổ chức thi", "30 Tổ chức thi" },
-            "Thi kết thúc khóa học diễn ra ở session 29 và 30.",
-            "The final course exam takes place in sessions 29 and 30.");
-        yield return new SyllabusFactRule(
-            new[] { "bao nhieu assessment", "assessment" },
-            Array.Empty<string>(),
-            new[] { "3 assessment(s)" },
-            "Syllabus DBA103 ghi có 3 assessment.",
-            "The DBA103 syllabus lists 3 assessments.");
-        yield return new SyllabusFactRule(
-            new[] { "assignment" },
-            new[] { "san pham" },
-            new[] { "outputs for marking" },
-            "Assignment có thể chấm bài thuyết trình, slides, bài luận hoặc sản phẩm từ workshop.",
-            "Assignment outputs for marking may include presentation speech, slides, essays, or workshop products.");
-        yield return new SyllabusFactRule(
-            new[] { "participation" },
-            new[] { "dua tren" },
-            new[] { "Lecturer's recognition" },
-            "Participation dựa trên việc sinh viên tích cực tham gia hoạt động lớp, đi học đầy đủ và nộp bài luận.",
-            "Participation is based on active class participation, full attendance, and essay submission.");
-    }
-
-    private sealed record SyllabusFactRule(
-        IReadOnlyList<string> AnyQuestionTerms,
-        IReadOnlyList<string> AllQuestionTerms,
-        IReadOnlyList<string> EvidenceTerms,
-        string VietnameseAnswer,
-        string EnglishAnswer);
-
-    private static bool RuleMatches(string normalizedQuestion, SyllabusFactRule rule)
-    {
-        return rule.AnyQuestionTerms.Any(term => normalizedQuestion.Contains(term, StringComparison.Ordinal))
-               && rule.AllQuestionTerms.All(term => normalizedQuestion.Contains(term, StringComparison.Ordinal));
-    }
-
-    private static bool LooksLikeDba103ImplicitQuestion(string normalizedQuestion)
-    {
-        return ContainsAny(
-            normalizedQuestion,
-            "truoc khi den lop",
-            "tham gia hoat dong lop",
-            "cong cu hoc tap",
-            "thang diem",
-            "tai lieu chinh",
-            "tac gia",
-            "danh muc bai nhac",
-            "thoi luong thi cuoi");
-    }
-
-    private static bool SetFactAnswer(
-        string language,
-        string vietnameseAnswer,
-        string englishAnswer,
-        DocumentChunk chunk,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = language == "vi" ? vietnameseAnswer : englishAnswer;
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static DocumentChunk? FindSyllabusChunk(IReadOnlyList<DocumentChunk> chunks, IEnumerable<string> evidenceTerms)
-    {
-        return chunks
-            .Where(IsDba103SyllabusChunk)
-            .Select(chunk => new
-            {
-                Chunk = chunk,
-                NormalizedText = NormalizeQuestion(chunk.Text)
-            })
-            .Where(item => evidenceTerms.All(term => item.NormalizedText.Contains(NormalizeQuestion(term), StringComparison.Ordinal)))
-            .OrderBy(item => item.Chunk.ChunkIndex)
-            .Select(item => item.Chunk)
-            .FirstOrDefault();
-    }
-
-    private static DocumentChunk? FindSyllabusChunk(IReadOnlyList<DocumentChunk> chunks, params string[] evidenceTerms)
-    {
-        return FindSyllabusChunk(chunks, (IEnumerable<string>)evidenceTerms);
-    }
-
-    private static bool IsDba103SyllabusChunk(DocumentChunk chunk)
-    {
-        return chunk.FileName.Contains("syllabus", StringComparison.OrdinalIgnoreCase)
-               || chunk.Text.Contains("Syllabus Details", StringComparison.OrdinalIgnoreCase)
-               || chunk.Text.Contains("StudentTasks:", StringComparison.OrdinalIgnoreCase)
-               || chunk.Text.Contains("CLO Name", StringComparison.OrdinalIgnoreCase)
-               || chunk.Text.Contains("assessment(s)", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool ContainsAny(string value, params string[] terms)
-    {
-        return terms.Any(term => value.Contains(term, StringComparison.Ordinal));
-    }
-
-    private static string NormalizeDegreeLevel(string value)
-    {
-        var trimmed = value.Trim();
-        return Regex.Replace(trimmed, @"\s+Beginner\b", " / Beginner", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    }
-
-    private static int CountNumberedLines(string text)
-    {
-        return Regex.Matches(text, @"(?m)^\s*\d+\.\s+\S").Count;
-    }
-
-    private static bool TryBuildCreditAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsCreditQuestion(question))
-        {
-            return false;
-        }
-
-        foreach (var chunk in chunks)
-        {
-            var match = Regex.Match(
-                chunk.Text,
-                @"(?:NoCredit|Credits?|S\u1ed1\s+t\u00edn\s+ch\u1ec9|Tin\s+chi)\s*[:：]?\s*(\d+)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-            if (!match.Success)
-            {
-                match = Regex.Match(
-                    RemoveDiacritics(chunk.Text),
-                    @"(\d+)\s*(?:tin\s*chi|credits?)",
-                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            }
-
-            if (!match.Success)
-            {
-                continue;
-            }
-
-            var credit = match.Groups[1].Value;
-            var subject = string.IsNullOrWhiteSpace(chunk.Subject) ? "DBA103" : chunk.Subject.Trim();
-            answer = language == "vi"
-                ? $"{subject} c\u00f3 {credit} t\u00edn ch\u1ec9."
-                : $"{subject} has {credit} credits.";
-            citation = new SourceCitation
-            {
-                DocumentId = chunk.DocumentId,
-                FileName = chunk.FileName,
-                Subject = chunk.Subject,
-                Chapter = chunk.Chapter,
-                ChunkIndex = chunk.ChunkIndex,
-                Score = 1,
-                Excerpt = CreateExcerpt(chunk.Text)
-            };
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsCreditQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("credit", StringComparison.Ordinal)
-               || normalized.Contains("nocredit", StringComparison.Ordinal)
-               || normalized.Contains("tin chi", StringComparison.Ordinal)
-               || normalized.Contains("so tin", StringComparison.Ordinal)
-               || normalized.Contains("may tin", StringComparison.Ordinal)
-               || normalized.Contains("bao nhieu tin", StringComparison.Ordinal);
-    }
-
-    private static bool TryBuildCourseOverviewAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsCourseOverviewQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Subject Code:", StringComparison.OrdinalIgnoreCase)
-            && item.Text.Contains("Syllabus Name:", StringComparison.OrdinalIgnoreCase)
-            && item.Text.Contains("Description:", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        var subjectCode = ExtractField(chunk.Text, "Subject Code");
-        var syllabusName = ExtractField(chunk.Text, "Syllabus Name");
-        var syllabusEnglish = ExtractField(chunk.Text, "Syllabus English");
-        var credits = ExtractField(chunk.Text, "NoCredit");
-        var description = ExtractDescriptionSummary(chunk.Text);
-
-        if (string.IsNullOrWhiteSpace(subjectCode) || string.IsNullOrWhiteSpace(syllabusName))
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? $"{subjectCode} l\u00e0 m\u00f4n {syllabusName}"
-              + (string.IsNullOrWhiteSpace(syllabusEnglish) ? string.Empty : $" ({syllabusEnglish})")
-              + (string.IsNullOrWhiteSpace(credits) ? "." : $", {credits} t\u00edn ch\u1ec9.")
-              + (string.IsNullOrWhiteSpace(description) ? string.Empty : $" {description}")
-            : $"{subjectCode} is {syllabusEnglish}"
-              + (string.IsNullOrWhiteSpace(syllabusName) ? string.Empty : $" ({syllabusName})")
-              + (string.IsNullOrWhiteSpace(credits) ? "." : $", worth {credits} credits.")
-              + (string.IsNullOrWhiteSpace(description) ? string.Empty : $" {description}");
-
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildPrerequisiteAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsPrerequisiteQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("Pre-Requisite:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        var prerequisite = ExtractField(chunk.Text, "Pre-Requisite");
-        if (string.IsNullOrWhiteSpace(prerequisite))
-        {
-            return false;
-        }
-
-        var subject = ExtractField(chunk.Text, "Subject Code");
-        subject = string.IsNullOrWhiteSpace(subject) ? "DBA103" : subject;
-        var hasNoPrerequisite = NormalizeQuestion(prerequisite).Contains("khong", StringComparison.Ordinal)
-                                || NormalizeQuestion(prerequisite).Contains("none", StringComparison.Ordinal);
-
-        answer = language == "vi"
-            ? hasNoPrerequisite
-                ? $"{subject} kh\u00f4ng c\u00f3 m\u00f4n ti\u00ean quy\u1ebft."
-                : $"{subject} c\u00f3 m\u00f4n ti\u00ean quy\u1ebft: {prerequisite}."
-            : hasNoPrerequisite
-                ? $"{subject} has no prerequisite."
-                : $"{subject} has this prerequisite: {prerequisite}.";
-
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool IsCourseOverviewQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("mon gi", StringComparison.Ordinal)
-                   || normalized.Contains("mon hoc gi", StringComparison.Ordinal)
-                   || normalized.Contains("ten mon", StringComparison.Ordinal)
-                   || normalized.Contains("about", StringComparison.Ordinal)
-                   || normalized.Contains("what is dba103", StringComparison.Ordinal));
-    }
-
-    private static bool IsPrerequisiteQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("tien quyet", StringComparison.Ordinal)
-                   || normalized.Contains("prerequisite", StringComparison.Ordinal)
-                   || normalized.Contains("pre requisite", StringComparison.Ordinal));
-    }
-
-    private static bool TryBuildTimeAllocationAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsTimeAllocationQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("Time Allocation:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        var allocation = ExtractField(chunk.Text, "Time Allocation");
-        if (string.IsNullOrWhiteSpace(allocation))
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? $"Th\u1eddi l\u01b0\u1ee3ng h\u1ecdc c\u1ee7a DBA103 l\u00e0 {allocation}."
-            : $"DBA103 time allocation is {allocation}.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildAssignmentWeightAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsAssignmentWeightQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Assignment:", StringComparison.OrdinalIgnoreCase)
-            || item.Text.Contains("B\u00e0i", StringComparison.OrdinalIgnoreCase) && item.Text.Contains("15%", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        var weight = ExtractPercentAfterLabel(chunk.Text, "Assignment");
-        if (string.IsNullOrWhiteSpace(weight))
-        {
-            weight = "15%";
-        }
-
-        answer = language == "vi"
-            ? $"B\u00e0i t\u1eadp trong DBA103 chi\u1ebfm {weight} t\u1ed5ng \u0111i\u1ec3m."
-            : $"The assignment component in DBA103 accounts for {weight} of the total grade.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildParticipationWeightAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsParticipationWeightQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Participation:", StringComparison.OrdinalIgnoreCase)
-            || item.Text.Contains("tham gia", StringComparison.OrdinalIgnoreCase) && item.Text.Contains("15%", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "\u0110i\u1ec3m \u00fd th\u1ee9c tham gia l\u1edbp h\u1ecdc trong DBA103 chi\u1ebfm 15% t\u1ed5ng \u0111i\u1ec3m."
-            : "The participation component in DBA103 accounts for 15% of the total grade.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildFinalExamWeightAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsFinalExamWeightQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Final exam:", StringComparison.OrdinalIgnoreCase)
-            || item.Text.Contains("Thi", StringComparison.OrdinalIgnoreCase) && item.Text.Contains("70%", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "Thi cu\u1ed1i m\u00f4n DBA103 chi\u1ebfm 70% t\u1ed5ng \u0111i\u1ec3m."
-            : "The final exam in DBA103 accounts for 70% of the total grade.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildAssessmentAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsAssessmentQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Assignment:", StringComparison.OrdinalIgnoreCase)
-            && item.Text.Contains("Participation:", StringComparison.OrdinalIgnoreCase)
-            && item.Text.Contains("Final exam:", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "DBA103 \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 theo 3 ph\u1ea7n: b\u00e0i t\u1eadp 15%, \u00fd th\u1ee9c tham gia l\u1edbp 15%, v\u00e0 thi cu\u1ed1i m\u00f4n th\u1ef1c h\u00e0nh ch\u01a1i nh\u1ea1c c\u1ee5 70%. T\u1ed5ng \u0111i\u1ec3m FE c\u1ea7n \u0111\u1ea1t t\u1eeb 5, \u0111i\u1ec3m trung b\u00ecnh t\u1ed1i thi\u1ec3u \u0111\u1ec3 qua m\u00f4n l\u00e0 5."
-            : "DBA103 is assessed through 3 components: assignment 15%, participation 15%, and final practical musical-instrument exam 70%. The final result must be at least 5, and the minimum average mark to pass is 5.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildMainContentAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsMainContentQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("In the course, students will learn:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "N\u1ed9i dung ch\u00ednh c\u1ee7a DBA103 g\u1ed3m: l\u1ecbch s\u1eed ph\u00e1t tri\u1ec3n c\u1ee7a \u0111\u00e0n B\u1ea7u \u1edf Vi\u1ec7t Nam; c\u1ea5u tr\u00fac v\u00e0 \u0111\u1eb7c \u0111i\u1ec3m c\u1ee7a \u0111\u00e0n B\u1ea7u; t\u01b0 th\u1ebf \u0111\u00e1nh \u0111\u00e0n; nh\u1ea1c l\u00fd v\u00e0 k\u1ef9 thu\u1eadt c\u01a1 b\u1ea3n nh\u01b0 g\u1ea3y d\u00e2y bu\u00f4ng, nh\u1ea5n l\u00ean/xu\u1ed1ng qu\u00e3ng 2; luy\u1ec7n t\u1eadp c\u00e1c b\u00e0i Vi\u1ec7t Nam v\u00e0 b\u00e0i qu\u1ed1c t\u1ebf."
-            : "The main contents of DBA103 include the historical development of Dan Bau in Vietnam, its structure and characteristics, playing posture, music theory and basic techniques such as plucking open strings and raising/lowering pitch, plus practice with Vietnamese and foreign songs.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildKnowledgeAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsKnowledgeQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("Ki\u1ebfn th\u1ee9c/ Knowledge:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "V\u1ec1 ki\u1ebfn th\u1ee9c, sinh vi\u00ean DBA103 c\u1ea7n n\u1eafm \u0111\u1eb7c tr\u01b0ng v\u1ec1 l\u1ecbch s\u1eed ph\u00e1t tri\u1ec3n v\u00e0 c\u1ea5u tr\u00fac \u0111\u00e0n B\u1ea7u, \u0111\u1ed3ng th\u1eddi l\u00e0m quen v\u1edbi nh\u1ea1c l\u00fd v\u00e0 c\u00e1c k\u1ef9 thu\u1eadt c\u01a1 b\u1ea3n c\u1ee7a \u0111\u00e0n B\u1ea7u."
-            : "For knowledge, DBA103 students should understand the historical development and structure of Dan Bau, and become familiar with music theory and basic Dan Bau techniques.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildSkillsAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsSkillsQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("K\u1ef9 n\u0103ng/ Skills:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "V\u1ec1 k\u1ef9 n\u0103ng, sinh vi\u00ean c\u1ea7n \u0111\u00e1nh \u0111\u01b0\u1ee3c t\u1ed1i thi\u1ec3u 3 b\u00e0i, trong \u0111\u00f3 c\u00f3 1 b\u00e0i nh\u1ea1c n\u01b0\u1edbc ngo\u00e0i, \u1edf m\u1ee9c th\u00f4ng d\u1ee5ng v\u00e0 v\u1eadn d\u1ee5ng \u0111\u00fang c\u00e1c k\u1ef9 thu\u1eadt c\u01a1 b\u1ea3n."
-            : "For skills, students should be able to play at least 3 songs, including 1 common foreign song, and properly apply basic techniques.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildSongsAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsSongsQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item =>
-            item.Text.Contains("Practice playing Vietnamese songs", StringComparison.OrdinalIgnoreCase)
-            || item.Text.Contains("Danh m\u1ee5c c\u00e1c b\u00e0i nh\u1ea1c", StringComparison.OrdinalIgnoreCase));
-
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "Trong DBA103, sinh vi\u00ean luy\u1ec7n t\u1eadp c\u00e1c b\u00e0i Vi\u1ec7t Nam nh\u01b0 C\u00f2 l\u1ea3, L\u00fd c\u00e2y \u0111a v\u00e0 b\u00e0i qu\u1ed1c t\u1ebf Auld Lang Syne. T\u00e0i li\u1ec7u c\u0169ng li\u1ec7t k\u00ea th\u00eam c\u00e1c b\u00e0i c\u00f3 th\u1ec3 s\u1eed d\u1ee5ng trong h\u1ecdc ph\u1ea7n nh\u01b0 B\u1eafc Kim Thang, Inh l\u1ea3 \u01a1i, X\u00f2e hoa, Tr\u1ed1ng c\u01a1m, \u0110\u1ed9i k\u00e8n t\u00ed hon."
-            : "In DBA103, students practice Vietnamese songs such as Co la and Ly cay da, and the foreign song Auld Lang Syne. The syllabus also lists possible course songs such as Bac Kim Thang, Inh la oi, Xoe hoa, Trong com, and Doi ken ti hon.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildOnlineResourcesAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsOnlineResourcesQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("Apply IT in the course", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "DBA103 s\u1eed d\u1ee5ng t\u00e0i nguy\u00ean tr\u00ean m\u1ea1ng b\u1eb1ng c\u00e1ch cung c\u1ea5p website, clip nh\u1ea1c truy\u1ec1n th\u1ed1ng; gi\u1ea3ng vi\u00ean ch\u1ecdn l\u1ecdc t\u00e0i nguy\u00ean theo nguy\u00ean t\u1eafc h\u1ecdc ph\u1ea7n, cung c\u1ea5p cho sinh vi\u00ean v\u00e0 h\u01b0\u1edbng d\u1eabn sinh vi\u00ean t\u00ecm th\u00f4ng tin theo ch\u1ee7 \u0111\u1ec1 tr\u00ean Internet."
-            : "DBA103 uses online resources by providing websites and traditional music clips. Lecturers selectively provide online resources based on course regulations and guide students to search for topic-based information on the Internet.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static bool TryBuildFinalExamAnswer(
-        string question,
-        IReadOnlyList<DocumentChunk> chunks,
-        string language,
-        out string answer,
-        out SourceCitation citation)
-    {
-        answer = string.Empty;
-        citation = new SourceCitation();
-
-        if (!IsFinalExamQuestion(question))
-        {
-            return false;
-        }
-
-        var chunk = chunks.FirstOrDefault(item => item.Text.Contains("T\u1ed5 ch\u1ee9c thi k\u1ebft th\u00fac kh\u00f3a h\u1ecdc", StringComparison.OrdinalIgnoreCase))
-                    ?? chunks.FirstOrDefault(item => item.Text.Contains("Final exam:", StringComparison.OrdinalIgnoreCase));
-        if (chunk is null)
-        {
-            return false;
-        }
-
-        answer = language == "vi"
-            ? "Theo k\u1ebf ho\u1ea1ch h\u1ecdc, DBA103 t\u1ed5 ch\u1ee9c thi k\u1ebft th\u00fac kh\u00f3a h\u1ecdc \u1edf session 29 v\u00e0 30. Ph\u1ea7n thi cu\u1ed1i m\u00f4n l\u00e0 th\u1ef1c h\u00e0nh ch\u01a1i nh\u1ea1c c\u1ee5, chi\u1ebfm 70%."
-            : "According to the course schedule, DBA103 final exams are held in sessions 29 and 30. The final exam is a practical musical-instrument performance and accounts for 70%.";
-        citation = BuildCitation(chunk, 1);
-        return true;
-    }
-
-    private static string ExtractField(string text, string fieldName)
-    {
-        var match = Regex.Match(
-            text,
-            $@"{Regex.Escape(fieldName)}\s*:\s*(?<value>[^\r\n]+)",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        return match.Success ? match.Groups["value"].Value.Trim() : string.Empty;
-    }
-
-    private static string ExtractPercentAfterLabel(string text, string label)
-    {
-        var match = Regex.Match(
-            text,
-            $@"{Regex.Escape(label)}\s*:\s*(?<value>\d+(?:\.\d+)?%)",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        return match.Success ? match.Groups["value"].Value.Trim() : string.Empty;
-    }
-
-    private static bool IsTimeAllocationQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("thoi luong", StringComparison.Ordinal)
-                   || normalized.Contains("bao nhieu slot", StringComparison.Ordinal)
-                   || normalized.Contains("time allocation", StringComparison.Ordinal)
-                   || normalized.Contains("duration", StringComparison.Ordinal));
-    }
-
-    private static bool IsAssignmentWeightQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("bai tap", StringComparison.Ordinal)
-                   || normalized.Contains("assignment", StringComparison.Ordinal))
-               && (normalized.Contains("phan tram", StringComparison.Ordinal)
-                   || normalized.Contains("chiem", StringComparison.Ordinal)
-                   || normalized.Contains("weight", StringComparison.Ordinal)
-                   || normalized.Contains("%", StringComparison.Ordinal));
-    }
-
-    private static bool IsParticipationWeightQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("tham gia", StringComparison.Ordinal)
-                   || normalized.Contains("y thuc", StringComparison.Ordinal)
-                   || normalized.Contains("participation", StringComparison.Ordinal))
-               && (normalized.Contains("phan tram", StringComparison.Ordinal)
-                   || normalized.Contains("chiem", StringComparison.Ordinal)
-                   || normalized.Contains("weight", StringComparison.Ordinal)
-                   || normalized.Contains("%", StringComparison.Ordinal));
-    }
-
-    private static bool IsFinalExamWeightQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("thi cuoi", StringComparison.Ordinal)
-                   || normalized.Contains("final exam", StringComparison.Ordinal))
-               && (normalized.Contains("phan tram", StringComparison.Ordinal)
-                   || normalized.Contains("chiem", StringComparison.Ordinal)
-                   || normalized.Contains("weight", StringComparison.Ordinal)
-                   || normalized.Contains("%", StringComparison.Ordinal));
-    }
-
-    private static bool IsAssessmentQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("danh gia", StringComparison.Ordinal)
-                   || normalized.Contains("assessment", StringComparison.Ordinal)
-                   || normalized.Contains("scoring", StringComparison.Ordinal)
-                   || normalized.Contains("tinh diem", StringComparison.Ordinal));
-    }
-
-    private static bool IsMainContentQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("noi dung chinh", StringComparison.Ordinal)
-                   || normalized.Contains("gom nhung gi", StringComparison.Ordinal)
-                   || normalized.Contains("main content", StringComparison.Ordinal)
-                   || normalized.Contains("contents", StringComparison.Ordinal));
-    }
-
-    private static bool IsKnowledgeQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("kien thuc", StringComparison.Ordinal)
-                   || normalized.Contains("knowledge", StringComparison.Ordinal)
-                   || normalized.Contains("nam kien thuc", StringComparison.Ordinal));
-    }
-
-    private static bool IsSkillsQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("ky nang", StringComparison.Ordinal)
-                   || normalized.Contains("skills", StringComparison.Ordinal)
-                   || normalized.Contains("luyen tap ky", StringComparison.Ordinal));
-    }
-
-    private static bool IsSongsQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("bai nao", StringComparison.Ordinal)
-                   || normalized.Contains("bai nhac", StringComparison.Ordinal)
-                   || normalized.Contains("songs", StringComparison.Ordinal)
-                   || normalized.Contains("practice", StringComparison.Ordinal)
-                   || normalized.Contains("luyen tap", StringComparison.Ordinal));
-    }
-
-    private static bool IsOnlineResourcesQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("tai nguyen tren mang", StringComparison.Ordinal)
-                   || normalized.Contains("online resources", StringComparison.Ordinal)
-                   || normalized.Contains("internet", StringComparison.Ordinal)
-                   || normalized.Contains("website", StringComparison.Ordinal));
-    }
-
-    private static bool IsFinalExamQuestion(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        return normalized.Contains("dba103", StringComparison.Ordinal)
-               && (normalized.Contains("thi cuoi", StringComparison.Ordinal)
-                   || normalized.Contains("final exam", StringComparison.Ordinal)
-                   || normalized.Contains("ket thuc khoa", StringComparison.Ordinal));
-    }
-
-    private static string ExtractDescriptionSummary(string text)
-    {
-        var match = Regex.Match(
-            text,
-            @"Description:\s*(?<value>.*?)(?:\n\s*2\.\s*K\u1ef9\s+n\u0103ng|\n\s*2\.\s*Skills|\z)",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
-
-        if (!match.Success)
-        {
-            return string.Empty;
-        }
-
-        var lines = match.Groups["value"].Value
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => line.StartsWith("-", StringComparison.Ordinal))
-            .Select(line => line.Trim('-', ' ', '\t'))
-            .Take(2)
-            .ToList();
-
-        return lines.Count == 0
-            ? string.Empty
-            : "N\u1ed9i dung m\u00f4n h\u1ecdc t\u1eadp trung v\u00e0o: " + string.Join("; ", lines) + ".";
-    }
-
-    private static SourceCitation BuildCitation(DocumentChunk chunk, double score)
-    {
-        return new SourceCitation
-        {
-            DocumentId = chunk.DocumentId,
-            FileName = chunk.FileName,
-            Subject = chunk.Subject,
-            Chapter = chunk.Chapter,
-            ChunkIndex = chunk.ChunkIndex,
-            Score = score,
-            Excerpt = CreateExcerpt(chunk.Text)
-        };
-    }
-
-    private static string ResolveKnownCourseAliases(string question)
-    {
-        var normalized = NormalizeQuestion(question);
-        var terms = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var looksLikeDba103 = normalized.Contains("bdi", StringComparison.Ordinal)
-                              || normalized.Contains("dba103", StringComparison.Ordinal)
-                              || normalized.Contains("dba 103", StringComparison.Ordinal)
-                              || terms.Any(term => TermsMatch(term, "dba103"));
-
-        if (!looksLikeDba103)
-        {
-            return question;
-        }
-
-        return Regex.Replace(
-            question,
-            @"\bbdi\b|\bdba[\s-]?103\b",
-            "DBA103",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    }
-
-    private static string BuildAliasCorrectionPrefix(string language)
-    {
-        return language == "vi"
-            ? "Có vẻ bạn đang nhắc đến DBA103. "
-            : "It looks like you are referring to DBA103. ";
+        return new ChatAnswer(answer, citations, session.Messages, resolvedSubject, needsClarification, subjectOptions ?? Array.Empty<string>());
     }
 
     private static bool LooksLikePromptInjection(string question)
@@ -2184,12 +1134,16 @@ public sealed class RagChatService : IRagChatService
     private static HashSet<string> RemoveCourseScopeTerms(IReadOnlySet<string> terms)
     {
         var scopedTerms = new HashSet<string>(terms, StringComparer.OrdinalIgnoreCase);
-        scopedTerms.Remove("dba103");
-        scopedTerms.Remove("dba");
-        scopedTerms.Remove("103");
-        scopedTerms.Remove("bdi");
-        scopedTerms.Remove("syllabus");
-        scopedTerms.Remove("11835");
+        scopedTerms.RemoveWhere(term =>
+        {
+            var normalized = Regex.Replace(term ?? string.Empty, @"[^a-z0-9]", string.Empty, RegexOptions.IgnoreCase);
+            return Regex.IsMatch(normalized, @"^[a-z]{2,}\d{2,}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                   || normalized.Equals("syllabus", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("subject", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("course", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("mon", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("hoc", StringComparison.OrdinalIgnoreCase);
+        });
         return scopedTerms;
     }
 

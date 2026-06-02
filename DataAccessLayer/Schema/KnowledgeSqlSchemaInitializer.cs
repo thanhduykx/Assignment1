@@ -10,7 +10,9 @@ internal static class KnowledgeSqlSchemaInitializer
     {
         context.Database.EnsureCreated();
         EnsureDocumentFileSizeColumn(context);
+        EnsureDocumentAuditColumns(context);
         EnsureCourseCatalogTables(context);
+        EnsureSubjectOwnerColumns(context);
         BackfillDocumentFileSizes(context);
         SeedCourseCatalog(context);
         SeedResearchCatalog(context);
@@ -22,6 +24,30 @@ internal static class KnowledgeSqlSchemaInitializer
             IF COL_LENGTH('rag_documents', 'FileSizeBytes') IS NULL
             BEGIN
                 ALTER TABLE rag_documents ADD FileSizeBytes BIGINT NOT NULL CONSTRAINT DF_rag_documents_FileSizeBytes DEFAULT 0
+            END
+            """);
+    }
+
+    private static void EnsureDocumentAuditColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'UploadedByUserId') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD UploadedByUserId UNIQUEIDENTIFIER NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'UploadedByName') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD UploadedByName NVARCHAR(255) NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_documents', 'UploadedByEmail') IS NULL
+            BEGIN
+                ALTER TABLE rag_documents ADD UploadedByEmail NVARCHAR(255) NULL
             END
             """);
     }
@@ -73,6 +99,30 @@ internal static class KnowledgeSqlSchemaInitializer
                     CONSTRAINT FK_rag_chapters_rag_subjects_SubjectId FOREIGN KEY (SubjectId) REFERENCES rag_subjects(Id) ON DELETE CASCADE,
                     CONSTRAINT UX_rag_chapters_SubjectId_Title UNIQUE (SubjectId, Title)
                 )
+            END
+            """);
+    }
+
+    private static void EnsureSubjectOwnerColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_subjects', 'OwnerUserId') IS NULL
+            BEGIN
+                ALTER TABLE rag_subjects ADD OwnerUserId UNIQUEIDENTIFIER NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_subjects', 'OwnerName') IS NULL
+            BEGIN
+                ALTER TABLE rag_subjects ADD OwnerName NVARCHAR(255) NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_subjects', 'OwnerEmail') IS NULL
+            BEGIN
+                ALTER TABLE rag_subjects ADD OwnerEmail NVARCHAR(255) NULL
             END
             """);
     }

@@ -11,6 +11,9 @@ public sealed class IndexedDocument
     public DateTimeOffset UploadedAt { get; set; } = DateTimeOffset.UtcNow;
     public int ChunkCount { get; set; }
     public long FileSizeBytes { get; set; }
+    public Guid? UploadedByUserId { get; set; }
+    public string UploadedByName { get; set; } = string.Empty;
+    public string UploadedByEmail { get; set; } = string.Empty;
 }
 
 public sealed class DocumentChunk
@@ -67,10 +70,15 @@ public sealed class CourseSubject
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Guid? OwnerUserId { get; set; }
+    public string OwnerName { get; set; } = string.Empty;
+    public string OwnerEmail { get; set; } = string.Empty;
     public List<CourseChapter> Chapters { get; set; } = new();
 
     public string DisplayName => string.IsNullOrWhiteSpace(Code) ? Name : $"{Code} - {Name}";
 }
+
+public sealed record SubjectOwnerInfo(Guid? UserId, string? Name, string? Email);
 
 public sealed class CourseChapter
 {

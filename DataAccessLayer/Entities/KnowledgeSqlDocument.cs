@@ -11,5 +11,8 @@ internal sealed class KnowledgeSqlDocument
     public DateTimeOffset UploadedAt { get; set; }
     public int ChunkCount { get; set; }
     public long FileSizeBytes { get; set; }
+    public Guid? UploadedByUserId { get; set; }
+    public string? UploadedByName { get; set; }
+    public string? UploadedByEmail { get; set; }
     public ICollection<KnowledgeSqlChunk> Chunks { get; set; } = new List<KnowledgeSqlChunk>();
 }

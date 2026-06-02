@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
 using PresentationLayer.Security;
+using PresentationLayer.Services;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers
@@ -18,6 +19,7 @@ namespace PresentationLayer.Controllers
         private readonly IDocumentIndexingService _indexingService;
         private readonly IWebPageTextExtractor _webPageTextExtractor;
         private readonly IRagChatService _chatService;
+        private readonly IUserAccountStore _users;
         private readonly IWebHostEnvironment _environment;
 
         public HomeController(
@@ -26,6 +28,7 @@ namespace PresentationLayer.Controllers
             IDocumentIndexingService indexingService,
             IWebPageTextExtractor webPageTextExtractor,
             IRagChatService chatService,
+            IUserAccountStore users,
             IWebHostEnvironment environment)
         {
             _logger = logger;
@@ -33,6 +36,7 @@ namespace PresentationLayer.Controllers
             _indexingService = indexingService;
             _webPageTextExtractor = webPageTextExtractor;
             _chatService = chatService;
+            _users = users;
             _environment = environment;
         }
 
@@ -41,33 +45,42 @@ namespace PresentationLayer.Controllers
         {
             var allDocuments = await _indexingService.GetDocumentsAsync(cancellationToken);
             await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
+            var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+            var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
+            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog).ToList();
             var normalizedSubjectFilter = subjectFilter?.Trim();
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
-                ? allDocuments
-                : allDocuments
+                ? accessibleDocuments
+                : accessibleDocuments
                     .Where(document => SubjectMatchesFilter(document.Subject, normalizedSubjectFilter))
                     .ToList();
+            var lecturers = IsAdmin()
+                ? await _users.GetByRoleAsync(AppRoles.Lecturer, cancellationToken)
+                : Array.Empty<UserAccount>();
 
             var model = new HomeIndexViewModel
             {
                 Documents = documents,
-                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken),
-                DocumentSubjectOptions = allDocuments
+                CourseCatalog = courseCatalog,
+                LecturerOptions = lecturers.Select(ToUserOption).ToList(),
+                DocumentSubjectOptions = accessibleDocuments
                     .Select(document => document.Subject)
                     .Where(subject => !string.IsNullOrWhiteSpace(subject))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(subject => subject)
                     .ToList(),
-                DocumentChapterOptions = allDocuments
+                DocumentChapterOptions = accessibleDocuments
                     .Select(document => document.Chapter)
                     .Where(chapter => !string.IsNullOrWhiteSpace(chapter))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(chapter => chapter)
                     .ToList(),
                 SubjectFilter = normalizedSubjectFilter,
-                TotalDocumentCount = allDocuments.Count,
-                TotalChunkCount = allDocuments.Sum(document => document.ChunkCount),
-                TotalUploadedBytes = allDocuments.Sum(document => document.FileSizeBytes)
+                IsAdmin = IsAdmin(),
+                IsLecturer = IsLecturer(),
+                TotalDocumentCount = accessibleDocuments.Count,
+                TotalChunkCount = accessibleDocuments.Sum(document => document.ChunkCount),
+                TotalUploadedBytes = accessibleDocuments.Sum(document => document.FileSizeBytes)
             };
 
             return View(model);
@@ -78,9 +91,15 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> SaveSubject(SubjectCatalogViewModel model, CancellationToken cancellationToken)
         {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
             try
             {
-                await _repository.UpsertSubjectAsync(model.Id, model.Code, model.Name, model.Description, cancellationToken);
+                var ownerInfo = await BuildSubjectOwnerInfoAsync(model.OwnerUserId, cancellationToken);
+                await _repository.UpsertSubjectAsync(model.Id, model.Code, model.Name, model.Description, cancellationToken, ownerInfo);
                 TempData["Success"] = "Đã lưu môn học.";
             }
             catch (Exception ex)
@@ -96,6 +115,11 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> DeleteSubject(Guid id, CancellationToken cancellationToken)
         {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
             await _repository.DeleteSubjectAsync(id, cancellationToken);
             TempData["Success"] = "Đã xóa môn học.";
             return RedirectToAction(nameof(Index));
@@ -108,6 +132,11 @@ namespace PresentationLayer.Controllers
         {
             try
             {
+                if (!await CanManageSubjectAsync(model.SubjectId, cancellationToken))
+                {
+                    return Forbid();
+                }
+
                 await _repository.UpsertChapterAsync(model.Id, model.SubjectId, model.Title, model.SortOrder, cancellationToken);
                 TempData["Success"] = "Đã lưu chương.";
             }
@@ -124,6 +153,11 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> DeleteChapter(Guid id, CancellationToken cancellationToken)
         {
+            if (!await CanManageChapterAsync(id, cancellationToken))
+            {
+                return Forbid();
+            }
+
             await _repository.DeleteChapterAsync(id, cancellationToken);
             TempData["Success"] = "Đã xóa chương.";
             return RedirectToAction(nameof(Index));
@@ -132,10 +166,17 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> Chat(CancellationToken cancellationToken)
         {
+            var documents = await _indexingService.GetDocumentsAsync(cancellationToken);
             var model = new ChatIndexViewModel
             {
                 ChatSessions = await _repository.GetSessionsAsync(cancellationToken),
-                Documents = await _indexingService.GetDocumentsAsync(cancellationToken)
+                Documents = documents,
+                SubjectOptions = documents
+                    .Select(document => document.Subject)
+                    .Where(subject => !string.IsNullOrWhiteSpace(subject))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(subject => subject)
+                    .ToList()
             };
 
             return View(model);
@@ -157,7 +198,13 @@ namespace PresentationLayer.Controllers
 
             try
             {
+                if (!await CanManageSubjectAsync(model.Subject, cancellationToken))
+                {
+                    return Forbid();
+                }
+
                 DocumentUploadResult result;
+                var uploader = BuildDocumentUploaderInfo();
                 if (model.File is { Length: > 0 })
                 {
                     await using var stream = model.File.OpenReadStream();
@@ -168,6 +215,7 @@ namespace PresentationLayer.Controllers
                         model.Subject,
                         model.Chapter,
                         Path.Combine(_environment.ContentRootPath, "App_Data", "uploads"),
+                        uploader,
                         cancellationToken);
                 }
                 else
@@ -181,6 +229,7 @@ namespace PresentationLayer.Controllers
                         model.Subject,
                         model.Chapter,
                         Path.Combine(_environment.ContentRootPath, "App_Data", "uploads"),
+                        uploader,
                         cancellationToken);
                 }
 
@@ -226,13 +275,17 @@ namespace PresentationLayer.Controllers
                     sessionId,
                     request.Question ?? string.Empty,
                     displayName,
+                    request.SubjectFilter,
                     request.Language,
                     cancellationToken);
                 return Json(new
                 {
                     sessionId,
                     answer = answer.Answer,
-                    citations = answer.Citations
+                    citations = answer.Citations,
+                    resolvedSubject = answer.ResolvedSubject,
+                    needsClarification = answer.NeedsClarification,
+                    subjectOptions = answer.SubjectOptions
                 });
             }
             catch (Exception ex)
@@ -260,6 +313,11 @@ namespace PresentationLayer.Controllers
                 return NotFound();
             }
 
+            if (!await CanManageDocumentAsync(document, cancellationToken))
+            {
+                return Forbid();
+            }
+
             return View(new DocumentEditViewModel
             {
                 Id = document.Id,
@@ -270,7 +328,9 @@ namespace PresentationLayer.Controllers
                 UploadedAt = document.UploadedAt,
                 ChunkCount = document.ChunkCount,
                 FileSizeBytes = document.FileSizeBytes,
-                CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken)
+                UploadedByName = document.UploadedByName,
+                UploadedByEmail = document.UploadedByEmail,
+                CourseCatalog = FilterCourseCatalogForCurrentUser(await _repository.GetCourseCatalogAsync(cancellationToken)).ToList()
             });
         }
 
@@ -281,6 +341,14 @@ namespace PresentationLayer.Controllers
         {
             try
             {
+                var existing = await _repository.GetDocumentAsync(model.Id, cancellationToken)
+                    ?? throw new InvalidOperationException("Document not found.");
+                if (!await CanManageDocumentAsync(existing, cancellationToken)
+                    || !await CanManageSubjectAsync(model.Subject, cancellationToken))
+                {
+                    return Forbid();
+                }
+
                 var document = await _repository.UpdateDocumentMetadataAsync(
                     model.Id,
                     model.FileName,
@@ -301,9 +369,11 @@ namespace PresentationLayer.Controllers
                     model.UploadedAt = existing.UploadedAt;
                     model.ChunkCount = existing.ChunkCount;
                     model.FileSizeBytes = existing.FileSizeBytes;
+                    model.UploadedByName = existing.UploadedByName;
+                    model.UploadedByEmail = existing.UploadedByEmail;
                 }
 
-                model.CourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
+                model.CourseCatalog = FilterCourseCatalogForCurrentUser(await _repository.GetCourseCatalogAsync(cancellationToken)).ToList();
                 return View(model);
             }
         }
@@ -320,10 +390,58 @@ namespace PresentationLayer.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            if (!await CanManageDocumentAsync(document, cancellationToken))
+            {
+                return Forbid();
+            }
+
             await _repository.DeleteDocumentAsync(id, cancellationToken);
             TryDeleteStoredFile(document);
             TempData["Success"] = $"Đã xóa tài liệu {document.FileName}.";
             return RedirectToAction(nameof(Index));
+        }
+
+        [HttpGet]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
+        public async Task<IActionResult> DocumentPreview(Guid id, CancellationToken cancellationToken)
+        {
+            var document = await _repository.GetDocumentAsync(id, cancellationToken);
+            if (document is null)
+            {
+                return NotFound(new { error = "Document not found." });
+            }
+
+            if (!await CanManageDocumentAsync(document, cancellationToken))
+            {
+                return Forbid();
+            }
+
+            var subjectOwner = await ResolveSubjectOwnerAsync(document.Subject, cancellationToken);
+            var chunks = await _repository.GetDocumentChunksAsync(document.Id, cancellationToken);
+            var preview = new DocumentPreviewViewModel
+            {
+                Id = document.Id,
+                FileName = document.FileName,
+                Subject = document.Subject,
+                Chapter = document.Chapter,
+                ContentType = document.ContentType,
+                UploadedAt = document.UploadedAt,
+                ChunkCount = document.ChunkCount,
+                FileSizeBytes = document.FileSizeBytes,
+                UploadedByName = document.UploadedByName,
+                UploadedByEmail = document.UploadedByEmail,
+                SubjectOwnerName = subjectOwner.Name,
+                SubjectOwnerEmail = subjectOwner.Email,
+                Chunks = chunks
+                    .Select(chunk => new DocumentPreviewChunkViewModel
+                    {
+                        ChunkIndex = chunk.ChunkIndex,
+                        Text = chunk.Text
+                    })
+                    .ToList()
+            };
+
+            return Json(preview);
         }
 
         [HttpGet]
@@ -334,6 +452,11 @@ namespace PresentationLayer.Controllers
             if (document is null)
             {
                 return NotFound();
+            }
+
+            if (!await CanManageDocumentAsync(document, cancellationToken))
+            {
+                return Forbid();
             }
 
             var storedPath = Path.GetFullPath(document.StoredPath);
@@ -407,6 +530,177 @@ namespace PresentationLayer.Controllers
                 updatedAt = session.UpdatedAt,
                 messageCount = session.Messages.Count
             };
+        }
+
+        private string CurrentRole()
+        {
+            return AppRoles.Normalize(User.FindFirstValue(ClaimTypes.Role));
+        }
+
+        private bool IsAdmin()
+        {
+            return CurrentRole() == AppRoles.Admin;
+        }
+
+        private bool IsLecturer()
+        {
+            return CurrentRole() == AppRoles.Lecturer;
+        }
+
+        private Guid? CurrentUserId()
+        {
+            return Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
+                ? userId
+                : null;
+        }
+
+        private static UserOptionViewModel ToUserOption(UserAccount user)
+        {
+            return new UserOptionViewModel
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email
+            };
+        }
+
+        private async Task<SubjectOwnerInfo> BuildSubjectOwnerInfoAsync(Guid? ownerUserId, CancellationToken cancellationToken)
+        {
+            if (!ownerUserId.HasValue)
+            {
+                return new SubjectOwnerInfo(null, string.Empty, string.Empty);
+            }
+
+            var lecturer = (await _users.GetByRoleAsync(AppRoles.Lecturer, cancellationToken))
+                .FirstOrDefault(user => user.Id == ownerUserId.Value);
+            if (lecturer is null)
+            {
+                throw new InvalidOperationException("Lecturer owner not found.");
+            }
+
+            return new SubjectOwnerInfo(lecturer.Id, lecturer.FullName, lecturer.Email);
+        }
+
+        private DocumentUploaderInfo BuildDocumentUploaderInfo()
+        {
+            return new DocumentUploaderInfo(
+                CurrentUserId(),
+                User.FindFirstValue(ClaimTypes.Name),
+                User.FindFirstValue(ClaimTypes.Email));
+        }
+
+        private IReadOnlyList<CourseSubject> FilterCourseCatalogForCurrentUser(IReadOnlyList<CourseSubject> catalog)
+        {
+            if (IsAdmin())
+            {
+                return catalog;
+            }
+
+            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            {
+                return Array.Empty<CourseSubject>();
+            }
+
+            return catalog
+                .Where(subject => subject.OwnerUserId == userId)
+                .ToList();
+        }
+
+        private IReadOnlyList<IndexedDocument> FilterDocumentsForCurrentUser(IReadOnlyList<IndexedDocument> documents, IReadOnlyList<CourseSubject> catalog)
+        {
+            if (IsAdmin())
+            {
+                return documents;
+            }
+
+            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            {
+                return Array.Empty<IndexedDocument>();
+            }
+
+            return documents
+                .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == userId)
+                .ToList();
+        }
+
+        private async Task<bool> CanManageSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+        {
+            if (IsAdmin())
+            {
+                return true;
+            }
+
+            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            {
+                return false;
+            }
+
+            var subject = (await _repository.GetCourseCatalogAsync(cancellationToken))
+                .FirstOrDefault(item => item.Id == subjectId);
+            return subject?.OwnerUserId == userId;
+        }
+
+        private async Task<bool> CanManageSubjectAsync(string subjectText, CancellationToken cancellationToken)
+        {
+            if (IsAdmin())
+            {
+                return true;
+            }
+
+            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            {
+                return false;
+            }
+
+            var subject = FindSubjectForDocumentSubject(await _repository.GetCourseCatalogAsync(cancellationToken), subjectText);
+            return subject?.OwnerUserId == userId;
+        }
+
+        private async Task<bool> CanManageDocumentAsync(IndexedDocument document, CancellationToken cancellationToken)
+        {
+            return await CanManageSubjectAsync(document.Subject, cancellationToken);
+        }
+
+        private async Task<bool> CanManageChapterAsync(Guid chapterId, CancellationToken cancellationToken)
+        {
+            if (IsAdmin())
+            {
+                return true;
+            }
+
+            if (!IsLecturer() || CurrentUserId() is not { } userId)
+            {
+                return false;
+            }
+
+            var subject = (await _repository.GetCourseCatalogAsync(cancellationToken))
+                .FirstOrDefault(item => item.Chapters.Any(chapter => chapter.Id == chapterId));
+            return subject?.OwnerUserId == userId;
+        }
+
+        private async Task<(string Name, string Email)> ResolveSubjectOwnerAsync(string subjectText, CancellationToken cancellationToken)
+        {
+            var subject = FindSubjectForDocumentSubject(await _repository.GetCourseCatalogAsync(cancellationToken), subjectText);
+            return subject is null
+                ? (string.Empty, string.Empty)
+                : (subject.OwnerName, subject.OwnerEmail);
+        }
+
+        private static CourseSubject? FindSubjectForDocumentSubject(IEnumerable<CourseSubject> catalog, string subjectText)
+        {
+            var normalizedSubject = (subjectText ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedSubject))
+            {
+                return null;
+            }
+
+            var parsed = ParseSubjectForCatalog(normalizedSubject);
+            return catalog.FirstOrDefault(subject =>
+                subject.DisplayName.Equals(normalizedSubject, StringComparison.OrdinalIgnoreCase)
+                || subject.Code.Equals(normalizedSubject, StringComparison.OrdinalIgnoreCase)
+                || subject.Name.Equals(normalizedSubject, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(parsed.Code)
+                    && subject.Code.Equals(parsed.Code, StringComparison.OrdinalIgnoreCase)));
         }
 
         private static string ToVietnameseUploadError(string message)
@@ -565,6 +859,11 @@ namespace PresentationLayer.Controllers
             if (message.Contains("Subject code already exists", StringComparison.OrdinalIgnoreCase))
             {
                 return "Mã môn học đã tồn tại.";
+            }
+
+            if (message.Contains("Lecturer owner not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Không tìm thấy giảng viên phụ trách hợp lệ.";
             }
 
             if (message.Contains("Chapter title is required", StringComparison.OrdinalIgnoreCase))

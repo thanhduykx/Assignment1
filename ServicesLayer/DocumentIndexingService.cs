@@ -5,6 +5,8 @@ namespace ServicesLayer;
 
 public sealed record DocumentUploadResult(Guid DocumentId, int ChunkCount, string Message);
 
+public sealed record DocumentUploaderInfo(Guid? UserId, string? Name, string? Email);
+
 public interface IDocumentIndexingService
 {
     Task<IReadOnlyList<IndexedDocument>> GetDocumentsAsync(CancellationToken cancellationToken = default);
@@ -15,6 +17,7 @@ public interface IDocumentIndexingService
         string subject,
         string chapter,
         string uploadsRoot,
+        DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default);
     Task<DocumentUploadResult> IndexTextAsync(
         string text,
@@ -23,6 +26,7 @@ public interface IDocumentIndexingService
         string subject,
         string chapter,
         string uploadsRoot,
+        DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default);
 }
 
@@ -57,6 +61,7 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
         string subject,
         string chapter,
         string uploadsRoot,
+        DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default)
     {
         if (fileStream.Length == 0)
@@ -83,7 +88,10 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             ContentType = contentType,
             StoredPath = Path.Combine(uploadsRoot, $"{Guid.NewGuid():N}{Path.GetExtension(fileName)}"),
             UploadedAt = DateTimeOffset.UtcNow,
-            FileSizeBytes = copy.Length
+            FileSizeBytes = copy.Length,
+            UploadedByUserId = uploader.UserId,
+            UploadedByName = uploader.Name?.Trim() ?? string.Empty,
+            UploadedByEmail = uploader.Email?.Trim() ?? string.Empty
         };
 
         if (Path.GetExtension(fileName).Equals(".txt", StringComparison.OrdinalIgnoreCase))
@@ -127,6 +135,7 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
         string subject,
         string chapter,
         string uploadsRoot,
+        DocumentUploaderInfo uploader,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -147,7 +156,10 @@ public sealed class DocumentIndexingService : IDocumentIndexingService
             ContentType = contentType,
             StoredPath = storedPath,
             UploadedAt = DateTimeOffset.UtcNow,
-            FileSizeBytes = Encoding.UTF8.GetByteCount(text)
+            FileSizeBytes = Encoding.UTF8.GetByteCount(text),
+            UploadedByUserId = uploader.UserId,
+            UploadedByName = uploader.Name?.Trim() ?? string.Empty,
+            UploadedByEmail = uploader.Email?.Trim() ?? string.Empty
         };
 
         var chunkTexts = CreateChunks(text);

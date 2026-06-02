@@ -32,7 +32,10 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.Property(item => item.Chapter).HasMaxLength(255).IsRequired();
             entity.Property(item => item.ContentType).HasMaxLength(100).IsRequired();
             entity.Property(item => item.FileSizeBytes).HasDefaultValue(0L);
+            entity.Property(item => item.UploadedByName).HasMaxLength(255);
+            entity.Property(item => item.UploadedByEmail).HasMaxLength(255);
             entity.HasIndex(item => item.FileName);
+            entity.HasIndex(item => item.UploadedByUserId);
         });
 
         modelBuilder.Entity<KnowledgeSqlChunk>(entity =>
@@ -92,7 +95,10 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
             entity.Property(item => item.Code).HasMaxLength(32).IsRequired();
             entity.Property(item => item.Name).HasMaxLength(255).IsRequired();
             entity.Property(item => item.Description).HasMaxLength(1000).IsRequired();
+            entity.Property(item => item.OwnerName).HasMaxLength(255);
+            entity.Property(item => item.OwnerEmail).HasMaxLength(255);
             entity.HasIndex(item => item.Code).IsUnique();
+            entity.HasIndex(item => item.OwnerUserId);
         });
 
         modelBuilder.Entity<KnowledgeSqlCourseChapter>(entity =>

@@ -59,6 +59,22 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
+    public async Task<IReadOnlyList<DocumentChunk>> GetDocumentChunksAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken)).Chunks
+                .Where(chunk => chunk.DocumentId == documentId)
+                .OrderBy(chunk => chunk.ChunkIndex)
+                .ToList();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task AddDocumentAsync(IndexedDocument document, IReadOnlyList<DocumentChunk> chunks, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -148,7 +164,8 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         string code,
         string name,
         string? description,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        SubjectOwnerInfo? ownerInfo = null)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -178,6 +195,13 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
             subject.Code = normalizedCode;
             subject.Name = string.IsNullOrWhiteSpace(name) ? normalizedCode : name.Trim();
             subject.Description = description?.Trim() ?? string.Empty;
+            if (ownerInfo is not null)
+            {
+                subject.OwnerUserId = ownerInfo.UserId;
+                subject.OwnerName = ownerInfo.Name?.Trim() ?? string.Empty;
+                subject.OwnerEmail = ownerInfo.Email?.Trim() ?? string.Empty;
+            }
+
             await SaveAsync(store, cancellationToken);
             return subject;
         }
