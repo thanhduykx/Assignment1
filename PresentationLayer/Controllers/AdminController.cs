@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DataAccessLayer;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -13,11 +14,13 @@ namespace PresentationLayer.Controllers;
 public sealed class AdminController : Controller
 {
     private readonly IUserAccountStore _users;
+    private readonly IKnowledgeRepository _knowledge;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IUserAccountStore users, ILogger<AdminController> logger)
+    public AdminController(IUserAccountStore users, IKnowledgeRepository knowledge, ILogger<AdminController> logger)
     {
         _users = users;
+        _knowledge = knowledge;
         _logger = logger;
     }
 
@@ -121,14 +124,78 @@ public sealed class AdminController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AssignLecturerSubject(AssignLecturerSubjectViewModel model, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var user = (await _users.GetAllAsync(cancellationToken))
+                .FirstOrDefault(item => item.Id == model.UserId)
+                ?? throw new InvalidOperationException("User not found.");
+            if (user.Role != AppRoles.Lecturer)
+            {
+                throw new InvalidOperationException("Only lecturers can be assigned to subjects.");
+            }
+
+            var subject = (await _knowledge.GetCourseCatalogAsync(cancellationToken))
+                .FirstOrDefault(item => item.Id == model.SubjectId)
+                ?? throw new InvalidOperationException("Subject not found.");
+
+            await _knowledge.UpsertSubjectAsync(
+                subject.Id,
+                subject.Code,
+                subject.Name,
+                subject.Description,
+                cancellationToken,
+                new SubjectOwnerInfo(user.Id, user.FullName, user.Email));
+
+            TempData["Success"] = $"Assigned {subject.DisplayName} to {user.FullName}.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            TempData["Error"] = ToAdminUserError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not assign subject {SubjectId} to lecturer {UserId}", model.SubjectId, model.UserId);
+            TempData["Error"] = "Could not assign this subject.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
     private async Task<AdminUsersViewModel> BuildUsersViewModelAsync(CancellationToken cancellationToken)
     {
         var users = await _users.GetAllAsync(cancellationToken);
+        var subjects = await _knowledge.GetCourseCatalogAsync(cancellationToken);
         var adminCount = users.Count(user => user.Role == AppRoles.Admin);
+        var assignedSubjectsByUser = subjects
+            .Where(subject => subject.OwnerUserId.HasValue)
+            .GroupBy(subject => subject.OwnerUserId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .OrderBy(subject => subject.Code)
+                    .ThenBy(subject => subject.Name)
+                    .Select(subject => subject.DisplayName)
+                    .ToList());
 
         return new AdminUsersViewModel
         {
             Roles = AppRoles.All,
+            SubjectOptions = subjects
+                .OrderBy(subject => subject.Code)
+                .ThenBy(subject => subject.Name)
+                .Select(subject => new AdminSubjectOptionViewModel
+                {
+                    Id = subject.Id,
+                    DisplayName = subject.DisplayName,
+                    OwnerUserId = subject.OwnerUserId,
+                    OwnerName = subject.OwnerName,
+                    OwnerEmail = subject.OwnerEmail
+                })
+                .ToList(),
             Users = users.Select(user => new AdminUserRowViewModel
             {
                 Id = user.Id,
@@ -137,7 +204,10 @@ public sealed class AdminController : Controller
                 Provider = user.Provider,
                 Role = user.Role,
                 CreatedAt = user.CreatedAt,
-                IsLastAdmin = user.Role == AppRoles.Admin && adminCount <= 1
+                IsLastAdmin = user.Role == AppRoles.Admin && adminCount <= 1,
+                AssignedSubjects = assignedSubjectsByUser.TryGetValue(user.Id, out var assignedSubjects)
+                    ? assignedSubjects
+                    : Array.Empty<string>()
             }).ToList()
         };
     }
@@ -189,9 +259,24 @@ public sealed class AdminController : Controller
             return "User not found.";
         }
 
+        if (message.Contains("Subject not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Subject not found.";
+        }
+
+        if (message.Contains("Only lecturers", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Only lecturers can be assigned to subjects.";
+        }
+
         if (message.Contains("last admin", StringComparison.OrdinalIgnoreCase))
         {
             return "Cannot demote the last admin.";
+        }
+
+        if (message.Contains("seed admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Cannot demote the seed admin.";
         }
 
         if (message.Contains("email is already registered", StringComparison.OrdinalIgnoreCase))

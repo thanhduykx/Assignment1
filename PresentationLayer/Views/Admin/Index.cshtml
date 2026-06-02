@@ -84,6 +84,7 @@
                         <th>Provider</th>
                         <th>Created</th>
                         <th>Role</th>
+                        <th>Subjects</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -127,6 +128,52 @@
                                 </label>
                                 <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@user.IsLastAdmin">Save</button>
                             </form>
+                        </td>
+                        <td class="rbl-lecturer-subject-cell">
+                            @if (user.Role == PresentationLayer.Security.AppRoles.Lecturer)
+                            {
+                                <div class="rbl-lecturer-subjects">
+                                    @if (user.AssignedSubjects.Count == 0)
+                                    {
+                                        <span class="rbl-muted-chip">Chưa phụ trách môn</span>
+                                    }
+                                    else
+                                    {
+                                        foreach (var subject in user.AssignedSubjects)
+                                        {
+                                            <span class="rbl-subject-owner-chip">@subject</span>
+                                        }
+                                    }
+                                </div>
+                                <form asp-action="AssignLecturerSubject" method="post" class="rbl-lecturer-subject-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="UserId" value="@user.Id" />
+                                    <label class="rbl-field rbl-lecturer-subject-field">
+                                        <span class="visually-hidden">Subject</span>
+                                        <select name="SubjectId" disabled="@(Model.SubjectOptions.Count == 0)">
+                                            @if (Model.SubjectOptions.Count == 0)
+                                            {
+                                                <option value="">No subjects</option>
+                                            }
+                                            else
+                                            {
+                                                foreach (var subject in Model.SubjectOptions)
+                                                {
+                                                    var ownerLabel = string.IsNullOrWhiteSpace(subject.OwnerName)
+                                                        ? "Chưa phân công"
+                                                        : $"Đang phụ trách: {subject.OwnerName}";
+                                                    <option value="@subject.Id">@subject.DisplayName (@ownerLabel)</option>
+                                                }
+                                            }
+                                        </select>
+                                    </label>
+                                    <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@(Model.SubjectOptions.Count == 0)">Assign</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="rbl-muted-chip">Không áp dụng</span>
+                            }
                         </td>
                         <td class="rbl-role-status-cell">
                             @if (user.IsLastAdmin)

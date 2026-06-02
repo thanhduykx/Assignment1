@@ -3768,7 +3768,7 @@ body.rbl-body {
 }
 
 .rbl-user-role-table {
-  min-width: 1160px;
+  min-width: 1420px;
 }
 
 .rbl-user-name-cell {
@@ -3837,6 +3837,64 @@ body.rbl-body {
 .rbl-role-status-cell .rbl-status {
   display: inline-flex;
   width: max-content;
+}
+
+.rbl-lecturer-subject-cell {
+  min-width: 360px;
+}
+
+.rbl-lecturer-subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rbl-subject-owner-chip,
+.rbl-muted-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid #d8e4f5;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--rbl-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.rbl-subject-owner-chip {
+  border-color: #b8d4ff;
+  background: #eef5ff;
+  color: var(--rbl-primary);
+}
+
+.rbl-lecturer-subject-form {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: min(430px, 100%);
+  margin: 0;
+}
+
+.rbl-lecturer-subject-form .rbl-field,
+.rbl-lecturer-subject-field {
+  min-width: 0;
+  gap: 0;
+}
+
+.rbl-lecturer-subject-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.rbl-lecturer-subject-form .rbl-small-button {
+  min-width: 76px;
+  white-space: nowrap;
 }
 
 .rbl-document-preview-modal {

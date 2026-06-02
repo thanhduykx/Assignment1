@@ -121,7 +121,7 @@ public sealed class UserAccountStore : IUserAccountStore
                 Email = normalizedEmail,
                 PasswordHash = HashPassword(password),
                 Provider = "Local",
-                Role = users.Count == 0 ? AppRoles.Admin : AppRoles.Student
+                Role = IsSeedAdminEmail(normalizedEmail) || users.Count == 0 ? AppRoles.Admin : AppRoles.Student
             };
 
             users.Add(user);
@@ -162,7 +162,7 @@ public sealed class UserAccountStore : IUserAccountStore
                 Email = normalizedEmail,
                 PasswordHash = HashPassword(password),
                 Provider = "Local",
-                Role = AppRoles.Normalize(role)
+                Role = IsSeedAdminEmail(normalizedEmail) ? AppRoles.Admin : AppRoles.Normalize(role)
             };
 
             users.Add(user);
@@ -185,6 +185,23 @@ public sealed class UserAccountStore : IUserAccountStore
             var existing = users.FirstOrDefault(user => string.Equals(user.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
+                var changed = EnsureSeedAdminRole(existing);
+                if (TrackExternalProvider(existing, provider))
+                {
+                    changed = true;
+                }
+
+                if (ShouldUseExternalName(existing.FullName, fullName))
+                {
+                    existing.FullName = fullName.Trim();
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    await SaveAsync(users, cancellationToken);
+                }
+
                 return existing;
             }
 
@@ -193,7 +210,7 @@ public sealed class UserAccountStore : IUserAccountStore
                 FullName = string.IsNullOrWhiteSpace(fullName) ? normalizedEmail : fullName.Trim(),
                 Email = normalizedEmail,
                 Provider = provider,
-                Role = users.Count == 0 ? AppRoles.Admin : AppRoles.Student
+                Role = IsSeedAdminEmail(normalizedEmail) || users.Count == 0 ? AppRoles.Admin : AppRoles.Student
             };
 
             users.Add(user);
@@ -226,6 +243,11 @@ public sealed class UserAccountStore : IUserAccountStore
                 && users.Count(item => item.Role == AppRoles.Admin) <= 1)
             {
                 throw new InvalidOperationException("Cannot demote the last admin.");
+            }
+
+            if (IsSeedAdminEmail(user.Email) && normalizedRole != AppRoles.Admin)
+            {
+                throw new InvalidOperationException("Cannot demote the seed admin.");
             }
 
             user.Role = normalizedRole;
@@ -360,20 +382,46 @@ public sealed class UserAccountStore : IUserAccountStore
 
     private bool EnsureSeedAdmin(List<UserAccount> users)
     {
-        if (!_seedAdmin.Enabled || users.Any(user => user.Role == AppRoles.Admin))
+        if (!_seedAdmin.Enabled)
         {
             return false;
         }
 
-        var seedEmail = NormalizeEmail(_seedAdmin.Email);
+        var seedEmail = _seedAdmin.Email;
         var existing = users.FirstOrDefault(user => string.Equals(user.Email, seedEmail, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            existing.FullName = string.IsNullOrWhiteSpace(existing.FullName) ? _seedAdmin.FullName : existing.FullName.Trim();
-            existing.Provider = string.IsNullOrWhiteSpace(existing.Provider) ? "Local" : existing.Provider;
-            existing.PasswordHash = string.IsNullOrWhiteSpace(existing.PasswordHash) ? HashPassword(_seedAdmin.Password) : existing.PasswordHash;
-            existing.Role = AppRoles.Admin;
-            return true;
+            var changed = false;
+            if (string.IsNullOrWhiteSpace(existing.FullName))
+            {
+                existing.FullName = _seedAdmin.FullName;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.Provider))
+            {
+                existing.Provider = "Local";
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.PasswordHash))
+            {
+                existing.PasswordHash = HashPassword(_seedAdmin.Password);
+                changed = true;
+            }
+
+            if (existing.Role != AppRoles.Admin)
+            {
+                existing.Role = AppRoles.Admin;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        if (users.Any(user => user.Role == AppRoles.Admin))
+        {
+            return false;
         }
 
         users.Add(new UserAccount
@@ -386,6 +434,58 @@ public sealed class UserAccountStore : IUserAccountStore
         });
 
         return true;
+    }
+
+    private bool IsSeedAdminEmail(string email)
+    {
+        return _seedAdmin.Enabled
+               && string.Equals(NormalizeEmail(email), _seedAdmin.Email, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool EnsureSeedAdminRole(UserAccount user)
+    {
+        if (!IsSeedAdminEmail(user.Email) || user.Role == AppRoles.Admin)
+        {
+            return false;
+        }
+
+        user.Role = AppRoles.Admin;
+        return true;
+    }
+
+    private static bool TrackExternalProvider(UserAccount user, string provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(user.Provider))
+        {
+            user.Provider = provider.Trim();
+            return true;
+        }
+
+        var providers = user.Provider
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (providers.Any(item => item.Equals(provider, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        providers.Add(provider.Trim());
+        user.Provider = string.Join(", ", providers);
+        return true;
+    }
+
+    private static bool ShouldUseExternalName(string currentName, string externalName)
+    {
+        return !string.IsNullOrWhiteSpace(externalName)
+               && (string.IsNullOrWhiteSpace(currentName)
+                   || currentName.Equals("System Admin", StringComparison.OrdinalIgnoreCase)
+                   || currentName.Equals("Admin", StringComparison.OrdinalIgnoreCase)
+                   || currentName.Contains('@'));
     }
 
     private static SeedAdminOptions NormalizeSeedAdminOptions(SeedAdminOptions? options)
