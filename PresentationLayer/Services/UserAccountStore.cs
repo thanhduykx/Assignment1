@@ -1,14 +1,18 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using PresentationLayer.Models;
+using PresentationLayer.Security;
 
 namespace PresentationLayer.Services;
 
 public interface IUserAccountStore
 {
+    Task<IReadOnlyList<UserAccount>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default);
     Task<UserAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<UserAccount> CreateLocalAsync(string fullName, string email, string password, CancellationToken cancellationToken = default);
     Task<UserAccount> GetOrCreateExternalAsync(string fullName, string email, string provider, CancellationToken cancellationToken = default);
+    Task<UserAccount> UpdateRoleAsync(Guid userId, string role, CancellationToken cancellationToken = default);
     bool VerifyPassword(UserAccount account, string password);
 }
 
@@ -30,6 +34,34 @@ public sealed class UserAccountStore : IUserAccountStore
     {
         _path = path;
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+    }
+
+    public async Task<IReadOnlyList<UserAccount>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken))
+                .OrderBy(user => user.Email)
+                .ToList();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await LoadAsync(cancellationToken)).Count > 0;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public async Task<UserAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
@@ -63,7 +95,8 @@ public sealed class UserAccountStore : IUserAccountStore
                 FullName = fullName.Trim(),
                 Email = normalizedEmail,
                 PasswordHash = HashPassword(password),
-                Provider = "Local"
+                Provider = "Local",
+                Role = users.Count == 0 ? AppRoles.Admin : AppRoles.Student
             };
 
             users.Add(user);
@@ -93,10 +126,43 @@ public sealed class UserAccountStore : IUserAccountStore
             {
                 FullName = string.IsNullOrWhiteSpace(fullName) ? normalizedEmail : fullName.Trim(),
                 Email = normalizedEmail,
-                Provider = provider
+                Provider = provider,
+                Role = users.Count == 0 ? AppRoles.Admin : AppRoles.Student
             };
 
             users.Add(user);
+            await SaveAsync(users, cancellationToken);
+            return user;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<UserAccount> UpdateRoleAsync(Guid userId, string role, CancellationToken cancellationToken = default)
+    {
+        if (!AppRoles.IsKnown(role))
+        {
+            throw new InvalidOperationException("Role is invalid.");
+        }
+
+        var normalizedRole = AppRoles.Normalize(role);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var users = await LoadAsync(cancellationToken);
+            var user = users.FirstOrDefault(item => item.Id == userId)
+                ?? throw new InvalidOperationException("User not found.");
+
+            if (user.Role == AppRoles.Admin
+                && normalizedRole != AppRoles.Admin
+                && users.Count(item => item.Role == AppRoles.Admin) <= 1)
+            {
+                throw new InvalidOperationException("Cannot demote the last admin.");
+            }
+
+            user.Role = normalizedRole;
             await SaveAsync(users, cancellationToken);
             return user;
         }
@@ -142,7 +208,13 @@ public sealed class UserAccountStore : IUserAccountStore
         }
 
         await using var stream = File.OpenRead(_path);
-        return await JsonSerializer.DeserializeAsync<List<UserAccount>>(stream, JsonOptions, cancellationToken) ?? new List<UserAccount>();
+        var users = await JsonSerializer.DeserializeAsync<List<UserAccount>>(stream, JsonOptions, cancellationToken) ?? new List<UserAccount>();
+        foreach (var user in users)
+        {
+            user.Role = AppRoles.Normalize(user.Role);
+        }
+
+        return users;
     }
 
     private async Task SaveAsync(List<UserAccount> users, CancellationToken cancellationToken)

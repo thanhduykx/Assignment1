@@ -1,0 +1,14 @@
+@{
+    ViewData["Title"] = "Access denied";
+    ViewData["BodyClass"] = "auth-body";
+}
+
+<section class="auth-page">
+    <partial name="_AuthStars" />
+    <div class="auth-panel">
+        <p class="eyebrow">Access control</p>
+        <h1>Access denied</h1>
+        <p class="subtitle">Your current role does not have permission to open this page.</p>
+        <a class="btn btn-primary" asp-controller="Home" asp-action="Chat">Open chatbot</a>
+    </div>
+</section>

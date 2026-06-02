@@ -5,6 +5,7 @@ using DataAccessLayer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
+using PresentationLayer.Security;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers
@@ -35,6 +36,7 @@ namespace PresentationLayer.Controllers
             _environment = environment;
         }
 
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> Index(string? subjectFilter, CancellationToken cancellationToken)
         {
             var allDocuments = await _indexingService.GetDocumentsAsync(cancellationToken);
@@ -73,6 +75,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> SaveSubject(SubjectCatalogViewModel model, CancellationToken cancellationToken)
         {
             try
@@ -90,6 +93,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> DeleteSubject(Guid id, CancellationToken cancellationToken)
         {
             await _repository.DeleteSubjectAsync(id, cancellationToken);
@@ -99,6 +103,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> SaveChapter(ChapterCatalogViewModel model, CancellationToken cancellationToken)
         {
             try
@@ -116,6 +121,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> DeleteChapter(Guid id, CancellationToken cancellationToken)
         {
             await _repository.DeleteChapterAsync(id, cancellationToken);
@@ -123,6 +129,7 @@ namespace PresentationLayer.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> Chat(CancellationToken cancellationToken)
         {
             var model = new ChatIndexViewModel
@@ -136,6 +143,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> Upload(DocumentUploadViewModel model, CancellationToken cancellationToken)
         {
             var isVietnamese = model.Language?.Equals("vi", StringComparison.OrdinalIgnoreCase) == true;
@@ -196,6 +204,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> Ask([FromBody] ChatRequest? request, CancellationToken cancellationToken)
         {
             if (request is null)
@@ -234,6 +243,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> CreateChatSession(CancellationToken cancellationToken)
         {
             var session = await _repository.GetOrCreateSessionAsync(Guid.NewGuid(), cancellationToken);
@@ -241,6 +251,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> EditDocument(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -265,6 +276,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> EditDocument(DocumentEditViewModel model, CancellationToken cancellationToken)
         {
             try
@@ -298,6 +310,7 @@ namespace PresentationLayer.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> DeleteDocument(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -314,6 +327,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = AuthorizationPolicies.DocumentManagement)]
         public async Task<IActionResult> ViewDocument(Guid id, CancellationToken cancellationToken)
         {
             var document = await _repository.GetDocumentAsync(id, cancellationToken);
@@ -343,6 +357,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSessions(CancellationToken cancellationToken)
         {
             var sessions = await _repository.GetSessionsAsync(cancellationToken);
@@ -350,6 +365,7 @@ namespace PresentationLayer.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSession(Guid id, CancellationToken cancellationToken)
         {
             var session = await _repository.GetSessionAsync(id, cancellationToken);
@@ -375,6 +391,7 @@ namespace PresentationLayer.Controllers
             });
         }
 
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public IActionResult Privacy()
         {
             return View();

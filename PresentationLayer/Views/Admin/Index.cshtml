@@ -1,0 +1,91 @@
+@model PresentationLayer.Models.AdminUsersViewModel
+@{
+    ViewData["Title"] = "User roles";
+    ViewData["UseRblShell"] = true;
+    ViewData["ActiveNav"] = "admin";
+    ViewData["ShellTitle"] = "User roles";
+}
+
+<section class="rbl-panel rbl-document-table-panel">
+    <div class="rbl-panel-header">
+        <div>
+            <span class="rbl-section-label">Admin</span>
+            <h2>User role management</h2>
+        </div>
+        <span class="rbl-table-meta">@Model.Users.Count users</span>
+    </div>
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="rbl-alert is-success">@success</div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="rbl-alert is-error">@error</div>
+    }
+
+    @if (Model.Users.Count == 0)
+    {
+        <div class="rbl-empty-state compact">
+            <strong>No users yet.</strong>
+            <p>The first registered account will become Admin automatically.</p>
+        </div>
+    }
+    else
+    {
+        <div class="rbl-table-wrap">
+            <table class="rbl-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Provider</th>
+                        <th>Created</th>
+                        <th>Role</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var user in Model.Users)
+                {
+                    <tr>
+                        <td><strong>@user.FullName</strong></td>
+                        <td>@user.Email</td>
+                        <td>@user.Provider</td>
+                        <td>@user.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            <form asp-action="UpdateRole" method="post" class="rbl-document-filter">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                <label class="rbl-field">
+                                    <span class="visually-hidden">Role</span>
+                                    <select name="Role" disabled="@user.IsLastAdmin">
+                                        @foreach (var role in Model.Roles)
+                                        {
+                                            if (role.Equals(user.Role, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <option value="@role" selected>@role</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@role">@role</option>
+                                            }
+                                        }
+                                    </select>
+                                </label>
+                                <button type="submit" class="rbl-small-button rbl-small-button--primary" disabled="@user.IsLastAdmin">Save</button>
+                            </form>
+                        </td>
+                        <td>
+                            @if (user.IsLastAdmin)
+                            {
+                                <span class="rbl-status is-success">Last admin</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

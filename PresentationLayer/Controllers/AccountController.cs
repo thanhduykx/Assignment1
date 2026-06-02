@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
+using PresentationLayer.Security;
 using PresentationLayer.Services;
 
 namespace PresentationLayer.Controllers;
@@ -24,7 +25,7 @@ public sealed class AccountController : Controller
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Home");
+            return RedirectToDefaultDashboard(User.FindFirstValue(ClaimTypes.Role));
         }
 
         return View(new LoginViewModel { ReturnUrl = returnUrl });
@@ -48,7 +49,7 @@ public sealed class AccountController : Controller
         }
 
         await SignInAsync(user);
-        return RedirectToLocal(model.ReturnUrl);
+        return RedirectAfterSignIn(user, model.ReturnUrl);
     }
 
     [HttpGet]
@@ -57,7 +58,7 @@ public sealed class AccountController : Controller
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToAction("Index", "Home");
+            return RedirectToDefaultDashboard(User.FindFirstValue(ClaimTypes.Role));
         }
 
         return View(new RegisterViewModel());
@@ -77,7 +78,7 @@ public sealed class AccountController : Controller
         {
             var user = await _users.CreateLocalAsync(model.FullName, model.Email, model.Password, cancellationToken);
             await SignInAsync(user);
-            return RedirectToAction("Index", "Home");
+            return RedirectToDefaultDashboard(user.Role);
         }
         catch (InvalidOperationException ex)
         {
@@ -121,7 +122,14 @@ public sealed class AccountController : Controller
         var user = await _users.GetOrCreateExternalAsync(name, email, "Google", cancellationToken);
         await SignInAsync(user);
         await HttpContext.SignOutAsync("External");
-        return RedirectToLocal(returnUrl);
+        return RedirectAfterSignIn(user, returnUrl);
+    }
+
+    [HttpGet]
+    [AllowAnonymous]
+    public IActionResult AccessDenied()
+    {
+        return View();
     }
 
     [HttpPost]
@@ -139,7 +147,8 @@ public sealed class AccountController : Controller
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.FullName),
-            new(ClaimTypes.Email, user.Email)
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, AppRoles.Normalize(user.Role))
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -153,13 +162,48 @@ public sealed class AccountController : Controller
             });
     }
 
-    private IActionResult RedirectToLocal(string? returnUrl)
+    private IActionResult RedirectAfterSignIn(UserAccount user, string? returnUrl)
     {
-        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+        if (!string.IsNullOrWhiteSpace(returnUrl)
+            && Url.IsLocalUrl(returnUrl)
+            && CanAccessReturnUrl(AppRoles.Normalize(user.Role), returnUrl))
         {
             return Redirect(returnUrl);
         }
 
-        return RedirectToAction("Index", "Home");
+        return RedirectToDefaultDashboard(user.Role);
+    }
+
+    private IActionResult RedirectToDefaultDashboard(string? role)
+    {
+        return AppRoles.Normalize(role) switch
+        {
+            AppRoles.Admin => RedirectToAction("Index", "Research"),
+            AppRoles.Lecturer => RedirectToAction("Index", "Home"),
+            _ => RedirectToAction("Chat", "Home")
+        };
+    }
+
+    private static bool CanAccessReturnUrl(string role, string returnUrl)
+    {
+        if (role == AppRoles.Admin)
+        {
+            return true;
+        }
+
+        var path = returnUrl.Split('?', '#')[0].TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = "/";
+        }
+
+        if (role == AppRoles.Lecturer)
+        {
+            return !path.StartsWith("/Research", StringComparison.OrdinalIgnoreCase)
+                   && !path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return path.Equals("/Home/Chat", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/Home/Chat/", StringComparison.OrdinalIgnoreCase);
     }
 }

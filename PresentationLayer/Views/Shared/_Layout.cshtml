@@ -9,12 +9,21 @@
         ?? "Account";
     var userInitial = string.IsNullOrWhiteSpace(displayName) ? "A" : displayName[..1].ToUpperInvariant();
     var accountEmail = User.FindFirstValue(ClaimTypes.Email) ?? "Admin Access";
+    var currentRole = AppRoles.Normalize(User.FindFirstValue(ClaimTypes.Role));
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var canChat = isAuthenticated;
+    var canManageDocuments = currentRole == AppRoles.Lecturer || currentRole == AppRoles.Admin;
+    var canManageResearch = currentRole == AppRoles.Admin;
+    var canManageUsers = currentRole == AppRoles.Admin;
+    var homeController = currentRole == AppRoles.Admin ? "Research" : "Home";
+    var homeAction = currentRole == AppRoles.Admin ? "Index" : currentRole == AppRoles.Lecturer ? "Index" : "Chat";
     var hideAssistantLauncher = ViewData["HideAssistantLauncher"] as bool? ?? false;
     var shellTitleI18n = ViewData["ShellTitleI18n"] as string;
     var dashboardNavClass = activeNav == "dashboard" ? "rbl-nav-link is-active" : "rbl-nav-link";
     var chatNavClass = activeNav == "chat" ? "rbl-nav-link is-active" : "rbl-nav-link";
     var documentsNavClass = activeNav == "documents" ? "rbl-nav-link is-active" : "rbl-nav-link";
     var configNavClass = activeNav == "config" ? "rbl-nav-link is-active" : "rbl-nav-link";
+    var adminNavClass = activeNav == "admin" ? "rbl-nav-link is-active" : "rbl-nav-link";
 }
 <!DOCTYPE html>
 <html lang="vi" class="i18n-pending">
@@ -71,28 +80,50 @@
                 </div>
 
                 <nav class="rbl-nav">
+                    @if (canManageResearch)
+                    {
                     <a class="@dashboardNavClass" asp-controller="Research" asp-action="Index">
                         <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
                         <span data-i18n="shell.dashboard">Dashboard Nghiên cứu</span>
                     </a>
+                    }
+                    @if (canChat)
+                    {
                     <a class="@chatNavClass" asp-controller="Home" asp-action="Chat">
                         <span class="material-symbols-outlined" aria-hidden="true">chat</span>
                         <span data-i18n="shell.chatbot">Chatbot</span>
                     </a>
+                    }
+                    @if (canManageDocuments)
+                    {
                     <a class="@documentsNavClass" asp-controller="Home" asp-action="Index">
                         <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
                         <span data-i18n="shell.documents">Kho tài liệu</span>
                     </a>
+                    }
+                    @if (canManageResearch)
+                    {
                     <a class="@configNavClass" asp-controller="Research" asp-action="Create">
                         <span class="material-symbols-outlined" aria-hidden="true">settings_applications</span>
                         <span data-i18n="shell.config">Cấu hình thực nghiệm</span>
                     </a>
+                    }
+                    @if (canManageUsers)
+                    {
+                    <a class="@adminNavClass" asp-controller="Admin" asp-action="Index">
+                        <span class="material-symbols-outlined" aria-hidden="true">admin_panel_settings</span>
+                        <span>User roles</span>
+                    </a>
+                    }
                 </nav>
 
-                <a class="rbl-primary-action" asp-controller="Research" asp-action="Create">
-                    <span class="material-symbols-outlined" aria-hidden="true">add</span>
-                    <span data-i18n="shell.newResearchProject">New Research Project</span>
-                </a>
+                @if (canManageResearch)
+                {
+                    <a class="rbl-primary-action" asp-controller="Research" asp-action="Create">
+                        <span class="material-symbols-outlined" aria-hidden="true">add</span>
+                        <span data-i18n="shell.newResearchProject">New Research Project</span>
+                    </a>
+                }
 
                 <div class="rbl-sidebar-footer">
                     <a class="rbl-nav-link compact" asp-controller="Home" asp-action="Privacy">
@@ -104,6 +135,7 @@
                         <div>
                             <strong>@displayName</strong>
                             <span>@accountEmail</span>
+                            <span>@currentRole</span>
                         </div>
                     </div>
                 </div>
@@ -136,7 +168,7 @@
                         <button type="button" class="rbl-icon-button" aria-label="History" data-i18n-aria-label="shell.history">
                             <span class="material-symbols-outlined" aria-hidden="true">history</span>
                         </button>
-                        @if (User.Identity?.IsAuthenticated == true)
+                        @if (isAuthenticated)
                         {
                             <form asp-controller="Account" asp-action="Logout" method="post" class="rbl-account-form">
                                 @Html.AntiForgeryToken()
@@ -167,22 +199,37 @@
         <header>
             <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
                 <div class="container-fluid">
-                    <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">Course Assistant</a>
+                    <a class="navbar-brand" asp-area="" asp-controller="@homeController" asp-action="@homeAction">Course Assistant</a>
                     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                             aria-expanded="false" aria-label="Toggle navigation">
                         <span class="navbar-toggler-icon"></span>
                     </button>
                     <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                         <ul class="navbar-nav flex-grow-1">
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Chat" data-i18n="nav.chat">Chat</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Research" asp-action="Index">RBL</a>
-                            </li>
+                            @if (canManageDocuments)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index" asp-fragment="documents" data-i18n="nav.documents">Documents</a>
+                                </li>
+                            }
+                            @if (canChat)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Chat" data-i18n="nav.chat">Chat</a>
+                                </li>
+                            }
+                            @if (canManageResearch)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Research" asp-action="Index">RBL</a>
+                                </li>
+                            }
+                            @if (canManageUsers)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Admin" asp-action="Index">Users</a>
+                                </li>
+                            }
                         </ul>
                         <ul class="navbar-nav account-nav">
                             <li class="nav-item">
@@ -191,9 +238,9 @@
                                     <button type="button" class="language-option" data-language-option="vi" aria-pressed="false">VN</button>
                                 </div>
                             </li>
-                            @if (User.Identity?.IsAuthenticated == true)
+                            @if (isAuthenticated)
                             {
-                                <li class="nav-item user-chip">@User.FindFirstValue(ClaimTypes.Email)</li>
+                                <li class="nav-item user-chip">@User.FindFirstValue(ClaimTypes.Email) / @currentRole</li>
                                 <li class="nav-item">
                                     <form asp-controller="Account" asp-action="Logout" method="post">
                                         @Html.AntiForgeryToken()
@@ -220,7 +267,7 @@
                 @RenderBody()
             </main>
         </div>
-        @if (User.Identity?.IsAuthenticated == true && !hideAssistantLauncher)
+        @if (isAuthenticated && !hideAssistantLauncher)
         {
             <section class="assistant-launcher chatbot-helper" id="chatbotHelper" aria-label="Chatbot helper">
                 <a class="assistant-launcher-card chatbot-helper-card" id="chatbotHelperButton" asp-controller="Home" asp-action="Chat" aria-label="Open chat page" title="Open chat page" data-i18n-aria-label="assistant.open" data-i18n-title="assistant.open" draggable="false">

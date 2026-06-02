@@ -4,12 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using PresentationLayer.Models;
+using PresentationLayer.Security;
 using PresentationLayer.Services;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers;
 
-[Authorize]
+[Authorize(Policy = AuthorizationPolicies.AdminOnly)]
 public sealed class ResearchController : Controller
 {
     private static readonly ConcurrentDictionary<Guid, byte> RunningBenchmarks = new();

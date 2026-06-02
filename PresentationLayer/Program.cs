@@ -1,3 +1,5 @@
+using PresentationLayer.Security;
+
 namespace PresentationLayer
 {
     public class Program
@@ -20,7 +22,7 @@ namespace PresentationLayer
                 {
                     options.LoginPath = "/Account/Login";
                     options.LogoutPath = "/Account/Logout";
-                    options.AccessDeniedPath = "/Account/Login";
+                    options.AccessDeniedPath = "/Account/AccessDenied";
                     options.Cookie.Name = "CourseAssistant.Auth";
                 })
                 .AddCookie("External", options =>
@@ -36,6 +38,15 @@ namespace PresentationLayer
                     options.SignInScheme = "External";
                     options.SaveTokens = false;
                 });
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy(AuthorizationPolicies.ChatAccess, policy =>
+                    policy.RequireRole(AppRoles.Student, AppRoles.Lecturer, AppRoles.Admin));
+                options.AddPolicy(AuthorizationPolicies.DocumentManagement, policy =>
+                    policy.RequireRole(AppRoles.Lecturer, AppRoles.Admin));
+                options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>
+                    policy.RequireRole(AppRoles.Admin));
+            });
             var geminiSection = builder.Configuration.GetSection("Gemini");
             var geminiApiKey = geminiSection["ApiKey"]
                 ?? builder.Configuration["GEMINI_API_KEY"]
