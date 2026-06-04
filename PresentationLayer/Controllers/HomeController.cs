@@ -342,7 +342,10 @@ namespace PresentationLayer.Controllers
                     citations = answer.Citations,
                     resolvedSubject = answer.ResolvedSubject,
                     needsClarification = answer.NeedsClarification,
-                    subjectOptions = answer.SubjectOptions
+                    subjectOptions = answer.SubjectOptions,
+                    answerSource = answer.AnswerSource,
+                    hasDirectCitation = answer.HasDirectCitation,
+                    fallbackModel = answer.FallbackModel
                 });
             }
             catch (Exception ex)
@@ -358,6 +361,80 @@ namespace PresentationLayer.Controllers
         {
             var session = await _repository.GetOrCreateSessionAsync(Guid.NewGuid(), cancellationToken, BuildChatSessionOwnerInfo());
             return Json(ToSessionSummary(session));
+        }
+
+        [HttpPost]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
+        public async Task<IActionResult> RenameChatSession([FromBody] ChatSessionRenameRequest? request, CancellationToken cancellationToken)
+        {
+            if (request is null || !Guid.TryParse(request.SessionId, out var sessionId))
+            {
+                return BadRequest(new { error = "Invalid chat session." });
+            }
+
+            try
+            {
+                var session = await _repository.RenameSessionAsync(
+                    sessionId,
+                    request.Title ?? string.Empty,
+                    cancellationToken,
+                    BuildChatSessionOwnerInfo());
+                return session is null
+                    ? NotFound(new { error = "Chat session not found." })
+                    : Json(ToSessionSummary(session));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
+        public async Task<IActionResult> StarChatSession([FromBody] ChatSessionStarRequest? request, CancellationToken cancellationToken)
+        {
+            if (request is null || !Guid.TryParse(request.SessionId, out var sessionId))
+            {
+                return BadRequest(new { error = "Invalid chat session." });
+            }
+
+            try
+            {
+                var session = await _repository.SetSessionStarredAsync(
+                    sessionId,
+                    request.IsStarred,
+                    cancellationToken,
+                    BuildChatSessionOwnerInfo());
+                return session is null
+                    ? NotFound(new { error = "Chat session not found." })
+                    : Json(ToSessionSummary(session));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
+        public async Task<IActionResult> DeleteChatSession([FromBody] ChatSessionDeleteRequest? request, CancellationToken cancellationToken)
+        {
+            if (request is null || !Guid.TryParse(request.SessionId, out var sessionId))
+            {
+                return BadRequest(new { error = "Invalid chat session." });
+            }
+
+            try
+            {
+                var deleted = await _repository.DeleteSessionAsync(sessionId, cancellationToken, BuildChatSessionOwnerInfo());
+                return deleted
+                    ? Json(new { deleted = true, sessionId })
+                    : NotFound(new { error = "Chat session not found." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
 
         [HttpGet]
@@ -587,6 +664,7 @@ namespace PresentationLayer.Controllers
             {
                 id = session.Id,
                 title = GetSessionTitle(session),
+                isStarred = session.IsStarred,
                 createdAt = session.CreatedAt,
                 updatedAt = session.UpdatedAt,
                 messages = session.Messages
@@ -622,6 +700,7 @@ namespace PresentationLayer.Controllers
             {
                 id = session.Id,
                 title = GetSessionTitle(session),
+                isStarred = session.IsStarred,
                 createdAt = session.CreatedAt,
                 updatedAt = session.UpdatedAt,
                 messageCount = session.Messages.Count
@@ -1122,6 +1201,11 @@ namespace PresentationLayer.Controllers
 
         private static string GetSessionTitle(ChatSession session)
         {
+            if (!string.IsNullOrWhiteSpace(session.Title))
+            {
+                return session.Title.Trim();
+            }
+
             var firstQuestion = session.Messages
                 .FirstOrDefault(message => message.Role.Equals("user", StringComparison.OrdinalIgnoreCase))
                 ?.Content

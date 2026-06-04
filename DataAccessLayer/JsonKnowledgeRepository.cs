@@ -399,7 +399,8 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         try
         {
             return (await LoadAsync(cancellationToken)).Sessions
-                .OrderByDescending(session => session.UpdatedAt)
+                .OrderByDescending(session => session.IsStarred)
+                .ThenByDescending(session => session.UpdatedAt)
                 .ToList();
         }
         finally
@@ -415,7 +416,8 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         {
             return (await LoadAsync(cancellationToken)).Sessions
                 .Where(session => session.OwnerUserId == ownerUserId)
-                .OrderByDescending(session => session.UpdatedAt)
+                .OrderByDescending(session => session.IsStarred)
+                .ThenByDescending(session => session.UpdatedAt)
                 .ToList();
         }
         finally
@@ -484,6 +486,88 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
     }
 
+    public async Task<ChatSession?> RenameSessionAsync(
+        Guid sessionId,
+        string title,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var session = store.Sessions.FirstOrDefault(item => item.Id == sessionId);
+            if (session is null)
+            {
+                return null;
+            }
+
+            EnsureSessionOwner(session, ownerInfo);
+            session.Title = NormalizeSessionTitle(title);
+            session.UpdatedAt = DateTimeOffset.UtcNow;
+            await SaveAsync(store, cancellationToken);
+            return session;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<ChatSession?> SetSessionStarredAsync(
+        Guid sessionId,
+        bool isStarred,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var session = store.Sessions.FirstOrDefault(item => item.Id == sessionId);
+            if (session is null)
+            {
+                return null;
+            }
+
+            EnsureSessionOwner(session, ownerInfo);
+            session.IsStarred = isStarred;
+            session.UpdatedAt = DateTimeOffset.UtcNow;
+            await SaveAsync(store, cancellationToken);
+            return session;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> DeleteSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await LoadAsync(cancellationToken);
+            var session = store.Sessions.FirstOrDefault(item => item.Id == sessionId);
+            if (session is null)
+            {
+                return false;
+            }
+
+            EnsureSessionOwner(session, ownerInfo);
+            store.Sessions.Remove(session);
+            await SaveAsync(store, cancellationToken);
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task AddMessageAsync(
         Guid sessionId,
         ChatMessage message,
@@ -500,6 +584,7 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
                 session = new ChatSession
                 {
                     Id = sessionId,
+                    Title = IsUserMessage(message) ? BuildSessionTitle(message.Content) : string.Empty,
                     OwnerUserId = ownerInfo?.UserId,
                     OwnerName = ownerInfo?.Name?.Trim() ?? string.Empty,
                     OwnerEmail = ownerInfo?.Email?.Trim() ?? string.Empty
@@ -513,6 +598,11 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
 
             session.Messages.Add(message);
             session.UpdatedAt = DateTimeOffset.UtcNow;
+            if (string.IsNullOrWhiteSpace(session.Title) && IsUserMessage(message))
+            {
+                session.Title = BuildSessionTitle(message.Content);
+            }
+
             await SaveAsync(store, cancellationToken);
         }
         finally
@@ -568,6 +658,30 @@ public sealed class JsonKnowledgeRepository : IKnowledgeRepository
         }
 
         return normalized;
+    }
+
+    private static bool IsUserMessage(ChatMessage message)
+    {
+        return message.Role.Equals("user", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSessionTitle(string content)
+    {
+        var normalized = NormalizeSessionTitle(content);
+        return normalized.Length <= 56 ? normalized : $"{normalized[..56]}...";
+    }
+
+    private static string NormalizeSessionTitle(string title)
+    {
+        var normalized = string.Join(' ', (title ?? string.Empty)
+            .Trim()
+            .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("Session title is required.");
+        }
+
+        return normalized.Length <= 200 ? normalized : normalized[..200];
     }
 
     private static void EnsureSessionOwner(ChatSession session, ChatSessionOwnerInfo? ownerInfo)

@@ -98,6 +98,8 @@ internal static class KnowledgeSqlMapper
         return new ChatSession
         {
             Id = session.Id,
+            Title = session.Title ?? string.Empty,
+            IsStarred = session.IsStarred,
             CreatedAt = session.CreatedAt,
             UpdatedAt = session.UpdatedAt,
             OwnerUserId = session.OwnerUserId,

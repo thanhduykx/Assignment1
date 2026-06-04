@@ -100,19 +100,46 @@ namespace PresentationLayer
                     out var parsedMaxParagraphs)
                 ? parsedMaxParagraphs
                 : 180;
+            var fineTunedChatSection = builder.Configuration.GetSection("FineTunedChat");
+            var fineTunedChatEnabled = !bool.TryParse(fineTunedChatSection["Enabled"], out var parsedFineTunedChatEnabled)
+                                       || parsedFineTunedChatEnabled;
+            var fineTunedChatMinimumConfidence = double.TryParse(
+                    fineTunedChatSection["MinimumConfidence"],
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedFineTunedMinimumConfidence)
+                ? parsedFineTunedMinimumConfidence
+                : 0.62;
+            var fineTunedChatUseLatestResearchModel = bool.TryParse(
+                    fineTunedChatSection["UseLatestResearchModel"],
+                    out var parsedUseLatestResearchModel)
+                && parsedUseLatestResearchModel;
+            var configuredFineTunedExamplesPath = fineTunedChatSection["ExamplesPath"];
+            var fineTunedChatExamplesPath = string.IsNullOrWhiteSpace(configuredFineTunedExamplesPath)
+                ? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "fine-tuned-chat-examples.json")
+                : Path.IsPathRooted(configuredFineTunedExamplesPath)
+                    ? configuredFineTunedExamplesPath
+                    : Path.Combine(builder.Environment.ContentRootPath, configuredFineTunedExamplesPath);
             builder.Services.AddSingleton(new ServicesLayer.GeminiApiOptions(
                 geminiApiKey,
                 geminiChatModel,
                 geminiEmbeddingModel,
                 geminiEmbeddingDimensions,
                 geminiEnabled));
+            builder.Services.AddSingleton(new ServicesLayer.FineTunedChatOptions(
+                fineTunedChatEnabled,
+                fineTunedChatSection["Provider"] ?? "local://supervised-qa",
+                fineTunedChatSection["Endpoint"] ?? "local://supervised-qa",
+                fineTunedChatMinimumConfidence,
+                fineTunedChatUseLatestResearchModel,
+                fineTunedChatExamplesPath));
             var huggingFaceApiKey = FirstConfigured(
                 builder.Configuration["HuggingFace:ApiKey"],
                 builder.Configuration["HUGGINGFACE_API_KEY"],
                 Environment.GetEnvironmentVariable("HUGGINGFACE_API_KEY"));
             var huggingFaceBaseAddress = builder.Configuration["HuggingFace:BaseAddress"]
                 ?? Environment.GetEnvironmentVariable("HUGGINGFACE_BASE_ADDRESS")
-                ?? "https://api-inference.huggingface.co/";
+                ?? "https://router.huggingface.co/hf-inference/";
             var huggingFaceEnabled = !bool.TryParse(builder.Configuration["HuggingFace:Enabled"], out var parsedHuggingFaceEnabled)
                 || parsedHuggingFaceEnabled;
             builder.Services.AddSingleton(new ServicesLayer.HuggingFaceApiOptions(
@@ -180,6 +207,14 @@ namespace PresentationLayer
                     geminiApiKey,
                     geminiEnabled);
             });
+            builder.Services.AddSingleton<ServicesLayer.IFineTunedChatService>(serviceProvider =>
+                new ServicesLayer.FineTunedChatService(
+                    serviceProvider.GetService<DataAccessLayer.IResearchRepository>(),
+                    new HttpClient
+                    {
+                        Timeout = TimeSpan.FromSeconds(Math.Max(5, geminiTimeoutSeconds))
+                    },
+                    serviceProvider.GetRequiredService<ServicesLayer.FineTunedChatOptions>()));
             builder.Services.AddSingleton<ServicesLayer.IDocumentTextExtractor, ServicesLayer.DocumentTextExtractor>();
             builder.Services.AddSingleton<ServicesLayer.ITextChunker>(_ =>
             {

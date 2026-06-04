@@ -249,6 +249,21 @@ public sealed class DocumentIndexingServiceTests
             throw new NotSupportedException();
         }
 
+        public Task<ChatSession?> RenameSessionAsync(Guid sessionId, string title, CancellationToken cancellationToken = default, ChatSessionOwnerInfo? ownerInfo = null)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<ChatSession?> SetSessionStarredAsync(Guid sessionId, bool isStarred, CancellationToken cancellationToken = default, ChatSessionOwnerInfo? ownerInfo = null)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<bool> DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken = default, ChatSessionOwnerInfo? ownerInfo = null)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<ChatSession> GetOrCreateSessionAsync(
             Guid sessionId,
             CancellationToken cancellationToken = default,

@@ -68,10 +68,13 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
         {
             entity.ToTable("rag_chat_sessions");
             entity.HasKey(item => item.Id);
+            entity.Property(item => item.Title).HasMaxLength(200).IsRequired().HasDefaultValue(string.Empty);
+            entity.Property(item => item.IsStarred).HasDefaultValue(false);
             entity.Property(item => item.OwnerName).HasMaxLength(255);
             entity.Property(item => item.OwnerEmail).HasMaxLength(255);
             entity.HasIndex(item => item.UpdatedAt);
             entity.HasIndex(item => item.OwnerUserId);
+            entity.HasIndex(item => new { item.OwnerUserId, item.IsStarred, item.UpdatedAt });
         });
 
         modelBuilder.Entity<KnowledgeSqlChatMessage>(entity =>

@@ -140,6 +140,14 @@ const translations = {
     "chat.relatedLabel": "Related questions",
     "chat.relatedAria": "Related questions",
     "chat.defaultSessionTitle": "Session without a question",
+    "chat.sessionActions": "Session actions",
+    "chat.starSession": "Star",
+    "chat.unstarSession": "Unstar",
+    "chat.renameSession": "Rename",
+    "chat.deleteSession": "Delete",
+    "chat.renamePrompt": "New session name",
+    "chat.deleteConfirm": "Delete this chat session?",
+    "chat.sessionActionError": "Could not update the chat session.",
     "chat.loading": "Searching the documents...",
     "chat.requestError": "Could not process the question.",
     "chat.connectionError": "Could not connect to the server. Check the app and try again.",
@@ -291,6 +299,14 @@ const translations = {
     "chat.relatedLabel": "C\u00e2u h\u1ecfi li\u00ean quan",
     "chat.relatedAria": "C\u00e2u h\u1ecfi li\u00ean quan",
     "chat.defaultSessionTitle": "Phi\u00ean ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi",
+    "chat.sessionActions": "Thao t\u00e1c phi\u00ean",
+    "chat.starSession": "Ghim",
+    "chat.unstarSession": "B\u1ecf ghim",
+    "chat.renameSession": "\u0110\u1ed5i t\u00ean",
+    "chat.deleteSession": "X\u00f3a",
+    "chat.renamePrompt": "T\u00ean phi\u00ean m\u1edbi",
+    "chat.deleteConfirm": "X\u00f3a phi\u00ean chat n\u00e0y?",
+    "chat.sessionActionError": "Kh\u00f4ng c\u1eadp nh\u1eadt \u0111\u01b0\u1ee3c phi\u00ean chat.",
     "chat.loading": "\u0110ang t\u00ecm trong t\u00e0i li\u1ec7u...",
     "chat.requestError": "Kh\u00f4ng x\u1eed l\u00fd \u0111\u01b0\u1ee3c c\u00e2u h\u1ecfi.",
     "chat.connectionError": "Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c server. Ki\u1ec3m tra l\u1ea1i \u1ee9ng d\u1ee5ng r\u1ed3i th\u1eed ti\u1ebfp.",
@@ -321,6 +337,7 @@ const documentPreviewBody = document.getElementById("documentPreviewBody");
 const assistantLauncher = document.getElementById("chatbotHelper");
 const assistantLauncherButton = document.getElementById("chatbotHelperButton");
 let isSending = false;
+const subjectQuestionSubjects = readSubjectQuestionSubjects();
 const relatedQuestionPool = readRelatedQuestionPool();
 
 function getLanguage() {
@@ -361,20 +378,63 @@ function getChatSuggestionItems() {
     return buildSubjectQuestionItems(selectedSubject);
   }
 
-  if (relatedQuestionPool.length > 0) {
-    return relatedQuestionPool;
-  }
-
-  return buildDefaultSuggestionItems();
+  return dedupeQuestionItems([
+    ...buildAllSubjectQuestionItems(),
+    ...relatedQuestionPool,
+    ...buildDefaultSuggestionItems()
+  ]);
 }
 
 function getChatSuggestions(language = getLanguage()) {
   const asked = readAskedQuestions();
-  return getChatSuggestionItems()
-    .filter((item) => !questionWasAsked(item, asked))
+  const basePool = getChatSuggestionItems();
+  return getAvailableQuestionItems(basePool, asked, getSelectedSubjectFilter())
     .slice(0, 6)
     .map((item) => language === "vi" ? item.vi : item.en)
     .filter(Boolean);
+}
+
+function readSubjectQuestionSubjects() {
+  const fromPayload = readJsonDataAttribute(chatPage, "chatSubjectSuggestions", [])
+    .map((item) => item?.subject || item?.vi || item?.en || "")
+    .filter(Boolean);
+  const fromChips = [...document.querySelectorAll(".chat-subject-chip")]
+    .map((button) => button.dataset.subjectFilter || "")
+    .filter(Boolean);
+
+  return [...new Set([...fromPayload, ...fromChips].map((subject) => subject.trim()).filter(Boolean))];
+}
+
+function dedupeQuestionItems(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    if (!item?.en || !item?.vi) {
+      continue;
+    }
+
+    const key = `${normalizeQuestionForMemory(item.en)}|${normalizeQuestionForMemory(item.vi)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
+function getAvailableQuestionItems(basePool, asked, selectedSubject = "") {
+  const available = dedupeQuestionItems(basePool).filter((item) => !questionWasAsked(item, asked));
+  if (available.length > 0) {
+    return available;
+  }
+
+  const recoveryPool = selectedSubject
+    ? buildRecoveryQuestionItems(selectedSubject)
+    : subjectQuestionSubjects.flatMap((subject) => buildRecoveryQuestionItems(subject));
+  return dedupeQuestionItems(recoveryPool).filter((item) => !questionWasAsked(item, asked));
 }
 
 function readRelatedQuestionPool() {
@@ -653,6 +713,86 @@ function buildSubjectQuestionItems(subject) {
       id: `${normalizeSubjectForCompare(trimmedSubject)}-chapters`,
       en: `Which chapters or sections are indexed for ${trimmedSubject}?`,
       vi: `${trimmedSubject} \u0111\u00e3 index nh\u1eefng ch\u01b0\u01a1ng ho\u1eb7c ph\u1ea7n n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-objectives`,
+      en: `What are the objectives of ${trimmedSubject}?`,
+      vi: `M\u1ee5c ti\u00eau c\u1ee7a ${trimmedSubject} l\u00e0 g\u00ec?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-prerequisites`,
+      en: `Does ${trimmedSubject} mention any prerequisites?`,
+      vi: `${trimmedSubject} c\u00f3 y\u00eau c\u1ea7u ti\u00ean quy\u1ebft n\u00e0o kh\u00f4ng?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-schedule`,
+      en: `What study schedule or weekly plan is listed for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 l\u1ecbch h\u1ecdc ho\u1eb7c k\u1ebf ho\u1ea1ch tu\u1ea7n n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-activities`,
+      en: `What learning activities are mentioned in ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 nh\u1eefng ho\u1ea1t \u0111\u1ed9ng h\u1ecdc t\u1eadp n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-tools`,
+      en: `What tools or platforms are used in ${trimmedSubject}?`,
+      vi: `${trimmedSubject} s\u1eed d\u1ee5ng c\u00f4ng c\u1ee5 ho\u1eb7c n\u1ec1n t\u1ea3ng n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-completion`,
+      en: `What completion criteria are listed for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 ti\u00eau ch\u00ed ho\u00e0n th\u00e0nh n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-summary`,
+      en: `Summarize the indexed syllabus for ${trimmedSubject}.`,
+      vi: `T\u00f3m t\u1eaft syllabus \u0111\u00e3 index c\u1ee7a ${trimmedSubject}.`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-important-notes`,
+      en: `What important notes should students remember for ${trimmedSubject}?`,
+      vi: `Sinh vi\u00ean c\u1ea7n l\u01b0u \u00fd g\u00ec khi h\u1ecdc ${trimmedSubject}?`
+    }
+  ];
+}
+
+function buildAllSubjectQuestionItems() {
+  return subjectQuestionSubjects.flatMap((subject) => buildSubjectQuestionItems(subject));
+}
+
+function buildRecoveryQuestionItems(subject) {
+  const trimmedSubject = (subject || "").trim();
+  if (!trimmedSubject) {
+    return [];
+  }
+
+  const subjectKey = normalizeSubjectForCompare(trimmedSubject);
+  return [
+    {
+      id: `${subjectKey}-recovery-teacher-expectations`,
+      en: `What does the lecturer expect students to prepare for ${trimmedSubject}?`,
+      vi: `Gi\u1ea3ng vi\u00ean y\u00eau c\u1ea7u sinh vi\u00ean chu\u1ea9n b\u1ecb g\u00ec cho ${trimmedSubject}?`
+    },
+    {
+      id: `${subjectKey}-recovery-output-products`,
+      en: `What products, assignments, or submissions are required in ${trimmedSubject}?`,
+      vi: `${trimmedSubject} y\u00eau c\u1ea7u b\u00e0i t\u1eadp, s\u1ea3n ph\u1ea9m ho\u1eb7c b\u00e0i n\u1ed9p n\u00e0o?`
+    },
+    {
+      id: `${subjectKey}-recovery-study-resources`,
+      en: `Which links, files, or learning resources are mentioned for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 link, file ho\u1eb7c ngu\u1ed3n h\u1ecdc n\u00e0o \u0111\u01b0\u1ee3c nh\u1eafc \u0111\u1ebfn?`
+    },
+    {
+      id: `${subjectKey}-recovery-grading-guide`,
+      en: `What grading guide or rubrics are mentioned for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 h\u01b0\u1edbng d\u1eabn ch\u1ea5m \u0111i\u1ec3m ho\u1eb7c rubric n\u00e0o?`
+    },
+    {
+      id: `${subjectKey}-recovery-first-read`,
+      en: `What should I read first in the indexed material for ${trimmedSubject}?`,
+      vi: `N\u00ean \u0111\u1ecdc ph\u1ea7n n\u00e0o tr\u01b0\u1edbc trong t\u00e0i li\u1ec7u \u0111\u00e3 index c\u1ee7a ${trimmedSubject}?`
     }
   ];
 }
@@ -681,9 +821,14 @@ function renderRelatedQuestions() {
   updateRelatedQuestionsLabel(selectedSubject);
 
   const asked = readAskedQuestions();
-  const basePool = selectedSubject ? buildSubjectQuestionItems(selectedSubject) : relatedQuestionPool;
-  const available = basePool.filter((item) => !questionWasAsked(item, asked));
-  const pool = available;
+  const basePool = selectedSubject
+    ? buildSubjectQuestionItems(selectedSubject)
+    : dedupeQuestionItems([
+        ...buildAllSubjectQuestionItems(),
+        ...relatedQuestionPool,
+        ...buildDefaultSuggestionItems()
+      ]);
+  const pool = getAvailableQuestionItems(basePool, asked, selectedSubject);
   if (pool.length === 0) {
     list.innerHTML = "";
     if (strip) {
@@ -710,7 +855,7 @@ function renderRelatedQuestions() {
       continue;
     }
 
-    if (available.length > 8 && currentQuestions.has(normalized)) {
+    if (pool.length > 8 && currentQuestions.has(normalized)) {
       continue;
     }
 
@@ -837,6 +982,14 @@ function markActiveSession(sessionId) {
   });
 }
 
+function closeSessionMenus(exceptMenu = null) {
+  document.querySelectorAll(".chat-session-menu.is-open").forEach((menu) => {
+    if (menu !== exceptMenu) {
+      menu.classList.remove("is-open");
+    }
+  });
+}
+
 function renderSessionList(sessions) {
   if (!chatSessionList) {
     return;
@@ -854,10 +1007,29 @@ function renderSessionList(sessions) {
   }
 
   chatSessionList.innerHTML = sessions.map((session) => `
-    <button type="button" class="chat-session-item" data-session-id="${session.id}">
-      <span>${escapeHtml(getSessionTitle(session))}</span>
-      <small>${formatSessionTime(session.updatedAt)} / ${session.messageCount ?? 0} ${escapeHtml(t("chat.messagesUnit"))}</small>
-    </button>
+    <div class="chat-session-entry${session.isStarred ? " is-starred" : ""}" data-session-entry data-session-id="${session.id}">
+      <button type="button" class="chat-session-item" data-session-id="${session.id}">
+        <span>${session.isStarred ? `<span class="material-symbols-outlined session-star" aria-hidden="true">star</span>` : ""}${escapeHtml(getSessionTitle(session))}</span>
+        <small>${formatSessionTime(session.updatedAt)} / ${session.messageCount ?? 0} ${escapeHtml(t("chat.messagesUnit"))}</small>
+      </button>
+      <button type="button" class="chat-session-menu-button" data-session-menu-toggle data-session-id="${session.id}" aria-label="${escapeHtml(t("chat.sessionActions"))}">
+        <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
+      </button>
+      <div class="chat-session-menu" data-session-menu>
+        <button type="button" data-session-action="star" data-session-id="${session.id}" data-session-starred="${session.isStarred ? "true" : "false"}">
+          <span class="material-symbols-outlined" aria-hidden="true">star</span>
+          <span>${escapeHtml(t(session.isStarred ? "chat.unstarSession" : "chat.starSession"))}</span>
+        </button>
+        <button type="button" data-session-action="rename" data-session-id="${session.id}">
+          <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+          <span>${escapeHtml(t("chat.renameSession"))}</span>
+        </button>
+        <button type="button" class="danger" data-session-action="delete" data-session-id="${session.id}">
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          <span>${escapeHtml(t("chat.deleteSession"))}</span>
+        </button>
+      </div>
+    </div>
   `).join("");
   bindSessionButtons();
   markActiveSession(getSessionId());
@@ -1045,10 +1217,117 @@ async function loadChatSession(sessionId) {
   questionInput?.focus();
 }
 
+async function postSessionJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || t("chat.sessionActionError"));
+  }
+
+  return payload;
+}
+
+async function renameChatSession(sessionId) {
+  const currentTitle = document
+    .querySelector(`.chat-session-item[data-session-id="${CSS.escape(sessionId)}"] span`)
+    ?.textContent
+    ?.trim() || "";
+  const title = window.prompt(t("chat.renamePrompt"), currentTitle);
+  if (title === null) {
+    return;
+  }
+
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle) {
+    return;
+  }
+
+  const session = await postSessionJson("/Home/RenameChatSession", { sessionId, title: normalizedTitle });
+  if (getSessionId() === session.id && activeSessionTitle) {
+    activeSessionTitle.textContent = getSessionTitle(session);
+  }
+  await refreshSessionList();
+}
+
+async function toggleChatSessionStar(sessionId, isCurrentlyStarred) {
+  await postSessionJson("/Home/StarChatSession", {
+    sessionId,
+    isStarred: !isCurrentlyStarred
+  });
+  await refreshSessionList();
+}
+
+async function deleteChatSession(sessionId) {
+  if (!window.confirm(t("chat.deleteConfirm"))) {
+    return;
+  }
+
+  await postSessionJson("/Home/DeleteChatSession", { sessionId });
+  if (getSessionId() === sessionId) {
+    const response = await fetch("/Home/CreateChatSession", { method: "POST" });
+    if (response.ok) {
+      const session = await response.json();
+      setSessionId(session.id);
+    } else {
+      setSessionId(createSessionId());
+    }
+
+    if (activeSessionTitle) {
+      activeSessionTitle.textContent = t("chat.defaultSessionTitle");
+    }
+    renderWelcomeMessage();
+  }
+
+  await refreshSessionList();
+}
+
 function bindSessionButtons() {
   document.querySelectorAll(".chat-session-item").forEach((button) => {
     button.addEventListener("click", () => {
       loadChatSession(button.dataset.sessionId);
+    });
+  });
+
+  document.querySelectorAll("[data-session-menu-toggle]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const entry = button.closest("[data-session-entry]");
+      const menu = entry?.querySelector("[data-session-menu]");
+      if (!menu) {
+        return;
+      }
+
+      const willOpen = !menu.classList.contains("is-open");
+      closeSessionMenus(menu);
+      menu.classList.toggle("is-open", willOpen);
+    });
+  });
+
+  document.querySelectorAll("[data-session-action]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const sessionId = button.dataset.sessionId;
+      const action = button.dataset.sessionAction;
+      closeSessionMenus();
+      if (!sessionId || !action) {
+        return;
+      }
+
+      try {
+        if (action === "rename") {
+          await renameChatSession(sessionId);
+        } else if (action === "star") {
+          await toggleChatSessionStar(sessionId, button.dataset.sessionStarred === "true");
+        } else if (action === "delete") {
+          await deleteChatSession(sessionId);
+        }
+      } catch (error) {
+        appendMessageTo(chatMessages, "assistant", error.message || t("chat.sessionActionError"));
+      }
     });
   });
 }
@@ -1199,7 +1478,7 @@ async function submitChatQuestion(input, messagesTarget, focusAfter = true) {
 
     setSessionId(payload.sessionId);
     rememberAskedQuestion(question);
-    if (activeSessionTitle) {
+    if (activeSessionTitle && (!activeSessionTitle.textContent?.trim() || activeSessionTitle.textContent.trim() === t("chat.defaultSessionTitle"))) {
       activeSessionTitle.textContent = question.length <= 56 ? question : `${question.slice(0, 56)}...`;
     }
     const answerMessage = appendMessageTo(messagesTarget, "assistant", payload.answer, payload.citations || []);
@@ -1226,6 +1505,18 @@ document.querySelectorAll("[data-language-option]").forEach((button) => {
   button.addEventListener("click", () => {
     setLanguage(button.dataset.languageOption);
   });
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest?.("[data-session-entry]")) {
+    closeSessionMenus();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeSessionMenus();
+  }
 });
 
 if (newSessionButton) {

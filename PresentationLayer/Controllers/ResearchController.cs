@@ -195,7 +195,15 @@ public sealed class ResearchController : Controller
 
         if (model.EmbeddingModelIds.Count == 0)
         {
-            model.EmbeddingModelIds = catalog.EmbeddingModels.Select(item => item.Id).ToList();
+            model.EmbeddingModelIds = catalog.EmbeddingModels
+                .Where(item => item.ModelId?.Equals("vinai/phobert-base", StringComparison.OrdinalIgnoreCase) == true
+                    || item.Name.Equals("vinai/phobert-base", StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.Id)
+                .ToList();
+            if (model.EmbeddingModelIds.Count == 0)
+            {
+                model.EmbeddingModelIds = catalog.EmbeddingModels.Select(item => item.Id).Take(1).ToList();
+            }
         }
 
         if (model.ChunkingStrategyIds.Count == 0)

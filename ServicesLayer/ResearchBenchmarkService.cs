@@ -146,6 +146,11 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         var chunks = Rechunk(originalChunks, run);
+        if (chunks.Count == 0)
+        {
+            throw new InvalidOperationException("RAG run has no indexed chunk text for the selected subject. Upload/index documents before running this RBL configuration.");
+        }
+
         var chunkEmbeddings = await EmbedBatchAsync(
             run,
             chunks.Select(chunk => chunk.Text).ToList(),
@@ -254,17 +259,53 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             return Array.Empty<Dictionary<int, double>>();
         }
 
+        var indexedTexts = texts
+            .Select((text, index) => (Index: index, Text: text?.Trim() ?? string.Empty))
+            .ToList();
+        var results = Enumerable.Range(0, texts.Count)
+            .Select(_ => new Dictionary<int, double>())
+            .ToList();
+        var nonEmptyTexts = indexedTexts
+            .Where(item => !string.IsNullOrWhiteSpace(item.Text))
+            .ToList();
+        if (nonEmptyTexts.Count == 0)
+        {
+            return results;
+        }
+
+        var providerTexts = nonEmptyTexts.Select(item => item.Text).ToList();
+        IReadOnlyList<Dictionary<int, double>> providerEmbeddings;
         if (run.EmbeddingProvider?.Equals("Gemini", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return await EmbedWithGeminiBatchAsync(run, texts, cancellationToken);
+            if (providerTexts.Count == 1)
+            {
+                providerEmbeddings = new[] { await EmbedWithGeminiAsync(run, providerTexts[0], cancellationToken) };
+            }
+            else
+            {
+                providerEmbeddings = await EmbedWithGeminiBatchAsync(run, providerTexts, cancellationToken);
+            }
         }
-
-        if (run.EmbeddingProvider?.Equals("HuggingFace", StringComparison.OrdinalIgnoreCase) == true)
+        else if (run.EmbeddingProvider?.Equals("HuggingFace", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return await EmbedWithHuggingFaceBatchAsync(run, texts, cancellationToken);
+            providerEmbeddings = await EmbedWithHuggingFaceBatchAsync(run, providerTexts, cancellationToken);
+        }
+        else
+        {
+            throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, HuggingFace.");
         }
 
-        throw new InvalidOperationException($"{run.EmbeddingModelName} uses unsupported provider {run.EmbeddingProvider}. Supported providers: Gemini, HuggingFace.");
+        if (providerEmbeddings.Count != providerTexts.Count)
+        {
+            throw new InvalidOperationException($"{run.EmbeddingModelName} returned {providerEmbeddings.Count} embeddings for {providerTexts.Count} non-empty inputs.");
+        }
+
+        for (var index = 0; index < nonEmptyTexts.Count; index++)
+        {
+            results[nonEmptyTexts[index].Index] = providerEmbeddings[index];
+        }
+
+        return results;
     }
 
     private async Task<Dictionary<int, double>> EmbedWithGeminiAsync(
@@ -283,23 +324,34 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             "outputDimensionality",
             _geminiOptions.EmbeddingOutputDimensionality);
 
-        using var response = await SendGeminiWithRetryAsync(() =>
+        using var response = await SendGeminiWithRetryAsync(
+            () => CreateGeminiEmbeddingRequest(model, text, Math.Max(1, outputDimensionality)),
+            cancellationToken);
+        if (!response.IsSuccessStatusCode && (int)response.StatusCode == 400)
         {
-            var retryRequest = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent");
-            retryRequest.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
-            retryRequest.Content = JsonContent.Create(
-                new GeminiEmbeddingRequest(
-                    $"models/{model}",
-                    new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
-                    Math.Max(1, outputDimensionality)),
-                options: JsonOptions);
-            return retryRequest;
-        }, cancellationToken);
+            response.Dispose();
+            using var retryWithoutDimensionResponse = await SendGeminiWithRetryAsync(
+                () => CreateGeminiEmbeddingRequest(model, text, null),
+                cancellationToken);
+            if (!retryWithoutDimensionResponse.IsSuccessStatusCode)
+            {
+                var exception = await BuildGeminiRuntimeExceptionAsync(run.EmbeddingModelName, "embedding", retryWithoutDimensionResponse, cancellationToken);
+                throw exception;
+            }
+
+            var retryPayload = await retryWithoutDimensionResponse.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
+            if (retryPayload?.Embedding?.Values is not { Count: > 0 } retryValues)
+            {
+                throw new InvalidOperationException($"{run.EmbeddingModelName} returned an empty Gemini embedding.");
+            }
+
+            return GeminiEmbeddingService.NormalizeDenseEmbedding(retryValues);
+        }
+
         if (!response.IsSuccessStatusCode)
         {
-            throw BuildGeminiRuntimeException(run.EmbeddingModelName, "embedding", response);
+            var exception = await BuildGeminiRuntimeExceptionAsync(run.EmbeddingModelName, "embedding", response, cancellationToken);
+            throw exception;
         }
 
         var payload = await response.Content.ReadFromJsonAsync<GeminiEmbeddingResponse>(JsonOptions, cancellationToken);
@@ -333,9 +385,21 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
             using var response = await SendGeminiWithRetryAsync(
                 () => CreateGeminiBatchEmbeddingRequest(model, outputDimensionality, batch),
                 cancellationToken);
+            if (!response.IsSuccessStatusCode && (int)response.StatusCode == 400)
+            {
+                results.AddRange(await EmbedGeminiBatchWithSingleRequestsAsync(run, batch, cancellationToken));
+                if (results.Count < texts.Count)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+                }
+
+                continue;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
-                throw BuildGeminiRuntimeException(run.EmbeddingModelName, "batch embedding", response);
+                var exception = await BuildGeminiRuntimeExceptionAsync(run.EmbeddingModelName, "batch embedding", response, cancellationToken);
+                throw exception;
             }
 
             var payload = await response.Content.ReadFromJsonAsync<GeminiBatchEmbeddingResponse>(JsonOptions, cancellationToken);
@@ -361,6 +425,42 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         return results;
+    }
+
+    private async Task<IReadOnlyList<Dictionary<int, double>>> EmbedGeminiBatchWithSingleRequestsAsync(
+        ResearchRunSummary run,
+        IReadOnlyList<string> batch,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<Dictionary<int, double>>(batch.Count);
+        foreach (var text in batch)
+        {
+            results.Add(await EmbedWithGeminiAsync(run, text, cancellationToken));
+            if (results.Count < batch.Count)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            }
+        }
+
+        return results;
+    }
+
+    private HttpRequestMessage CreateGeminiEmbeddingRequest(
+        string model,
+        string text,
+        int? outputDimensionality)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent");
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", _geminiOptions.ApiKey);
+        request.Content = JsonContent.Create(
+            new GeminiEmbeddingRequest(
+                $"models/{model}",
+                new GeminiEmbeddingContent([new GeminiEmbeddingPart(text)]),
+                outputDimensionality),
+            options: JsonOptions);
+        return request;
     }
 
     private HttpRequestMessage CreateGeminiBatchEmbeddingRequest(
@@ -493,7 +593,8 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw BuildHuggingFaceRuntimeException(run.EmbeddingModelName, response);
+                var exception = await BuildHuggingFaceRuntimeExceptionAsync(run.EmbeddingModelName, response, cancellationToken);
+                throw exception;
             }
 
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken);
@@ -533,15 +634,20 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
 
     private Uri BuildHuggingFaceEndpoint(string relativePath)
     {
+        return new Uri(new Uri(GetHuggingFaceBaseAddress()), relativePath);
+    }
+
+    private string GetHuggingFaceBaseAddress()
+    {
         var baseAddress = string.IsNullOrWhiteSpace(_huggingFaceOptions.BaseAddress)
-            ? "https://api-inference.huggingface.co/"
+            ? "https://router.huggingface.co/hf-inference/"
             : _huggingFaceOptions.BaseAddress.Trim();
         if (!baseAddress.EndsWith("/", StringComparison.Ordinal))
         {
             baseAddress += "/";
         }
 
-        return new Uri(new Uri(baseAddress), relativePath);
+        return baseAddress;
     }
 
     private async Task<HttpResponseMessage> SendHuggingFaceWithRetryAsync(
@@ -563,15 +669,31 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
                 response.Dispose();
                 await Task.Delay(delay, cancellationToken);
             }
-            catch (HttpRequestException) when (attempt < MaxGeminiRetryAttempts)
+            catch (HttpRequestException ex)
             {
                 response?.Dispose();
-                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+                if (attempt < MaxGeminiRetryAttempts)
+                {
+                    await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"Cannot connect to HuggingFace endpoint '{GetHuggingFaceBaseAddress()}'. Check DNS/network/proxy or HuggingFace:BaseAddress.",
+                    ex);
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < MaxGeminiRetryAttempts)
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
                 response?.Dispose();
-                await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+                if (attempt < MaxGeminiRetryAttempts)
+                {
+                    await Task.Delay(GetRetryDelay(null, attempt), cancellationToken);
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"HuggingFace embedding request timed out against '{GetHuggingFaceBaseAddress()}'. Check network or reduce benchmark size.",
+                    ex);
             }
             catch
             {
@@ -581,6 +703,25 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         }
 
         throw new InvalidOperationException("HuggingFace embedding request could not be sent.");
+    }
+
+    private static async Task<InvalidOperationException> BuildHuggingFaceRuntimeExceptionAsync(
+        string? modelName,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var name = string.IsNullOrWhiteSpace(modelName) ? "HuggingFace embedding" : modelName;
+        var details = await ReadResponseSnippetAsync(response, cancellationToken);
+        var suffix = string.IsNullOrWhiteSpace(details) ? string.Empty : $" Response: {details}";
+        return (int)response.StatusCode switch
+        {
+            400 => new InvalidOperationException($"{name} HuggingFace rejected the embedding payload (HTTP 400). Use non-empty text and the feature-extraction task for PhoBERT.{suffix}"),
+            401 or 403 => new InvalidOperationException($"{name} HuggingFace authentication failed. Check HUGGINGFACE_API_KEY or user-secrets HuggingFace:ApiKey.{suffix}"),
+            404 => new InvalidOperationException($"{name} HuggingFace model or inference route was not found (HTTP 404). Check model id and HuggingFace:BaseAddress.{suffix}"),
+            429 => new InvalidOperationException($"{name} HuggingFace quota/rate limit reached (HTTP 429). Wait and rerun, or reduce benchmark questions/configurations.{suffix}"),
+            503 => new InvalidOperationException($"{name} HuggingFace model is loading or unavailable (HTTP 503). Rerun after a few minutes.{suffix}"),
+            _ => new InvalidOperationException($"{name} HuggingFace embedding runtime returned HTTP {(int)response.StatusCode}.{suffix}")
+        };
     }
 
     private static InvalidOperationException BuildHuggingFaceRuntimeException(
@@ -748,6 +889,40 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         return TimeSpan.FromSeconds(seconds);
     }
 
+    private static async Task<InvalidOperationException> BuildGeminiRuntimeExceptionAsync(
+        string? modelName,
+        string operation,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var name = string.IsNullOrWhiteSpace(modelName) ? "Gemini" : modelName;
+        var details = await ReadResponseSnippetAsync(response, cancellationToken);
+        var suffix = string.IsNullOrWhiteSpace(details) ? string.Empty : $" Response: {details}";
+        return (int)response.StatusCode switch
+        {
+            400 => new InvalidOperationException($"{name} Gemini {operation} runtime returned HTTP 400. Check API key, model id, non-empty input text, and outputDimensionality.{suffix}"),
+            403 => new InvalidOperationException($"{name} Gemini {operation} was forbidden (HTTP 403). Check Gemini API key, project API access, billing/quota, and embedding model permission.{suffix}"),
+            429 => new InvalidOperationException($"{name} Gemini {operation} quota/rate limit reached (HTTP 429). Wait and rerun, or reduce benchmark questions/configurations.{suffix}"),
+            _ => new InvalidOperationException($"{name} Gemini {operation} runtime returned HTTP {(int)response.StatusCode}.{suffix}")
+        };
+    }
+
+    private static async Task<string> ReadResponseSnippetAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            text = Regex.Replace(text ?? string.Empty, @"\s+", " ").Trim();
+            return text.Length <= 700 ? text : string.Concat(text.AsSpan(0, 700), "...");
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private static InvalidOperationException BuildGeminiRuntimeException(
         string? modelName,
         string operation,
@@ -806,7 +981,9 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         var output = new List<DocumentChunk>();
         foreach (var document in documents)
         {
-            var texts = SplitText(document.Text, run.ChunkingMethod ?? "Paragraph", Math.Max(200, run.ChunkSize), Math.Max(0, run.ChunkOverlap));
+            var texts = SplitText(document.Text, run.ChunkingMethod ?? "Paragraph", Math.Max(200, run.ChunkSize), Math.Max(0, run.ChunkOverlap))
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .ToList();
             for (var index = 0; index < texts.Count; index++)
             {
                 output.Add(new DocumentChunk
@@ -1126,7 +1303,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private sealed record GeminiEmbeddingRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("content")] GeminiEmbeddingContent Content,
-        [property: JsonPropertyName("outputDimensionality")] int OutputDimensionality);
+        [property: JsonPropertyName("outputDimensionality")] int? OutputDimensionality);
 
     private sealed record GeminiEmbeddingContent(
         [property: JsonPropertyName("parts")] IReadOnlyList<GeminiEmbeddingPart> Parts);

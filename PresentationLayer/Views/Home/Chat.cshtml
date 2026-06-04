@@ -145,14 +145,41 @@
                 foreach (var session in Model.ChatSessions)
                 {
                     var firstQuestion = session.Messages.FirstOrDefault(message => message.Role == "user")?.Content?.Trim();
-                    var title = string.IsNullOrWhiteSpace(firstQuestion)
+                    var title = !string.IsNullOrWhiteSpace(session.Title)
+                        ? session.Title.Trim()
+                        : string.IsNullOrWhiteSpace(firstQuestion)
                         ? "Session without a question"
                         : firstQuestion.Length <= 56 ? firstQuestion : $"{firstQuestion[..56]}...";
 
-                    <button type="button" class="chat-session-item" data-session-id="@session.Id">
-                        <span>@title</span>
-                        <small>@session.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") / @session.Messages.Count messages</small>
-                    </button>
+                    <div class="chat-session-entry @(session.IsStarred ? "is-starred" : string.Empty)" data-session-entry data-session-id="@session.Id">
+                        <button type="button" class="chat-session-item" data-session-id="@session.Id">
+                            <span>
+                                @if (session.IsStarred)
+                                {
+                                    <span class="material-symbols-outlined session-star" aria-hidden="true">star</span>
+                                }
+                                @title
+                            </span>
+                            <small>@session.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") / @session.Messages.Count messages</small>
+                        </button>
+                        <button type="button" class="chat-session-menu-button" data-session-menu-toggle data-session-id="@session.Id" aria-label="Session actions">
+                            <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
+                        </button>
+                        <div class="chat-session-menu" data-session-menu>
+                            <button type="button" data-session-action="star" data-session-id="@session.Id" data-session-starred="@session.IsStarred.ToString().ToLowerInvariant()">
+                                <span class="material-symbols-outlined" aria-hidden="true">star</span>
+                                <span>@(session.IsStarred ? "Unstar" : "Star")</span>
+                            </button>
+                            <button type="button" data-session-action="rename" data-session-id="@session.Id">
+                                <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                                <span>Rename</span>
+                            </button>
+                            <button type="button" class="danger" data-session-action="delete" data-session-id="@session.Id">
+                                <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+                                <span>Delete</span>
+                            </button>
+                        </div>
+                    </div>
                 }
             }
         </div>

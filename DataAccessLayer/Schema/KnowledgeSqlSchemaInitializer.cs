@@ -14,6 +14,7 @@ internal static class KnowledgeSqlSchemaInitializer
         EnsureDocumentIndexingColumns(context);
         EnsureChunkIndexingColumns(context);
         EnsureChatSessionOwnerColumns(context);
+        EnsureChatSessionMetadataColumns(context);
         EnsureKnowledgeIndexes(context);
         EnsureCourseCatalogTables(context);
         EnsureSubjectOwnerColumns(context);
@@ -155,6 +156,23 @@ internal static class KnowledgeSqlSchemaInitializer
             """);
     }
 
+    private static void EnsureChatSessionMetadataColumns(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chat_sessions', 'Title') IS NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions ADD Title NVARCHAR(200) NOT NULL CONSTRAINT DF_rag_chat_sessions_Title DEFAULT ''
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH('rag_chat_sessions', 'IsStarred') IS NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions ADD IsStarred BIT NOT NULL CONSTRAINT DF_rag_chat_sessions_IsStarred DEFAULT 0
+            END
+            """);
+    }
+
     private static void EnsureKnowledgeIndexes(KnowledgeSqlDbContext context)
     {
         context.Database.ExecuteSqlRaw("""
@@ -202,6 +220,18 @@ internal static class KnowledgeSqlSchemaInitializer
                       AND object_id = OBJECT_ID('rag_chat_sessions'))
             BEGIN
                 CREATE INDEX IX_rag_chat_sessions_OwnerUserId ON rag_chat_sessions (OwnerUserId)
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_chat_sessions', 'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'IX_rag_chat_sessions_OwnerUserId_IsStarred_UpdatedAt'
+                      AND object_id = OBJECT_ID('rag_chat_sessions'))
+            BEGIN
+                CREATE INDEX IX_rag_chat_sessions_OwnerUserId_IsStarred_UpdatedAt ON rag_chat_sessions (OwnerUserId, IsStarred, UpdatedAt)
             END
             """);
     }
@@ -345,7 +375,7 @@ internal static class KnowledgeSqlSchemaInitializer
             provider: "HuggingFace",
             modelId: "vinai/phobert-base",
             dimensions: 768,
-            configJson: "{\"pooling\":\"mean\",\"normalize\":true,\"task\":\"feature-extraction\"}");
+            configJson: "{\"pooling\":\"mean\",\"normalize\":true,\"task\":\"feature-extraction\",\"language\":\"vi\",\"note\":\"Vietnamese PhoBERT mean-pooling baseline for RBL.\"}");
 
         changed |= AddChunkingStrategyIfMissing(
             context,

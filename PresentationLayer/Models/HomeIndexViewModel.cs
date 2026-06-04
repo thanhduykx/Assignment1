@@ -115,6 +115,23 @@ public sealed class ChatRequest
     public string? SubjectFilter { get; set; }
 }
 
+public sealed class ChatSessionRenameRequest
+{
+    public string? SessionId { get; set; }
+    public string? Title { get; set; }
+}
+
+public sealed class ChatSessionStarRequest
+{
+    public string? SessionId { get; set; }
+    public bool IsStarred { get; set; }
+}
+
+public sealed class ChatSessionDeleteRequest
+{
+    public string? SessionId { get; set; }
+}
+
 public sealed class UserOptionViewModel
 {
     public Guid Id { get; set; }

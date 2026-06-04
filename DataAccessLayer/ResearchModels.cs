@@ -61,6 +61,16 @@ public sealed class ResearchRunSummary
     public double? AverageRagasScore { get; set; }
 }
 
+public sealed class ResearchFineTunedModelInfo
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string ConfigJson { get; set; } = "{}";
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public sealed class ResearchBenchmarkResult
 {
     public Guid Id { get; set; }

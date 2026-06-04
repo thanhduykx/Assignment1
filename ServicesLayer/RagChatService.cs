@@ -11,7 +11,10 @@ public sealed record ChatAnswer(
     IReadOnlyList<ChatMessage> History,
     string? ResolvedSubject = null,
     bool NeedsClarification = false,
-    IReadOnlyList<string>? SubjectOptions = null);
+    IReadOnlyList<string>? SubjectOptions = null,
+    string AnswerSource = "Rag",
+    bool HasDirectCitation = true,
+    string? FallbackModel = null);
 
 public interface IRagChatService
 {
@@ -31,7 +34,9 @@ public sealed class RagChatService : IRagChatService
     private const int TopK = 5;
     private const int RerankCandidateK = 20;
     private const int MaxBatchQuestions = 50;
-    private const double MinimumScore = 0.35;
+    private const double MinimumScore = 0.42;
+    private const double MinimumLocalRerankScore = 0.48;
+    private const double MinimumGeminiRerankScore = 0.55;
     private const double MinimumAnswerGroundingRatio = 0.42;
     private const string OutOfScopeAnswer = "Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này.";
 
@@ -76,7 +81,61 @@ public sealed class RagChatService : IRagChatService
         "thanks",
         "thank you",
         "tam biet",
-        "bye"
+        "bye",
+        "an com chua",
+        "com chua",
+        "khoe khong",
+        "on khong"
+    };
+
+    private static readonly string[] ExternalQuestionSignals =
+    {
+        "thoi tiet",
+        "weather",
+        "nhiet do",
+        "temperature",
+        "du bao",
+        "forecast",
+        "hom nay mua khong",
+        "may gio",
+        "what time",
+        "current time",
+        "tin tuc",
+        "news today",
+        "gia vang",
+        "stock price",
+        "ty gia",
+        "exchange rate",
+        "ket qua bong da",
+        "lich thi dau"
+    };
+
+    private static readonly string[] DocumentQuestionSignals =
+    {
+        "tai lieu",
+        "document",
+        "syllabus",
+        "mon",
+        "hoc",
+        "course",
+        "subject",
+        "chapter",
+        "chuong",
+        "tin chi",
+        "credit",
+        "nocredit",
+        "assessment",
+        "danh gia",
+        "quiz",
+        "exam",
+        "assignment",
+        "clo",
+        "learning outcome",
+        "requirement",
+        "yeu cau",
+        "noi dung",
+        "bai hoc",
+        "lecture"
     };
 
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
@@ -98,15 +157,18 @@ public sealed class RagChatService : IRagChatService
     private readonly IKnowledgeRepository _repository;
     private readonly IEmbeddingService _embeddingService;
     private readonly ILocalChatCompletionService _chatCompletionService;
+    private readonly IFineTunedChatService _fineTunedChatService;
 
     public RagChatService(
         IKnowledgeRepository repository,
         IEmbeddingService embeddingService,
-        ILocalChatCompletionService chatCompletionService)
+        ILocalChatCompletionService chatCompletionService,
+        IFineTunedChatService? fineTunedChatService = null)
     {
         _repository = repository;
         _embeddingService = embeddingService;
         _chatCompletionService = chatCompletionService;
+        _fineTunedChatService = fineTunedChatService ?? NullFineTunedChatService.Instance;
     }
 
     public async Task<ChatAnswer> AskAsync(
@@ -183,7 +245,10 @@ public sealed class RagChatService : IRagChatService
             ownerInfo,
             singleAnswer.ResolvedSubject,
             singleAnswer.NeedsClarification,
-            singleAnswer.SubjectOptions);
+            singleAnswer.SubjectOptions,
+            singleAnswer.AnswerSource,
+            singleAnswer.HasDirectCitation,
+            singleAnswer.FallbackModel);
     }
 
     private async Task<SingleQuestionAnswer> BuildSingleQuestionAnswerAsync(
@@ -198,30 +263,54 @@ public sealed class RagChatService : IRagChatService
     {
         if (IsBotIdentityQuestion(question))
         {
-            return new SingleQuestionAnswer(question, BuildBotIdentityAnswer(responseLanguage), Array.Empty<SourceCitation>());
+            return new SingleQuestionAnswer(question, BuildBotIdentityAnswer(responseLanguage), Array.Empty<SourceCitation>(), AnswerSource: "SmallTalk", HasDirectCitation: false);
         }
 
         if (IsUserIdentityQuestion(question))
         {
-            return new SingleQuestionAnswer(question, BuildUserIdentityAnswer(userDisplayName, responseLanguage), Array.Empty<SourceCitation>());
+            return new SingleQuestionAnswer(question, BuildUserIdentityAnswer(userDisplayName, responseLanguage), Array.Empty<SourceCitation>(), AnswerSource: "SmallTalk", HasDirectCitation: false);
         }
 
-        if (IsCasualChat(question))
+        var intent = await ClassifyQuestionIntentAsync(
+            question,
+            historyBeforeQuestion,
+            responseLanguage,
+            cancellationToken);
+
+        if (intent.Intent == ChatQueryIntent.Unsafe)
         {
-            return new SingleQuestionAnswer(question, BuildCasualChatAnswer(question, responseLanguage), Array.Empty<SourceCitation>());
+            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), AnswerSource: "OutOfScope", HasDirectCitation: false);
         }
 
-        var rewrittenQuestion = await _chatCompletionService.RewriteQuestionAsync(
+        if (intent.Intent == ChatQueryIntent.SmallTalk)
+        {
+            return new SingleQuestionAnswer(question, BuildCasualChatAnswer(question, responseLanguage), Array.Empty<SourceCitation>(), AnswerSource: "SmallTalk", HasDirectCitation: false);
+        }
+
+        if (intent.Intent == ChatQueryIntent.ExternalQuestion)
+        {
+            return new SingleQuestionAnswer(question, BuildExternalScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), AnswerSource: "OutOfScope", HasDirectCitation: false);
+        }
+
+        var retrievalQueries = await BuildRetrievalQueriesAsync(
             question,
             historyBeforeQuestion,
             cancellationToken);
-        var resolvedQuestion = rewrittenQuestion;
-        var retrievalQuestion = BuildRetrievalQuestion(question, resolvedQuestion);
+        var resolvedQuestion = retrievalQueries.FirstOrDefault(query => !query.Equals(question, StringComparison.OrdinalIgnoreCase))
+                               ?? question;
+        var retrievalQuestion = string.Join("\n", retrievalQueries);
 
         scopedChunks ??= await GetScopedChunksAsync(allowedSubjects, cancellationToken);
         if (scopedChunks.Count == 0)
         {
-            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
+            return await BuildInsufficientOrFineTunedAnswerAsync(
+                question,
+                subjectFilter,
+                historyBeforeQuestion,
+                Array.Empty<DocumentChunk>(),
+                allowedSubjects,
+                responseLanguage,
+                cancellationToken);
         }
 
         var route = ResolveSubjectRoute(retrievalQuestion, subjectFilter, scopedChunks);
@@ -243,7 +332,14 @@ public sealed class RagChatService : IRagChatService
                 .ToList();
             if (scopedChunks.Count == 0)
             {
-                return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>(), route.SelectedSubject);
+                return await BuildInsufficientOrFineTunedAnswerAsync(
+                    question,
+                    route.SelectedSubject,
+                    historyBeforeQuestion,
+                    Array.Empty<DocumentChunk>(),
+                    allowedSubjects,
+                    responseLanguage,
+                    cancellationToken);
             }
         }
 
@@ -260,51 +356,23 @@ public sealed class RagChatService : IRagChatService
         var queryTerms = ExtractTerms(retrievalQuestion);
 
         var contentTerms = RemoveCourseScopeTerms(queryTerms);
-        var needsContentEvidence = contentTerms.Count > 0;
-        var minimumSharedTerms = contentTerms.Count >= 4 ? 2 : 1;
-        var queryEmbedding = await _embeddingService.EmbedAsync(retrievalQuestion, cancellationToken);
-
-        var candidateMatches = scopedChunks
-            .Select(chunk => new
-            {
-                Chunk = chunk,
-                VectorScore = _embeddingService.CosineSimilarity(queryEmbedding, chunk.Embedding),
-                TextSharedTerms = CountSharedTerms(queryTerms, chunk.Text),
-                ContentSharedTerms = CountSharedTerms(contentTerms, chunk.Text),
-                MetadataSharedTerms = CountSharedTerms(queryTerms, BuildChunkMetadataText(chunk))
-            })
-            .Select(item =>
-            {
-                var lexicalScore = CalculateLexicalScore(
-                    item.TextSharedTerms,
-                    item.MetadataSharedTerms,
-                    item.ContentSharedTerms,
-                    queryTerms.Count,
-                    contentTerms.Count);
-                return new ScoredChunk(
-                    item.Chunk,
-                    CalculateRetrievalScore(
-                        item.VectorScore,
-                        lexicalScore),
-                    item.TextSharedTerms,
-                    item.ContentSharedTerms,
-                    item.TextSharedTerms + item.MetadataSharedTerms,
-                    item.MetadataSharedTerms,
-                    Math.Clamp(item.VectorScore, 0, 1),
-                    lexicalScore);
-            })
-            .Where(item => HasRetrievalEvidence(item, needsContentEvidence, minimumSharedTerms))
-            .OrderByDescending(item => item.Score)
-            .ThenByDescending(item => item.ContentSharedTerms)
-            .ThenByDescending(item => item.TextSharedTerms)
-            .ThenByDescending(item => item.MetadataSharedTerms)
-            .ThenByDescending(item => item.VectorScore)
-            .Take(RerankCandidateK)
-            .ToList();
+        var candidateMatches = await BuildCandidateMatchesAsync(
+            retrievalQueries,
+            queryTerms,
+            contentTerms,
+            scopedChunks,
+            cancellationToken);
 
         if (candidateMatches.Count == 0)
         {
-            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
+            return await BuildInsufficientOrFineTunedAnswerAsync(
+                question,
+                route.SelectedSubject ?? subjectFilter,
+                historyBeforeQuestion,
+                scopedChunks,
+                allowedSubjects,
+                responseLanguage,
+                cancellationToken);
         }
 
         if (string.IsNullOrWhiteSpace(route.SelectedSubject))
@@ -323,6 +391,17 @@ public sealed class RagChatService : IRagChatService
         }
 
         var matches = await RerankMatchesAsync(retrievalQuestion, candidateMatches, responseLanguage, cancellationToken);
+        if (matches.Count == 0)
+        {
+            return await BuildInsufficientOrFineTunedAnswerAsync(
+                question,
+                route.SelectedSubject ?? subjectFilter,
+                historyBeforeQuestion,
+                scopedChunks,
+                allowedSubjects,
+                responseLanguage,
+                cancellationToken);
+        }
 
         var citations = matches.Select(item => new SourceCitation
         {
@@ -337,28 +416,37 @@ public sealed class RagChatService : IRagChatService
 
         var matchedChunks = matches.Select(item => item.Chunk).ToList();
         var resolvedSubject = route.SelectedSubject ?? ResolveSubject(matchedChunks);
-        var answer = await _chatCompletionService.GenerateAnswerAsync(
-                         resolvedQuestion,
-                         resolvedSubject,
-                         historyBeforeQuestion,
-                         matchedChunks,
-                         responseLanguage,
-                         cancellationToken)
-                     ?? BuildGroundedAnswer(queryTerms, matchedChunks, responseLanguage);
+        var generatedAnswer = await _chatCompletionService.GenerateAnswerAsync(
+            resolvedQuestion,
+            resolvedSubject,
+            historyBeforeQuestion,
+            matchedChunks,
+            responseLanguage,
+            cancellationToken);
+        var answer = generatedAnswer ?? BuildGroundedAnswer(queryTerms, matchedChunks, responseLanguage);
 
         if (IsInsufficientDataAnswer(answer))
         {
-            return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
+            return await BuildInsufficientOrFineTunedAnswerAsync(
+                question,
+                resolvedSubject,
+                historyBeforeQuestion,
+                scopedChunks,
+                allowedSubjects,
+                responseLanguage,
+                cancellationToken);
         }
 
-        var contextText = string.Join("\n\n", matchedChunks.Select(chunk => chunk.Text));
-        if (!IsAnswerGrounded(answer, contextText, queryTerms))
+        if (!await IsAnswerGroundedAsync(resolvedQuestion, answer, matchedChunks, queryTerms, responseLanguage, cancellationToken))
         {
-            answer = BuildGroundedAnswer(queryTerms, matchedChunks, responseLanguage);
-            if (IsInsufficientDataAnswer(answer))
-            {
-                return new SingleQuestionAnswer(question, BuildOutOfScopeAnswer(responseLanguage), Array.Empty<SourceCitation>());
-            }
+            return await BuildInsufficientOrFineTunedAnswerAsync(
+                question,
+                resolvedSubject,
+                historyBeforeQuestion,
+                scopedChunks,
+                allowedSubjects,
+                responseLanguage,
+                cancellationToken);
         }
 
         return new SingleQuestionAnswer(question, answer, citations, resolvedSubject);
@@ -380,6 +468,353 @@ public sealed class RagChatService : IRagChatService
 
         return chunks
             .Where(chunk => normalizedAllowedSubjects.Any(subject => SubjectMatches(chunk.Subject, subject)))
+            .ToList();
+    }
+
+    private async Task<SingleQuestionAnswer> BuildInsufficientOrFineTunedAnswerAsync(
+        string question,
+        string? subject,
+        IReadOnlyList<ChatMessage> historyBeforeQuestion,
+        IReadOnlyList<DocumentChunk> subjectChunks,
+        IReadOnlyCollection<string>? allowedSubjects,
+        string responseLanguage,
+        CancellationToken cancellationToken)
+    {
+        var documentFallback = await TryBuildDocumentFallbackAnswerAsync(
+            question,
+            subject,
+            historyBeforeQuestion,
+            subjectChunks,
+            responseLanguage,
+            cancellationToken);
+        if (documentFallback is not null)
+        {
+            return documentFallback;
+        }
+
+        var fallback = await _fineTunedChatService.TryAnswerAsync(
+            question,
+            subject,
+            historyBeforeQuestion,
+            allowedSubjects,
+            cancellationToken);
+        if (fallback is null || string.IsNullOrWhiteSpace(fallback.Answer))
+        {
+            return new SingleQuestionAnswer(
+                question,
+                BuildOutOfScopeAnswer(responseLanguage),
+                Array.Empty<SourceCitation>(),
+                subject,
+                AnswerSource: "OutOfScope",
+                HasDirectCitation: false);
+        }
+
+        return new SingleQuestionAnswer(
+            question,
+            BuildFineTunedFallbackAnswer(fallback.Answer, responseLanguage),
+            Array.Empty<SourceCitation>(),
+            subject,
+            AnswerSource: "FineTunedFallback",
+            HasDirectCitation: false,
+            FallbackModel: fallback.ModelName);
+    }
+
+    private async Task<SingleQuestionAnswer?> TryBuildDocumentFallbackAnswerAsync(
+        string question,
+        string? subject,
+        IReadOnlyList<ChatMessage> historyBeforeQuestion,
+        IReadOnlyList<DocumentChunk> subjectChunks,
+        string responseLanguage,
+        CancellationToken cancellationToken)
+    {
+        if (subjectChunks.Count == 0)
+        {
+            return null;
+        }
+
+        if (TryBuildIndexedPartsAnswer(question, subjectChunks, responseLanguage) is { } indexedPartsAnswer)
+        {
+            return indexedPartsAnswer;
+        }
+
+        var fallbackChunks = SelectDocumentFallbackChunks(question, subjectChunks);
+        if (fallbackChunks.Count == 0)
+        {
+            return null;
+        }
+
+        var resolvedSubject = string.IsNullOrWhiteSpace(subject) ? ResolveSubject(fallbackChunks) : subject.Trim();
+        var queryTerms = ExtractTerms(question);
+        var answerSelectionTerms = new HashSet<string>(queryTerms, StringComparer.OrdinalIgnoreCase);
+        answerSelectionTerms.UnionWith(BuildDocumentFallbackTerms(question));
+        string? generatedAnswer = null;
+        try
+        {
+            generatedAnswer = await _chatCompletionService.GenerateAnswerAsync(
+                question,
+                resolvedSubject,
+                historyBeforeQuestion,
+                fallbackChunks,
+                responseLanguage,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            generatedAnswer = null;
+        }
+
+        var answer = string.IsNullOrWhiteSpace(generatedAnswer) || IsInsufficientDataAnswer(generatedAnswer)
+            ? BuildGroundedAnswer(answerSelectionTerms, fallbackChunks, responseLanguage)
+            : generatedAnswer.Trim();
+        if (IsInsufficientDataAnswer(answer))
+        {
+            return null;
+        }
+
+        if (!await IsAnswerGroundedAsync(question, answer, fallbackChunks, queryTerms, responseLanguage, cancellationToken))
+        {
+            return null;
+        }
+
+        return new SingleQuestionAnswer(
+            question,
+            answer,
+            BuildCitations(fallbackChunks, 0.74),
+            resolvedSubject,
+            AnswerSource: "Rag",
+            HasDirectCitation: true);
+    }
+
+    private static SingleQuestionAnswer? TryBuildIndexedPartsAnswer(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks,
+        string language)
+    {
+        if (!IsIndexedPartsQuestion(question) || chunks.Count == 0)
+        {
+            return null;
+        }
+
+        var grouped = chunks
+            .GroupBy(chunk => string.IsNullOrWhiteSpace(chunk.Chapter) ? "Kh\u00f4ng r\u00f5 ch\u01b0\u01a1ng" : chunk.Chapter.Trim(), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Min(chunk => chunk.ChunkIndex))
+            .Take(12)
+            .ToList();
+        if (grouped.Count == 0)
+        {
+            return null;
+        }
+
+        var subject = ResolveSubject(chunks);
+        var lines = grouped.Select(group =>
+        {
+            var sectionTitles = group
+                .Select(chunk => chunk.SectionTitle)
+                .Where(title => !string.IsNullOrWhiteSpace(title))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .ToList();
+            var suffix = sectionTitles.Count == 0 ? string.Empty : $" ({string.Join(", ", sectionTitles)})";
+            return language == "vi"
+                ? $"- {group.Key}{suffix}: {group.Count()} chunk"
+                : $"- {group.Key}{suffix}: {group.Count()} chunks";
+        });
+
+        var answer = language == "vi"
+            ? $"{ExtractSubjectCode(subject)} \u0111\u00e3 index c\u00e1c ch\u01b0\u01a1ng/ph\u1ea7n sau:\n\n{string.Join("\n", lines)}"
+            : $"{ExtractSubjectCode(subject)} has these indexed chapters/sections:\n\n{string.Join("\n", lines)}";
+
+        var citationChunks = grouped.Select(group => group.First()).Take(5).ToList();
+        return new SingleQuestionAnswer(
+            question,
+            answer,
+            BuildCitations(citationChunks, 0.9),
+            subject,
+            AnswerSource: "Rag",
+            HasDirectCitation: true);
+    }
+
+    private static bool IsIndexedPartsQuestion(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        return (normalized.Contains("index", StringComparison.Ordinal)
+                || normalized.Contains("da index", StringComparison.Ordinal)
+                || normalized.Contains("indexed", StringComparison.Ordinal))
+               && (normalized.Contains("chuong", StringComparison.Ordinal)
+                   || normalized.Contains("phan", StringComparison.Ordinal)
+                   || normalized.Contains("section", StringComparison.Ordinal)
+                   || normalized.Contains("chapter", StringComparison.Ordinal));
+    }
+
+    private static IReadOnlyList<DocumentChunk> SelectDocumentFallbackChunks(
+        string question,
+        IReadOnlyList<DocumentChunk> chunks)
+    {
+        var questionTerms = ExtractTerms(question);
+        var intentTerms = BuildDocumentFallbackTerms(question);
+        var terms = new HashSet<string>(questionTerms, StringComparer.OrdinalIgnoreCase);
+        terms.UnionWith(intentTerms);
+        if (terms.Count == 0)
+        {
+            return Array.Empty<DocumentChunk>();
+        }
+
+        return chunks
+            .Select(chunk =>
+            {
+                var textScore = CountSharedTerms(terms, chunk.Text);
+                var queryTextScore = CountSharedTerms(questionTerms, chunk.Text);
+                var intentTextScore = CountSharedTerms(intentTerms, chunk.Text);
+                var metadataScore = CountSharedTerms(terms, BuildChunkMetadataText(chunk));
+                var score = (intentTextScore * 2.0) + queryTextScore + (textScore * 0.3) + (metadataScore * 0.4);
+                return new { Chunk = chunk, Score = score, IntentTextScore = intentTextScore };
+            })
+            .Where(item => item.Score >= 1.0 && (intentTerms.Count == 0 || item.IntentTextScore > 0))
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Chunk.ChunkIndex)
+            .Select(item => item.Chunk)
+            .Take(6)
+            .ToList();
+    }
+
+    private static HashSet<string> BuildDocumentFallbackTerms(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        var terms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (normalized.Contains("danh gia", StringComparison.Ordinal)
+            || normalized.Contains("ty le", StringComparison.Ordinal)
+            || normalized.Contains("thi", StringComparison.Ordinal)
+            || normalized.Contains("assessment", StringComparison.Ordinal)
+            || normalized.Contains("exam", StringComparison.Ordinal))
+        {
+            terms.UnionWith(new[]
+            {
+                "assessment", "exam", "final", "quiz", "participation", "assignment", "weight", "percentage", "criteria", "grading",
+                "danh", "gia", "diem", "thi", "cuoi", "ky", "thuc", "hanh", "tham", "gia", "ty", "le"
+            });
+        }
+
+        if (normalized.Contains("tai lieu", StringComparison.Ordinal)
+            || normalized.Contains("nguon", StringComparison.Ordinal)
+            || normalized.Contains("resource", StringComparison.Ordinal)
+            || normalized.Contains("material", StringComparison.Ordinal)
+            || normalized.Contains("textbook", StringComparison.Ordinal))
+        {
+            terms.UnionWith(new[]
+            {
+                "resource", "resources", "material", "materials", "textbook", "book", "url", "website", "youtube", "clip",
+                "tai", "lieu", "nguon", "hoc", "giao", "trinh", "tham", "khao"
+            });
+        }
+
+        if (normalized.Contains("sinh vien", StringComparison.Ordinal)
+            || normalized.Contains("can lam", StringComparison.Ordinal)
+            || normalized.Contains("lam gi", StringComparison.Ordinal)
+            || normalized.Contains("student", StringComparison.Ordinal))
+        {
+            terms.UnionWith(new[]
+            {
+                "student", "students", "learner", "learners", "activity", "activities", "practice", "assignment", "completion", "criteria",
+                "sinh", "vien", "lam", "thuc", "hanh", "bai", "tap", "hoat", "dong", "yeu", "cau"
+            });
+        }
+
+        if (normalized.Contains("chuan dau ra", StringComparison.Ordinal)
+            || normalized.Contains("outcome", StringComparison.Ordinal)
+            || normalized.Contains("clo", StringComparison.Ordinal))
+        {
+            terms.UnionWith(new[]
+            {
+                "clo", "outcome", "outcomes", "learning", "objective", "objectives", "knowledge", "skill",
+                "chuan", "dau", "ra", "muc", "tieu", "kien", "thuc", "ky", "nang"
+            });
+        }
+
+        return terms;
+    }
+
+    private static IReadOnlyList<SourceCitation> BuildCitations(IReadOnlyList<DocumentChunk> chunks, double score)
+    {
+        return chunks
+            .GroupBy(chunk => new { chunk.DocumentId, chunk.ChunkIndex })
+            .Select(group => group.First())
+            .Take(5)
+            .Select(chunk => new SourceCitation
+            {
+                DocumentId = chunk.DocumentId,
+                FileName = chunk.FileName,
+                Subject = chunk.Subject,
+                Chapter = chunk.Chapter,
+                ChunkIndex = chunk.ChunkIndex,
+                Score = score,
+                Excerpt = CreateExcerpt(chunk.Text)
+            })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<ScoredChunk>> BuildCandidateMatchesAsync(
+        IReadOnlyList<string> retrievalQueries,
+        IReadOnlySet<string> queryTerms,
+        IReadOnlySet<string> contentTerms,
+        IReadOnlyList<DocumentChunk> scopedChunks,
+        CancellationToken cancellationToken)
+    {
+        var needsContentEvidence = contentTerms.Count > 0;
+        var minimumSharedTerms = contentTerms.Count >= 4 ? 2 : 1;
+        var queryEmbeddings = new List<Dictionary<int, double>>();
+
+        foreach (var query in retrievalQueries.Where(query => !string.IsNullOrWhiteSpace(query)).Take(4))
+        {
+            queryEmbeddings.Add(await _embeddingService.EmbedAsync(query, cancellationToken));
+        }
+
+        if (queryEmbeddings.Count == 0)
+        {
+            queryEmbeddings.Add(await _embeddingService.EmbedAsync(string.Join(" ", queryTerms), cancellationToken));
+        }
+
+        var courseCodes = ExtractCourseCodes(string.Join("\n", retrievalQueries));
+
+        return scopedChunks
+            .Select(chunk =>
+            {
+                var vectorScore = queryEmbeddings.Count == 0
+                    ? 0
+                    : queryEmbeddings.Max(embedding => _embeddingService.CosineSimilarity(embedding, chunk.Embedding));
+                var textSharedTerms = CountSharedTerms(queryTerms, chunk.Text);
+                var contentSharedTerms = CountSharedTerms(contentTerms, chunk.Text);
+                var metadataSharedTerms = CountSharedTerms(queryTerms, BuildChunkMetadataText(chunk));
+                var lexicalScore = CalculateLexicalScore(
+                    textSharedTerms,
+                    metadataSharedTerms,
+                    contentSharedTerms,
+                    queryTerms.Count,
+                    contentTerms.Count);
+                var courseCodeMatched = courseCodes.Count > 0
+                                        && CountSharedTerms(courseCodes, BuildChunkMetadataText(chunk)) > 0;
+
+                return new ScoredChunk(
+                    chunk,
+                    CalculateRetrievalScore(vectorScore, lexicalScore, courseCodeMatched),
+                    textSharedTerms,
+                    contentSharedTerms,
+                    textSharedTerms + metadataSharedTerms,
+                    metadataSharedTerms,
+                    Math.Clamp(vectorScore, 0, 1),
+                    lexicalScore);
+            })
+            .Where(item => HasRetrievalEvidence(item, needsContentEvidence, minimumSharedTerms))
+            .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.ContentSharedTerms)
+            .ThenByDescending(item => item.TextSharedTerms)
+            .ThenByDescending(item => item.MetadataSharedTerms)
+            .ThenByDescending(item => item.VectorScore)
+            .Take(RerankCandidateK)
             .ToList();
     }
 
@@ -787,6 +1222,11 @@ public sealed class RagChatService : IRagChatService
             return fallback;
         }
 
+        if (!_chatCompletionService.IsEnabled)
+        {
+            return fallback;
+        }
+
         IReadOnlyList<ChatChunkRerankResult> reranked;
         try
         {
@@ -807,7 +1247,7 @@ public sealed class RagChatService : IRagChatService
 
         if (reranked.Count == 0)
         {
-            return fallback;
+            return Array.Empty<ScoredChunk>();
         }
 
         var selected = new List<ScoredChunk>();
@@ -822,6 +1262,11 @@ public sealed class RagChatService : IRagChatService
 
             var candidate = candidates[candidateIndex];
             var geminiConfidence = Math.Clamp(decision.Score, 0, 1);
+            if (geminiConfidence < MinimumGeminiRerankScore)
+            {
+                continue;
+            }
+
             var boostedScore = Math.Round(Math.Max(candidate.Score, 0.82 + (geminiConfidence * 0.18)), 3);
             selected.Add(candidate with { Score = boostedScore });
             if (selected.Count == TopK)
@@ -830,17 +1275,7 @@ public sealed class RagChatService : IRagChatService
             }
         }
 
-        if (selected.Count < TopK)
-        {
-            var selectedKeys = selected
-                .Select(item => (item.Chunk.DocumentId, item.Chunk.ChunkIndex))
-                .ToHashSet();
-            selected.AddRange(fallback
-                .Where(item => selectedKeys.Add((item.Chunk.DocumentId, item.Chunk.ChunkIndex)))
-                .Take(TopK - selected.Count));
-        }
-
-        return selected.Count == 0 ? fallback : selected;
+        return selected;
     }
 
     private static IReadOnlyList<ScoredChunk> RerankLocally(
@@ -863,6 +1298,7 @@ public sealed class RagChatService : IRagChatService
                 var rerankScore = CalculateLocalRerankScore(item, queryTerms, contentTerms, factIntent, courseCodes);
                 return item with { Score = Math.Round(Math.Max(item.Score, rerankScore), 3) };
             })
+            .Where(item => HasStrongLocalRerankEvidence(item, contentTerms))
             .OrderByDescending(item => item.Score)
             .ThenByDescending(item => item.ContentSharedTerms)
             .ThenByDescending(item => item.TextSharedTerms)
@@ -893,6 +1329,26 @@ public sealed class RagChatService : IRagChatService
             + (metadataCoverage * 0.06)
             + factBoost
             + courseCodeBoost);
+    }
+
+    private static bool HasStrongLocalRerankEvidence(
+        ScoredChunk candidate,
+        IReadOnlySet<string> contentTerms)
+    {
+        if (candidate.Score < MinimumLocalRerankScore)
+        {
+            return false;
+        }
+
+        if (contentTerms.Count == 0)
+        {
+            return candidate.TextSharedTerms > 0 || candidate.VectorScore >= 0.72;
+        }
+
+        var requiredContentTerms = contentTerms.Count >= 3 ? 2 : 1;
+        return candidate.ContentSharedTerms >= requiredContentTerms
+               || (candidate.ContentSharedTerms > 0 && candidate.TextSharedTerms >= requiredContentTerms)
+               || (candidate.MetadataSharedTerms > 0 && candidate.TextSharedTerms > 0 && candidate.VectorScore >= 0.62);
     }
 
     private static IReadOnlyList<string> SplitQuestionBatch(string input)
@@ -998,7 +1454,10 @@ public sealed class RagChatService : IRagChatService
         IReadOnlyList<SourceCitation> Citations,
         string? ResolvedSubject = null,
         bool NeedsClarification = false,
-        IReadOnlyList<string>? SubjectOptions = null);
+        IReadOnlyList<string>? SubjectOptions = null,
+        string AnswerSource = "Rag",
+        bool HasDirectCitation = true,
+        string? FallbackModel = null);
 
     private enum ExactFactIntent
     {
@@ -1031,7 +1490,10 @@ public sealed class RagChatService : IRagChatService
         ChatSessionOwnerInfo? ownerInfo = null,
         string? resolvedSubject = null,
         bool needsClarification = false,
-        IReadOnlyList<string>? subjectOptions = null)
+        IReadOnlyList<string>? subjectOptions = null,
+        string answerSource = "Rag",
+        bool hasDirectCitation = true,
+        string? fallbackModel = null)
     {
         await _repository.AddMessageAsync(sessionId, new ChatMessage
         {
@@ -1041,7 +1503,153 @@ public sealed class RagChatService : IRagChatService
         }, cancellationToken, ownerInfo);
 
         var session = await _repository.GetOrCreateSessionAsync(sessionId, cancellationToken, ownerInfo);
-        return new ChatAnswer(answer, citations, session.Messages, resolvedSubject, needsClarification, subjectOptions ?? Array.Empty<string>());
+        return new ChatAnswer(
+            answer,
+            citations,
+            session.Messages,
+            resolvedSubject,
+            needsClarification,
+            subjectOptions ?? Array.Empty<string>(),
+            answerSource,
+            hasDirectCitation,
+            fallbackModel);
+    }
+
+    private async Task<QueryIntentDecision> ClassifyQuestionIntentAsync(
+        string question,
+        IReadOnlyList<ChatMessage> history,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var localDecision = ClassifyQuestionLocally(question);
+        if (localDecision.Intent is ChatQueryIntent.Unsafe or ChatQueryIntent.SmallTalk or ChatQueryIntent.ExternalQuestion)
+        {
+            return localDecision;
+        }
+
+        QueryIntentDecision modelDecision;
+        try
+        {
+            modelDecision = await _chatCompletionService.ClassifyQuestionAsync(question, history, language, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return localDecision;
+        }
+
+        if (modelDecision.Confidence < 0.7)
+        {
+            return localDecision;
+        }
+
+        if (HasDocumentQuestionSignal(question)
+            && modelDecision.Intent is ChatQueryIntent.SmallTalk or ChatQueryIntent.ExternalQuestion)
+        {
+            return localDecision;
+        }
+
+        return modelDecision;
+    }
+
+    private static QueryIntentDecision ClassifyQuestionLocally(string question)
+    {
+        if (LooksLikePromptInjection(question))
+        {
+            return new QueryIntentDecision(ChatQueryIntent.Unsafe, 1, "prompt-injection-signal");
+        }
+
+        if (IsCasualChat(question) && !HasDocumentQuestionSignal(question))
+        {
+            return new QueryIntentDecision(ChatQueryIntent.SmallTalk, 0.95, "local-small-talk");
+        }
+
+        if (LooksLikeExternalQuestion(question) && !HasDocumentQuestionSignal(question))
+        {
+            return new QueryIntentDecision(ChatQueryIntent.ExternalQuestion, 0.95, "local-external-question");
+        }
+
+        return new QueryIntentDecision(ChatQueryIntent.DocumentQuestion, 0.6, "default-document-question");
+    }
+
+    private async Task<IReadOnlyList<string>> BuildRetrievalQueriesAsync(
+        string question,
+        IReadOnlyList<ChatMessage> history,
+        CancellationToken cancellationToken)
+    {
+        var queries = new List<string> { question.Trim() };
+
+        try
+        {
+            var rewrittenQueries = await _chatCompletionService.RewriteQueriesAsync(question, history, cancellationToken);
+            foreach (var rewritten in rewrittenQueries)
+            {
+                AddDistinctQuery(queries, rewritten);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Retrieval can still run with the original question.
+        }
+
+        return queries.Count == 0 ? new[] { question.Trim() } : queries.Take(4).ToList();
+    }
+
+    private static void AddDistinctQuery(List<string> queries, string? query)
+    {
+        var trimmed = query?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return;
+        }
+
+        if (!queries.Any(existing => existing.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            queries.Add(trimmed);
+        }
+    }
+
+    private async Task<bool> IsAnswerGroundedAsync(
+        string question,
+        string answer,
+        IReadOnlyList<DocumentChunk> chunks,
+        IReadOnlySet<string> questionTerms,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var contextText = string.Join("\n\n", chunks.Select(chunk => chunk.Text));
+        if (!IsAnswerGrounded(answer, contextText, questionTerms))
+        {
+            return false;
+        }
+
+        GroundingDecision? decision;
+        try
+        {
+            decision = await _chatCompletionService.ValidateGroundingAsync(
+                question,
+                answer,
+                chunks,
+                language,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return true;
+        }
+
+        return decision is null || decision.IsGrounded || decision.Confidence < 0.65;
     }
 
     private static bool LooksLikePromptInjection(string question)
@@ -1059,6 +1667,19 @@ public sealed class RagChatService : IRagChatService
 
         return CasualChatSignals.Contains(compact)
                || (terms.Count <= 2 && CasualChatSignals.Any(signal => compactTokens.Contains(signal, StringComparer.Ordinal)));
+    }
+
+    private static bool LooksLikeExternalQuestion(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        return ExternalQuestionSignals.Any(signal => normalized.Contains(signal, StringComparison.Ordinal));
+    }
+
+    private static bool HasDocumentQuestionSignal(string question)
+    {
+        var normalized = NormalizeQuestion(question);
+        return ExtractCourseCodes(question).Count > 0
+               || DocumentQuestionSignals.Any(signal => normalized.Contains(signal, StringComparison.Ordinal));
     }
 
     private static bool IsBotIdentityQuestion(string question)
@@ -1085,6 +1706,26 @@ public sealed class RagChatService : IRagChatService
         return language == "vi"
             ? "M\u00ecnh kh\u00f4ng \u0111\u1ee7 d\u1eef li\u1ec7u trong t\u00e0i li\u1ec7u \u0111\u1ec3 tr\u1ea3 l\u1eddi c\u00e2u h\u1ecfi n\u00e0y."
             : "I do not have enough data in the documents to answer this question.";
+    }
+
+    private static string BuildExternalScopeAnswer(string language)
+    {
+        return language == "vi"
+            ? "M\u00ecnh ch\u1ec9 h\u1ed7 tr\u1ee3 h\u1ecfi \u0111\u00e1p d\u1ef1a tr\u00ean t\u00e0i li\u1ec7u \u0111\u00e3 index. C\u00e2u n\u00e0y n\u1eb1m ngo\u00e0i ph\u1ea1m vi t\u00e0i li\u1ec7u, n\u00ean m\u00ecnh kh\u00f4ng truy xu\u1ea5t ngu\u1ed3n \u0111\u1ec3 tr\u1ea3 l\u1eddi."
+            : "I only answer from indexed documents. This question is outside the document scope, so I will not retrieve sources for it.";
+    }
+
+    private static string BuildFineTunedFallbackAnswer(string answer, string language)
+    {
+        var trimmed = answer.Trim();
+        if (language == "vi")
+        {
+            return "D\u1ef1a tr\u00ean b\u1ed9 c\u00e2u h\u1ecfi \u0111\u00e3 hu\u1ea5n luy\u1ec7n, m\u00ecnh c\u00f3 th\u1ec3 tr\u1ea3 l\u1eddi nh\u01b0 sau. C\u00e2u tr\u1ea3 l\u1eddi n\u00e0y kh\u00f4ng c\u00f3 tr\u00edch d\u1eabn tr\u1ef1c ti\u1ebfp t\u1eeb t\u00e0i li\u1ec7u indexed:\n\n"
+                   + trimmed;
+        }
+
+        return "Based on the trained Q&A set, I can answer as follows. This answer does not have a direct citation from indexed documents:\n\n"
+               + trimmed;
     }
 
     private static string BuildBotIdentityAnswer(string language)
@@ -1353,7 +1994,7 @@ public sealed class RagChatService : IRagChatService
 
         var hasTextEvidence = candidate.TextSharedTerms >= minimumSharedTerms
                               || candidate.ContentSharedTerms > 0
-                              || candidate.MetadataSharedTerms > 0;
+                              || candidate.VectorScore >= 0.72;
         if (!hasTextEvidence)
         {
             return false;
@@ -1361,13 +2002,14 @@ public sealed class RagChatService : IRagChatService
 
         return !needsContentEvidence
                || candidate.ContentSharedTerms > 0
-               || (candidate.MetadataSharedTerms > 0 && candidate.TextSharedTerms > 0);
+               || candidate.TextSharedTerms >= minimumSharedTerms + 1
+               || (candidate.MetadataSharedTerms > 0 && candidate.VectorScore >= 0.62);
     }
 
-    private static double CalculateRetrievalScore(double vectorScore, double lexicalScore)
+    private static double CalculateRetrievalScore(double vectorScore, double lexicalScore, bool courseCodeMatched)
     {
         var normalizedVector = Math.Clamp(vectorScore, 0, 1);
-        return Clamp01((normalizedVector * 0.52) + (lexicalScore * 0.48));
+        return Clamp01((normalizedVector * 0.46) + (lexicalScore * 0.50) + (courseCodeMatched ? 0.04 : 0));
     }
 
     private static double CalculateLexicalScore(

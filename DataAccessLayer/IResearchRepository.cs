@@ -6,6 +6,7 @@ public interface IResearchRepository
     Task<ResearchExperimentDetail?> GetExperimentAsync(Guid experimentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ResearchOption>> GetEmbeddingModelsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ResearchOption>> GetChunkingStrategiesAsync(CancellationToken cancellationToken = default);
+    Task<ResearchFineTunedModelInfo?> GetLatestFineTunedModelAsync(CancellationToken cancellationToken = default);
     Task<Guid> CreateExperimentAsync(CreateResearchExperimentRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ResearchRunSummary>> GetRunnableRunsAsync(Guid experimentId, CancellationToken cancellationToken = default);
     Task SetExperimentStatusAsync(Guid experimentId, string status, CancellationToken cancellationToken = default);

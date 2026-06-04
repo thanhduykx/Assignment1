@@ -339,7 +339,8 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             .AsNoTracking()
             .Include(session => session.Messages.OrderBy(message => message.CreatedAt))
             .ThenInclude(message => message.Citations)
-            .OrderByDescending(session => session.UpdatedAt)
+            .OrderByDescending(session => session.IsStarred)
+            .ThenByDescending(session => session.UpdatedAt)
             .ToListAsync(cancellationToken);
 
         return sessions.Select(KnowledgeSqlMapper.ToModel).ToList();
@@ -353,7 +354,8 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             .Where(session => session.OwnerUserId == ownerUserId)
             .Include(session => session.Messages.OrderBy(message => message.CreatedAt))
             .ThenInclude(message => message.Citations)
-            .OrderByDescending(session => session.UpdatedAt)
+            .OrderByDescending(session => session.IsStarred)
+            .ThenByDescending(session => session.UpdatedAt)
             .ToListAsync(cancellationToken);
 
         return sessions.Select(KnowledgeSqlMapper.ToModel).ToList();
@@ -415,6 +417,70 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         return KnowledgeSqlMapper.ToModel(session);
     }
 
+    public async Task<ChatSession?> RenameSessionAsync(
+        Guid sessionId,
+        string title,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await using var context = CreateContext();
+        var session = await context.Sessions
+            .Include(item => item.Messages.OrderBy(message => message.CreatedAt))
+            .ThenInclude(message => message.Citations)
+            .FirstOrDefaultAsync(item => item.Id == sessionId, cancellationToken);
+        if (session is null)
+        {
+            return null;
+        }
+
+        EnsureSessionOwner(session, ownerInfo);
+        session.Title = NormalizeSessionTitle(title);
+        session.UpdatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+        return KnowledgeSqlMapper.ToModel(session);
+    }
+
+    public async Task<ChatSession?> SetSessionStarredAsync(
+        Guid sessionId,
+        bool isStarred,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await using var context = CreateContext();
+        var session = await context.Sessions
+            .Include(item => item.Messages.OrderBy(message => message.CreatedAt))
+            .ThenInclude(message => message.Citations)
+            .FirstOrDefaultAsync(item => item.Id == sessionId, cancellationToken);
+        if (session is null)
+        {
+            return null;
+        }
+
+        EnsureSessionOwner(session, ownerInfo);
+        session.IsStarred = isStarred;
+        session.UpdatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+        return KnowledgeSqlMapper.ToModel(session);
+    }
+
+    public async Task<bool> DeleteSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default,
+        ChatSessionOwnerInfo? ownerInfo = null)
+    {
+        await using var context = CreateContext();
+        var session = await context.Sessions.FirstOrDefaultAsync(item => item.Id == sessionId, cancellationToken);
+        if (session is null)
+        {
+            return false;
+        }
+
+        EnsureSessionOwner(session, ownerInfo);
+        context.Sessions.Remove(session);
+        await context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task AddMessageAsync(
         Guid sessionId,
         ChatMessage message,
@@ -428,6 +494,7 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             session = new KnowledgeSqlChatSession
             {
                 Id = sessionId,
+                Title = IsUserMessage(message) ? BuildSessionTitle(message.Content) : string.Empty,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
                 OwnerUserId = ownerInfo?.UserId,
@@ -442,6 +509,11 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         }
 
         session.UpdatedAt = DateTimeOffset.UtcNow;
+        if (string.IsNullOrWhiteSpace(session.Title) && IsUserMessage(message))
+        {
+            session.Title = BuildSessionTitle(message.Content);
+        }
+
         var messageEntity = KnowledgeSqlMapper.ToEntity(sessionId, message);
         context.Messages.Add(messageEntity);
         context.Citations.AddRange(message.Citations.Select(citation => KnowledgeSqlMapper.ToEntity(messageEntity.Id, citation)));
@@ -479,6 +551,8 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
             context.Sessions.Add(new KnowledgeSqlChatSession
             {
                 Id = session.Id,
+                Title = session.Title,
+                IsStarred = session.IsStarred,
                 CreatedAt = session.CreatedAt,
                 UpdatedAt = session.UpdatedAt,
                 OwnerUserId = session.OwnerUserId,
@@ -495,6 +569,30 @@ public sealed class SqlKnowledgeRepository : IKnowledgeRepository
         }
 
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsUserMessage(ChatMessage message)
+    {
+        return message.Role.Equals("user", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSessionTitle(string content)
+    {
+        var normalized = NormalizeSessionTitle(content);
+        return normalized.Length <= 56 ? normalized : $"{normalized[..56]}...";
+    }
+
+    private static string NormalizeSessionTitle(string title)
+    {
+        var normalized = string.Join(' ', (title ?? string.Empty)
+            .Trim()
+            .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("Session title is required.");
+        }
+
+        return normalized.Length <= 200 ? normalized : normalized[..200];
     }
 
     private KnowledgeSqlDbContext CreateContext()

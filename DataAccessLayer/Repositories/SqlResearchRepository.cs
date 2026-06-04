@@ -123,6 +123,25 @@ public sealed class SqlResearchRepository : IResearchRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<ResearchFineTunedModelInfo?> GetLatestFineTunedModelAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = CreateContext();
+        return await context.ResearchFineTunedModels
+            .AsNoTracking()
+            .Where(item => item.Status == "Ready" || item.Status == "Trained")
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new ResearchFineTunedModelInfo
+            {
+                Id = item.Id,
+                Name = item.Name,
+                Endpoint = item.Endpoint,
+                Status = item.Status,
+                ConfigJson = item.ConfigJson,
+                CreatedAt = item.CreatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<Guid> CreateExperimentAsync(CreateResearchExperimentRequest request, CancellationToken cancellationToken = default)
     {
         await using var context = CreateContext();

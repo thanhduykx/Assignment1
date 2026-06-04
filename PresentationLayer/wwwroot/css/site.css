@@ -4997,6 +4997,103 @@ body.rbl-body {
   color: var(--rbl-muted);
 }
 
+.chat-session-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.chat-session-entry .chat-session-item {
+  min-width: 0;
+}
+
+.chat-session-entry.is-starred .chat-session-item {
+  border-color: rgba(0, 43, 128, 0.32);
+  background: #eef4ff;
+}
+
+.session-star {
+  display: inline-block;
+  overflow: visible;
+  margin-right: 4px;
+  color: #00327d;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1;
+  text-overflow: clip;
+  vertical-align: -0.16em;
+  white-space: normal;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: initial;
+}
+
+.chat-session-menu-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  border: 1px solid var(--rbl-border);
+  border-radius: var(--rbl-radius);
+  background: #fff;
+  color: var(--rbl-muted);
+  cursor: pointer;
+}
+
+.chat-session-menu-button:hover,
+.chat-session-menu-button:focus {
+  border-color: var(--rbl-primary);
+  color: var(--rbl-primary);
+  outline: none;
+}
+
+.chat-session-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: none;
+  min-width: 158px;
+  padding: 6px;
+  border: 1px solid var(--rbl-border);
+  border-radius: var(--rbl-radius);
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
+}
+
+.chat-session-menu.is-open {
+  display: grid;
+  gap: 2px;
+}
+
+.chat-session-menu button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rbl-text);
+  font: inherit;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-session-menu button:hover,
+.chat-session-menu button:focus {
+  background: var(--rbl-surface-low);
+  outline: none;
+}
+
+.chat-session-menu button.danger {
+  color: #b42318;
+}
+
 .rbl-session-storage {
   display: grid;
   gap: 8px;
