@@ -56,7 +56,7 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         IReadOnlyList<ChatMessage> history,
         CancellationToken cancellationToken = default)
     {
-        if (!_enabled || string.IsNullOrWhiteSpace(question) || history.Count == 0)
+        if (!_enabled || string.IsNullOrWhiteSpace(question))
         {
             return question;
         }

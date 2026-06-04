@@ -65,6 +65,40 @@ public sealed class AdminController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateSubject(CreateAdminSubjectViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["Error"] = FirstModelError("Could not create this subject.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var subject = await _knowledge.UpsertSubjectAsync(
+                subjectId: null,
+                code: model.Code,
+                name: model.Name,
+                description: model.Description,
+                cancellationToken: cancellationToken);
+
+            TempData["Success"] = $"Created subject {subject.DisplayName}.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            TempData["Error"] = ToAdminUserError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not create subject {Code}", model.Code);
+            TempData["Error"] = "Could not create this subject.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateName(UpdateUserNameViewModel model, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
@@ -280,6 +314,14 @@ public sealed class AdminController : Controller
         if (message.Contains("Subject not found", StringComparison.OrdinalIgnoreCase))
         {
             return "Subject not found.";
+        }
+
+        if (message.Contains("Subject code is required", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Subject code already exists", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Subject name", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Description", StringComparison.OrdinalIgnoreCase))
+        {
+            return message;
         }
 
         if (message.Contains("Only lecturers", StringComparison.OrdinalIgnoreCase))

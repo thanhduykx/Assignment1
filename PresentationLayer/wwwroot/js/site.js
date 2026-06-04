@@ -372,7 +372,7 @@ function getChatSuggestions(language = getLanguage()) {
   const asked = readAskedQuestions();
   return getChatSuggestionItems()
     .filter((item) => !questionWasAsked(item, asked))
-    .slice(0, 4)
+    .slice(0, 6)
     .map((item) => language === "vi" ? item.vi : item.en)
     .filter(Boolean);
 }
@@ -628,6 +628,31 @@ function buildSubjectQuestionItems(subject) {
       id: `${normalizeSubjectForCompare(trimmedSubject)}-assessment`,
       en: `How is ${trimmedSubject} assessed?`,
       vi: `${trimmedSubject} \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 nh\u01b0 th\u1ebf n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-outcomes`,
+      en: `What learning outcomes does ${trimmedSubject} mention?`,
+      vi: `${trimmedSubject} c\u00f3 chu\u1ea9n \u0111\u1ea7u ra n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-materials`,
+      en: `What materials or resources are used in ${trimmedSubject}?`,
+      vi: `${trimmedSubject} d\u00f9ng t\u00e0i li\u1ec7u ho\u1eb7c ngu\u1ed3n h\u1ecdc n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-student-tasks`,
+      en: `What does the syllabus say students need to do in ${trimmedSubject}?`,
+      vi: `Sinh vi\u00ean c\u1ea7n l\u00e0m g\u00ec trong ${trimmedSubject}?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-exams`,
+      en: `What exam or assessment percentages are listed for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} c\u00f3 t\u1ef7 l\u1ec7 thi ho\u1eb7c \u0111\u00e1nh gi\u00e1 n\u00e0o?`
+    },
+    {
+      id: `${normalizeSubjectForCompare(trimmedSubject)}-chapters`,
+      en: `Which chapters or sections are indexed for ${trimmedSubject}?`,
+      vi: `${trimmedSubject} \u0111\u00e3 index nh\u1eefng ch\u01b0\u01a1ng ho\u1eb7c ph\u1ea7n n\u00e0o?`
     }
   ];
 }
@@ -685,22 +710,22 @@ function renderRelatedQuestions() {
       continue;
     }
 
-    if (available.length > 4 && currentQuestions.has(normalized)) {
+    if (available.length > 8 && currentQuestions.has(normalized)) {
       continue;
     }
 
     picked.push(item);
-    if (picked.length === 4) {
+    if (picked.length === 8) {
       break;
     }
   }
 
-  if (picked.length < 4) {
+  if (picked.length < 8) {
     for (const item of ordered) {
       if (!picked.some((pickedItem) => pickedItem.id === item.id)) {
         picked.push(item);
       }
-      if (picked.length === 4) {
+      if (picked.length === 8) {
         break;
       }
     }

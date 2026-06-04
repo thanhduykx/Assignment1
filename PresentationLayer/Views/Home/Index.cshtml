@@ -186,43 +186,6 @@
                 </form>
             </section>
         }
-
-        <aside class="rbl-storage-panel">
-            <div>
-                <span class="rbl-section-label" data-i18n="documents.uploadedSize">Dung lượng đã upload</span>
-                <h2>@FormatBytes(totalUploadedBytes)</h2>
-            </div>
-            <div class="rbl-storage-stats">
-                <article>
-                    <span data-i18n="documents.totalUploaded">Tổng đã upload</span>
-                    <strong>@FormatBytes(totalUploadedBytes)</strong>
-                </article>
-                <article>
-                    <span data-i18n="documents.statsDocuments">Tài liệu</span>
-                    <strong>@totalDocuments</strong>
-                </article>
-                <article>
-                    <span>Chunks</span>
-                    <strong>@totalChunks</strong>
-                </article>
-                <article>
-                    <span>Indexed</span>
-                    <strong>@Model.IndexedDocumentCount</strong>
-                </article>
-                <article>
-                    <span>Processing</span>
-                    <strong>@Model.ProcessingDocumentCount</strong>
-                </article>
-                <article>
-                    <span>Failed</span>
-                    <strong>@Model.FailedDocumentCount</strong>
-                </article>
-                <article>
-                    <span>Avg chunks/indexed doc</span>
-                    <strong>@averageChunks.ToString("0.#")</strong>
-                </article>
-            </div>
-        </aside>
     </div>
     }
 
@@ -313,29 +276,40 @@
         }
         else
         {
-            <div class="rbl-catalog-list">
-                    @foreach (var subject in courseCatalog)
-                    {
-                        <article class="rbl-catalog-subject">
-                            <div class="rbl-catalog-subject-head">
-                                <div>
-                                    <span class="rbl-catalog-code">@subject.Code</span>
-                                    <h3>@subject.Name</h3>
-                                    <p>@(string.IsNullOrWhiteSpace(subject.Description) ? "Chưa có mô tả." : subject.Description)</p>
-                                    <span class="rbl-owner-chip" title="@subject.OwnerEmail">Phụ trách: @PersonLabel(subject.OwnerName, "Chưa phân công")</span>
-                                </div>
-                                @if (isAdmin)
-                                {
+            <div class="rbl-catalog-list rbl-catalog-list--compact">
+                <div class="rbl-catalog-list-head" aria-hidden="true">
+                    <span>Môn học</span>
+                    <span>Phụ trách</span>
+                    <span>Chương</span>
+                    <span>Chi tiết</span>
+                </div>
+                @foreach (var subject in courseCatalog)
+                {
+                    <details class="rbl-catalog-subject rbl-catalog-subject--compact">
+                        <summary class="rbl-catalog-summary">
+                            <span class="rbl-catalog-summary-main">
+                                <span class="rbl-catalog-code">@subject.Code</span>
+                                <span class="rbl-catalog-title-block">
+                                    <strong>@subject.Name</strong>
+                                    <small>@(string.IsNullOrWhiteSpace(subject.Description) ? "Chưa có mô tả." : subject.Description)</small>
+                                </span>
+                            </span>
+                            <span class="rbl-owner-chip" title="@subject.OwnerEmail">Phụ trách: @PersonLabel(subject.OwnerName, "Chưa phân công")</span>
+                            <span class="rbl-catalog-count-chip">@subject.Chapters.Count chương</span>
+                            <span class="rbl-catalog-toggle-text">Mở</span>
+                        </summary>
+
+                        <div class="rbl-catalog-detail">
+                            @if (isAdmin)
+                            {
+                                <div class="rbl-catalog-detail-actions">
                                     <form asp-action="DeleteSubject" method="post" class="rbl-catalog-delete">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="id" value="@subject.Id" />
                                         <button type="submit" class="rbl-small-button rbl-small-button--danger">Xóa môn</button>
                                     </form>
-                                }
-                            </div>
+                                </div>
 
-                            @if (isAdmin)
-                            {
                                 <form asp-action="SaveSubject" method="post" class="rbl-catalog-edit">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="Id" value="@subject.Id" />
@@ -416,8 +390,9 @@
                                     }
                                 }
                             </div>
-                        </article>
-                    }
+                        </div>
+                    </details>
+                }
             </div>
         }
     </section>

@@ -66,6 +66,32 @@
         </form>
     </section>
 
+    <section class="rbl-admin-create-user">
+        <div>
+            <span class="rbl-section-label">Create subject</span>
+            <h3>Add a course subject</h3>
+        </div>
+        <form asp-action="CreateSubject" method="post" class="rbl-admin-create-form rbl-admin-subject-form">
+            @Html.AntiForgeryToken()
+            <label class="rbl-field">
+                <span>Subject code</span>
+                <input name="Code" maxlength="32" placeholder="IOT102" autocomplete="off" />
+            </label>
+            <label class="rbl-field">
+                <span>Subject name</span>
+                <input name="Name" maxlength="255" placeholder="Internet of Things" autocomplete="off" />
+            </label>
+            <label class="rbl-field">
+                <span>Description</span>
+                <input name="Description" maxlength="1000" placeholder="Optional" autocomplete="off" />
+            </label>
+            <button type="submit" class="rbl-submit-button">
+                <span class="material-symbols-outlined" aria-hidden="true">library_add</span>
+                Create subject
+            </button>
+        </form>
+    </section>
+
     @if (Model.Users.Count == 0)
     {
         <div class="rbl-empty-state compact">

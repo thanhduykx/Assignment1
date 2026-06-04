@@ -20,7 +20,7 @@
             new { En = "What can I ask from the document repository?", Vi = "Tôi có thể hỏi gì từ kho tài liệu?" }
         }
         : subjectOptions
-            .Take(4)
+            .Take(6)
             .Select(subject => new
             {
                 En = $"What is {subject} about?",
@@ -30,12 +30,16 @@
     var relatedQuestions = subjectOptions.Count == 0
         ? Array.Empty<(string En, string Vi)>()
         : subjectOptions
-            .Take(8)
+            .Take(12)
             .SelectMany(subject => new[]
             {
+                ($"How many credits does {subject} have?", $"{subject} có bao nhiêu tín chỉ?"),
                 ($"What is {subject} about?", $"{subject} là môn gì?"),
                 ($"What are the main contents of {subject}?", $"Nội dung chính của {subject} gồm những gì?"),
-                ($"How is {subject} assessed?", $"{subject} được đánh giá như thế nào?")
+                ($"How is {subject} assessed?", $"{subject} được đánh giá như thế nào?"),
+                ($"What learning outcomes does {subject} mention?", $"{subject} có chuẩn đầu ra nào?"),
+                ($"What materials or resources are used in {subject}?", $"{subject} dùng tài liệu hoặc nguồn học nào?"),
+                ($"What does the syllabus say students need to do in {subject}?", $"Sinh viên cần làm gì trong {subject}?")
             })
             .ToArray();
     var suggestionsEn = suggestedQuestions.Select(item => item.En).ToArray();

@@ -3547,6 +3547,26 @@ body.rbl-body {
   gap: 14px;
 }
 
+.rbl-catalog-list--compact {
+  gap: 8px;
+}
+
+.rbl-catalog-list-head,
+.rbl-catalog-summary {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.5fr) minmax(190px, 0.8fr) 112px 76px;
+  gap: 12px;
+  align-items: center;
+}
+
+.rbl-catalog-list-head {
+  padding: 0 16px 2px;
+  color: var(--rbl-muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .rbl-catalog-subject {
   display: grid;
   gap: 16px;
@@ -3555,6 +3575,112 @@ body.rbl-body {
   border-radius: var(--rbl-radius);
   background: #fff;
   box-shadow: 0 8px 22px rgba(11, 28, 48, 0.04);
+}
+
+.rbl-catalog-subject--compact {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.rbl-catalog-summary {
+  min-height: 64px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.rbl-catalog-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rbl-catalog-summary:focus-visible {
+  outline: 3px solid rgba(47, 107, 255, 0.22);
+  outline-offset: -3px;
+}
+
+.rbl-catalog-subject--compact[open] .rbl-catalog-summary {
+  background: #f8fbff;
+}
+
+.rbl-catalog-summary-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.rbl-catalog-title-block {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.rbl-catalog-title-block strong {
+  color: var(--rbl-text);
+  font-size: 0.96rem;
+  font-weight: 950;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.rbl-catalog-title-block small {
+  color: var(--rbl-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.rbl-catalog-summary .rbl-owner-chip {
+  margin-top: 0;
+}
+
+.rbl-catalog-count-chip {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border: 1px solid #d8e4f5;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--rbl-primary);
+  font-size: 0.78rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.rbl-catalog-toggle-text {
+  justify-self: end;
+  color: var(--rbl-primary);
+  font-size: 0.8rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.rbl-catalog-subject--compact[open] .rbl-catalog-toggle-text {
+  font-size: 0;
+}
+
+.rbl-catalog-subject--compact[open] .rbl-catalog-toggle-text::after {
+  content: "Đóng";
+  font-size: 0.8rem;
+}
+
+.rbl-catalog-detail {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #e2e7f3;
+  background: #fbfdff;
+}
+
+.rbl-catalog-detail-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .rbl-catalog-subject-head,
@@ -3574,6 +3700,7 @@ body.rbl-body {
 .rbl-catalog-code {
   display: inline-flex;
   width: fit-content;
+  flex: 0 0 auto;
   min-height: 26px;
   align-items: center;
   padding: 3px 9px;
@@ -3895,6 +4022,10 @@ body.rbl-body {
 .rbl-admin-create-form .rbl-submit-button {
   min-height: 42px;
   white-space: nowrap;
+}
+
+.rbl-admin-subject-form {
+  grid-template-columns: minmax(130px, 0.65fr) minmax(220px, 1fr) minmax(260px, 1.35fr) auto;
 }
 
 .rbl-user-role-table {
@@ -4962,6 +5093,11 @@ body.rbl-body {
     justify-self: start;
   }
 
+  .rbl-catalog-list-head,
+  .rbl-catalog-summary {
+    grid-template-columns: minmax(220px, 1.35fr) minmax(150px, 0.9fr) 96px 64px;
+  }
+
   .rbl-progress-preview {
     position: static;
   }
@@ -5065,6 +5201,28 @@ body.rbl-body {
   .rbl-document-filter {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .rbl-catalog-list-head {
+    display: none;
+  }
+
+  .rbl-catalog-summary {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .rbl-catalog-summary-main {
+    align-items: flex-start;
+  }
+
+  .rbl-catalog-count-chip,
+  .rbl-catalog-toggle-text {
+    justify-self: start;
+  }
+
+  .rbl-catalog-detail-actions {
+    justify-content: flex-start;
   }
 
   .rbl-document-preview-modal {

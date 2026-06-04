@@ -8,6 +8,7 @@ public sealed class AdminUsersViewModel
     public IReadOnlyList<string> Roles { get; set; } = Array.Empty<string>();
     public IReadOnlyList<AdminSubjectOptionViewModel> SubjectOptions { get; set; } = Array.Empty<AdminSubjectOptionViewModel>();
     public CreateAdminUserViewModel CreateUser { get; set; } = new();
+    public CreateAdminSubjectViewModel CreateSubject { get; set; } = new();
 }
 
 public sealed class AdminUserRowViewModel
@@ -41,6 +42,20 @@ public sealed class AssignLecturerSubjectViewModel
 {
     public Guid UserId { get; set; }
     public Guid SubjectId { get; set; }
+}
+
+public sealed class CreateAdminSubjectViewModel
+{
+    [Required(ErrorMessage = "Subject code is required.")]
+    [StringLength(32, ErrorMessage = "Subject code must be 32 characters or fewer.")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Subject name is required.")]
+    [StringLength(255, ErrorMessage = "Subject name must be 255 characters or fewer.")]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(1000, ErrorMessage = "Description must be 1000 characters or fewer.")]
+    public string Description { get; set; } = string.Empty;
 }
 
 public sealed class UpdateUserNameViewModel
