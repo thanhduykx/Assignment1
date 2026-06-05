@@ -1,10 +1,14 @@
+using DataAccessLayer;
+using DataAccessLayer.Context;
+using DataAccessLayer.Repositories;
+using Microsoft.EntityFrameworkCore;
 using PresentationLayer.Security;
 
 namespace PresentationLayer
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -16,6 +20,31 @@ namespace PresentationLayer
                 return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
             }
 
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+
+            // === Data Access Layer DI ===
+            builder.Services.AddDbContext<KnowledgeSqlDbContext>(options =>
+                options.UseSqlServer(connectionString));
+
+            builder.Services.AddScoped<IKnowledgeRepository>(serviceProvider =>
+            {
+                var context = serviceProvider.GetRequiredService<KnowledgeSqlDbContext>();
+                return new SqlKnowledgeRepository(context);
+            });
+
+            builder.Services.AddScoped<IResearchRepository>(serviceProvider =>
+            {
+                var context = serviceProvider.GetRequiredService<KnowledgeSqlDbContext>();
+                return new SqlResearchRepository(context);
+            });
+
+            builder.Services.AddScoped<IUserRepository>(serviceProvider =>
+            {
+                var context = serviceProvider.GetRequiredService<KnowledgeSqlDbContext>();
+                return new SqlUserRepository(context);
+            });
+
+            // === MVC ===
             builder.Services.AddControllersWithViews();
             var authenticationBuilder = builder.Services.AddAuthentication(options =>
             {
@@ -65,6 +94,8 @@ namespace PresentationLayer
                 options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>
                     policy.RequireRole(AppRoles.Admin));
             });
+
+            // === Gemini / Embedding / AI Options ===
             var geminiSection = builder.Configuration.GetSection("Gemini");
             var geminiApiKey = FirstConfigured(
                 geminiSection["ApiKey"],
@@ -146,31 +177,8 @@ namespace PresentationLayer
                 huggingFaceApiKey,
                 huggingFaceBaseAddress,
                 huggingFaceEnabled));
-            builder.Services.AddSingleton<DataAccessLayer.IKnowledgeRepository>(_ =>
-            {
-                var repository = new DataAccessLayer.Repositories.SqlKnowledgeRepository(
-                    builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty);
-                repository.ImportFromJsonIfEmptyAsync(
-                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "rag-store.json")).GetAwaiter().GetResult();
-                return repository;
-            });
-            builder.Services.AddSingleton<DataAccessLayer.IResearchRepository>(_ =>
-                new DataAccessLayer.Repositories.SqlResearchRepository(
-                    builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty));
-            builder.Services.AddSingleton<PresentationLayer.Services.IUserAccountStore>(_ =>
-            {
-                var seedAdminSection = builder.Configuration.GetSection("SeedAdmin");
-                var seedAdminEnabled = !bool.TryParse(seedAdminSection["Enabled"], out var parsedSeedAdminEnabled)
-                                       || parsedSeedAdminEnabled;
 
-                return new PresentationLayer.Services.UserAccountStore(
-                    Path.Combine(builder.Environment.ContentRootPath, "App_Data", "users.json"),
-                    new PresentationLayer.Services.SeedAdminOptions(
-                        seedAdminEnabled,
-                        seedAdminSection["FullName"] ?? "System Admin",
-                        seedAdminSection["Email"] ?? "admin@eduvietrag.local",
-                        seedAdminSection["Password"] ?? "Admin@12345"));
-            });
+            // === Services Layer DI ===
             builder.Services.AddSingleton<ServicesLayer.IEmbeddingService>(_ =>
             {
                 var embedding = builder.Configuration.GetSection("Embedding");
@@ -207,9 +215,9 @@ namespace PresentationLayer
                     geminiApiKey,
                     geminiEnabled);
             });
-            builder.Services.AddSingleton<ServicesLayer.IFineTunedChatService>(serviceProvider =>
+            builder.Services.AddScoped<ServicesLayer.IFineTunedChatService>(serviceProvider =>
                 new ServicesLayer.FineTunedChatService(
-                    serviceProvider.GetService<DataAccessLayer.IResearchRepository>(),
+                    serviceProvider.GetService<IResearchRepository>(),
                     new HttpClient
                     {
                         Timeout = TimeSpan.FromSeconds(Math.Max(5, geminiTimeoutSeconds))
@@ -249,11 +257,69 @@ namespace PresentationLayer
             });
 
             var app = builder.Build();
-            _ = app.Services.GetRequiredService<DataAccessLayer.IKnowledgeRepository>();
-            _ = app.Services.GetRequiredService<PresentationLayer.Services.IUserAccountStore>()
-                .HasAnyUsersAsync()
-                .GetAwaiter()
-                .GetResult();
+
+            // === Ensure database and seed ===
+            using (var scope = app.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<KnowledgeSqlDbContext>();
+                DataAccessLayer.Schema.KnowledgeSqlSchemaInitializer.EnsureTablesCreated(context);
+
+                // Import rag-store.json only if empty
+                var jsonStorePath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "rag-store.json");
+                if (File.Exists(jsonStorePath) && !context.Documents.Any())
+                {
+                    var repo = scope.ServiceProvider.GetRequiredService<IKnowledgeRepository>();
+                    var jsonRepo = new JsonKnowledgeRepository(jsonStorePath);
+                    var docs = await jsonRepo.GetDocumentsAsync();
+                    var chunks = await jsonRepo.GetChunksAsync();
+                    var sessions = await jsonRepo.GetSessionsAsync();
+
+                    if (docs.Count > 0 || chunks.Count > 0)
+                    {
+                        foreach (var doc in docs)
+                        {
+                            var docChunks = chunks.Where(c => c.DocumentId == doc.Id).ToList();
+                            await repo.AddDocumentAsync(doc, docChunks, CancellationToken.None);
+                        }
+                    }
+
+                    if (sessions.Count > 0)
+                    {
+                        var sqlRepo = (SqlKnowledgeRepository)repo;
+                        foreach (var session in sessions)
+                        {
+                            foreach (var msg in session.Messages)
+                            {
+                                await sqlRepo.AddMessageAsync(session.Id, msg, CancellationToken.None);
+                            }
+                        }
+                    }
+                }
+
+                // Seed admin user if none exist
+                var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+                if (!await userRepo.HasAnyAsync())
+                {
+                    var seedAdminSection = builder.Configuration.GetSection("SeedAdmin");
+                    var seedAdminEnabled = !bool.TryParse(seedAdminSection["Enabled"], out var parsedSeedAdminEnabled)
+                                           || parsedSeedAdminEnabled;
+
+                    if (seedAdminEnabled)
+                    {
+                        var adminFullName = seedAdminSection["FullName"] ?? "System Admin";
+                        var adminEmail = seedAdminSection["Email"] ?? "admin@eduvietrag.local";
+                        var adminPassword = seedAdminSection["Password"] ?? "Admin@12345";
+
+                        await userRepo.CreateAsync(
+                            adminFullName,
+                            adminEmail,
+                            SqlUserRepository.HashPassword(adminPassword),
+                            "admin",
+                            "local",
+                            CancellationToken.None);
+                    }
+                }
+            }
 
             if (!app.Environment.IsDevelopment())
             {

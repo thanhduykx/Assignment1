@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlCitation
+public sealed class KnowledgeSqlCitation
 {
     public Guid Id { get; set; }
     public Guid MessageId { get; set; }

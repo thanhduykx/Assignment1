@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DataAccessLayer.Schema;
 
-internal static class KnowledgeSqlSchemaInitializer
+public static class KnowledgeSqlSchemaInitializer
 {
     public static void EnsureTablesCreated(KnowledgeSqlDbContext context)
     {
@@ -18,6 +18,8 @@ internal static class KnowledgeSqlSchemaInitializer
         EnsureKnowledgeIndexes(context);
         EnsureCourseCatalogTables(context);
         EnsureSubjectOwnerColumns(context);
+        EnsureUsersTable(context);
+        EnsureUserForeignKeys(context);
         BackfillDocumentFileSizes(context);
         SeedCourseCatalog(context);
         SeedResearchCatalog(context);
@@ -339,6 +341,81 @@ internal static class KnowledgeSqlSchemaInitializer
             });
             context.SaveChanges();
         }
+    }
+
+    private static void EnsureUsersTable(KnowledgeSqlDbContext context)
+    {
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('rag_users', 'U') IS NULL
+            BEGIN
+                CREATE TABLE rag_users (
+                    Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_rag_users PRIMARY KEY,
+                    FullName NVARCHAR(255) NOT NULL,
+                    Email NVARCHAR(255) NOT NULL,
+                    PasswordHash NVARCHAR(MAX) NOT NULL,
+                    Role NVARCHAR(32) NOT NULL,
+                    Provider NVARCHAR(64) NOT NULL CONSTRAINT DF_rag_users_Provider DEFAULT 'local',
+                    CreatedAt DATETIMEOFFSET NOT NULL,
+                    CONSTRAINT UX_rag_users_Email UNIQUE (Email)
+                )
+            END
+            """);
+    }
+
+    private static void EnsureUserForeignKeys(KnowledgeSqlDbContext context)
+    {
+        // First, set orphan UserId values to NULL to avoid FK conflicts
+        context.Database.ExecuteSqlRaw("""
+            UPDATE rag_documents 
+            SET UploadedByUserId = NULL 
+            WHERE UploadedByUserId IS NOT NULL 
+              AND NOT EXISTS (SELECT 1 FROM rag_users WHERE rag_users.Id = rag_documents.UploadedByUserId)
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            UPDATE rag_chat_sessions 
+            SET OwnerUserId = NULL 
+            WHERE OwnerUserId IS NOT NULL 
+              AND NOT EXISTS (SELECT 1 FROM rag_users WHERE rag_users.Id = rag_chat_sessions.OwnerUserId)
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            UPDATE rag_subjects 
+            SET OwnerUserId = NULL 
+            WHERE OwnerUserId IS NOT NULL 
+              AND NOT EXISTS (SELECT 1 FROM rag_users WHERE rag_users.Id = rag_subjects.OwnerUserId)
+            """);
+
+        // Now create the foreign key constraints
+        context.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_rag_documents_rag_users')
+            BEGIN
+                ALTER TABLE rag_documents 
+                ADD CONSTRAINT FK_rag_documents_rag_users 
+                FOREIGN KEY (UploadedByUserId) REFERENCES rag_users(Id)
+                ON DELETE SET NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_rag_chat_sessions_rag_users')
+            BEGIN
+                ALTER TABLE rag_chat_sessions 
+                ADD CONSTRAINT FK_rag_chat_sessions_rag_users 
+                FOREIGN KEY (OwnerUserId) REFERENCES rag_users(Id)
+                ON DELETE SET NULL
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_rag_subjects_rag_users')
+            BEGIN
+                ALTER TABLE rag_subjects 
+                ADD CONSTRAINT FK_rag_subjects_rag_users 
+                FOREIGN KEY (OwnerUserId) REFERENCES rag_users(Id)
+                ON DELETE SET NULL
+            END
+            """);
     }
 
     private static void SeedResearchCatalog(KnowledgeSqlDbContext context)

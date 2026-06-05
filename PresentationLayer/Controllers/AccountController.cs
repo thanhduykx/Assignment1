@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using DataAccessLayer;
+using DataAccessLayer.Entities;
+using DataAccessLayer.Repositories;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -6,7 +9,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
 using PresentationLayer.Security;
-using PresentationLayer.Services;
 
 namespace PresentationLayer.Controllers;
 
@@ -14,10 +16,10 @@ public sealed class AccountController : Controller
 {
     private const string AccountProvisioningMessage = "Tài khoản được cấp bởi Nhà trường. Vui lòng liên hệ Nhà trường để xin cấp tài khoản.";
 
-    private readonly IUserAccountStore _users;
+    private readonly IUserRepository _users;
     private readonly IAuthenticationSchemeProvider _schemes;
 
-    public AccountController(IUserAccountStore users, IAuthenticationSchemeProvider schemes)
+    public AccountController(IUserRepository users, IAuthenticationSchemeProvider schemes)
     {
         _users = users;
         _schemes = schemes;
@@ -50,7 +52,7 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        var user = await _users.FindByEmailAsync(model.Email, cancellationToken);
+        var user = await _users.GetByEmailAsync(model.Email, cancellationToken);
         if (user is null)
         {
             ModelState.AddModelError(string.Empty, AccountProvisioningMessage);
@@ -123,7 +125,7 @@ public sealed class AccountController : Controller
             return RedirectToAction(nameof(Login), new { returnUrl });
         }
 
-        var user = await _users.FindByEmailAsync(email, cancellationToken);
+        var user = await _users.GetByEmailAsync(email, cancellationToken);
         if (user is null)
         {
             TempData["AuthError"] = AccountProvisioningMessage;
@@ -151,7 +153,7 @@ public sealed class AccountController : Controller
         return RedirectToAction("Login", "Account");
     }
 
-    private async Task SignInAsync(UserAccount user)
+    private async Task SignInAsync(KnowledgeSqlUser user)
     {
         var claims = new List<Claim>
         {
@@ -172,7 +174,7 @@ public sealed class AccountController : Controller
             });
     }
 
-    private IActionResult RedirectAfterSignIn(UserAccount user, string? returnUrl)
+    private IActionResult RedirectAfterSignIn(KnowledgeSqlUser user, string? returnUrl)
     {
         if (!string.IsNullOrWhiteSpace(returnUrl)
             && Url.IsLocalUrl(returnUrl)

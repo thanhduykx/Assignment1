@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DataAccessLayer.Context;
 
-internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbContext> options) : DbContext(options)
+public sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbContext> options) : DbContext(options)
 {
     public DbSet<KnowledgeSqlDocument> Documents => Set<KnowledgeSqlDocument>();
     public DbSet<KnowledgeSqlChunk> Chunks => Set<KnowledgeSqlChunk>();
@@ -19,6 +19,7 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
     public DbSet<KnowledgeSqlResearchRun> ResearchRuns => Set<KnowledgeSqlResearchRun>();
     public DbSet<KnowledgeSqlResearchTestQuestion> ResearchTestQuestions => Set<KnowledgeSqlResearchTestQuestion>();
     public DbSet<KnowledgeSqlResearchBenchmarkResult> ResearchBenchmarkResults => Set<KnowledgeSqlResearchBenchmarkResult>();
+    public DbSet<KnowledgeSqlUser> Users => Set<KnowledgeSqlUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -227,6 +228,33 @@ internal sealed class KnowledgeSqlDbContext(DbContextOptions<KnowledgeSqlDbConte
                 .WithMany()
                 .HasForeignKey(item => item.QuestionId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<KnowledgeSqlUser>(entity =>
+        {
+            entity.ToTable("rag_users");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.FullName).HasMaxLength(255).IsRequired();
+            entity.Property(item => item.Email).HasMaxLength(255).IsRequired();
+            entity.Property(item => item.PasswordHash).HasColumnType("nvarchar(max)").IsRequired();
+            entity.Property(item => item.Role).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.Provider).HasMaxLength(64).IsRequired().HasDefaultValue("local");
+            entity.HasIndex(item => item.Email).IsUnique();
+
+            entity.HasMany(item => item.Documents)
+                  .WithOne(item => item.UploadedByUser)
+                  .HasForeignKey(item => item.UploadedByUserId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany(item => item.Sessions)
+                  .WithOne(item => item.Owner)
+                  .HasForeignKey(item => item.OwnerUserId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany(item => item.Subjects)
+                  .WithOne(item => item.Owner)
+                  .HasForeignKey(item => item.OwnerUserId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

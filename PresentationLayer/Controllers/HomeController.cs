@@ -2,11 +2,11 @@ using System.Diagnostics;
 using System.Security.Claims;
 using System.Text;
 using DataAccessLayer;
+using DataAccessLayer.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
 using PresentationLayer.Security;
-using PresentationLayer.Services;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers
@@ -19,7 +19,7 @@ namespace PresentationLayer.Controllers
         private readonly IDocumentIndexingService _indexingService;
         private readonly IWebPageTextExtractor _webPageTextExtractor;
         private readonly IRagChatService _chatService;
-        private readonly IUserAccountStore _users;
+        private readonly IUserRepository _users;
         private readonly IWebHostEnvironment _environment;
         private readonly IDocumentIndexJobQueue _indexJobQueue;
 
@@ -29,7 +29,7 @@ namespace PresentationLayer.Controllers
             IDocumentIndexingService indexingService,
             IWebPageTextExtractor webPageTextExtractor,
             IRagChatService chatService,
-            IUserAccountStore users,
+            IUserRepository users,
             IWebHostEnvironment environment,
             IDocumentIndexJobQueue indexJobQueue)
         {
@@ -52,9 +52,9 @@ namespace PresentationLayer.Controllers
                 await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
             }
             var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
-            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            var currentUserId = CurrentUserId();
             var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
-            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog, currentUser).ToList();
+            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog).ToList();
             var normalizedSubjectFilter = subjectFilter?.Trim();
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
                 ? accessibleDocuments
@@ -62,8 +62,9 @@ namespace PresentationLayer.Controllers
                     .Where(document => SubjectMatchesFilter(document.Subject, normalizedSubjectFilter))
                     .ToList();
             var lecturers = IsAdmin()
-                ? await _users.GetByRoleAsync(AppRoles.Lecturer, cancellationToken)
-                : Array.Empty<UserAccount>();
+                ? (await _users.GetByRoleAsync(AppRoles.Lecturer, cancellationToken))
+                    .Select(ToUserOption).ToList()
+                : new List<UserOptionViewModel>();
             var indexedDocuments = accessibleDocuments
                 .Where(document => document.Status == DocumentIndexStatus.Indexed)
                 .ToList();
@@ -72,7 +73,7 @@ namespace PresentationLayer.Controllers
             {
                 Documents = documents,
                 CourseCatalog = courseCatalog,
-                LecturerOptions = lecturers.Select(ToUserOption).ToList(),
+                LecturerOptions = lecturers,
                 DocumentSubjectOptions = accessibleDocuments
                     .Select(document => document.Subject)
                     .Where(subject => !string.IsNullOrWhiteSpace(subject))
@@ -184,14 +185,14 @@ namespace PresentationLayer.Controllers
         {
             var documents = await _indexingService.GetDocumentsAsync(cancellationToken);
             var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
-            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            var currentUserId = CurrentUserId();
             var allIndexedDocuments = documents
                 .Where(document => document.Status == DocumentIndexStatus.Indexed)
                 .ToList();
-            var indexedDocuments = FilterDocumentsForCurrentUser(allIndexedDocuments, courseCatalog, currentUser).ToList();
-            var chatSessions = currentUser is null
+            var indexedDocuments = FilterDocumentsForCurrentUser(allIndexedDocuments, courseCatalog).ToList();
+            var chatSessions = currentUserId is null
                 ? Array.Empty<ChatSession>()
-                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
+                : await _repository.GetSessionsForOwnerAsync(currentUserId.Value, cancellationToken);
             var model = new ChatIndexViewModel
             {
                 ChatSessions = chatSessions,
@@ -304,12 +305,12 @@ namespace PresentationLayer.Controllers
 
             try
             {
-                var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+                var currentUserId = CurrentUserId();
                 var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
                 var indexedDocuments = (await _indexingService.GetDocumentsAsync(cancellationToken))
                     .Where(document => document.Status == DocumentIndexStatus.Indexed)
                     .ToList();
-                var accessibleDocuments = FilterDocumentsForCurrentUser(indexedDocuments, courseCatalog, currentUser).ToList();
+                var accessibleDocuments = FilterDocumentsForCurrentUser(indexedDocuments, courseCatalog).ToList();
                 var allowedSubjects = accessibleDocuments
                     .Select(document => document.Subject)
                     .Where(subject => !string.IsNullOrWhiteSpace(subject))
@@ -317,10 +318,10 @@ namespace PresentationLayer.Controllers
                     .ToList();
                 var displayName = User.FindFirstValue(ClaimTypes.Name)
                     ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0];
-                if (currentUser is not null)
+                if (currentUserId is not null)
                 {
                     var existingSession = await _repository.GetSessionAsync(sessionId, cancellationToken);
-                    if (existingSession?.OwnerUserId is { } ownerUserId && ownerUserId != currentUser.Id)
+                    if (existingSession?.OwnerUserId is { } ownerUserId && ownerUserId != currentUserId)
                     {
                         sessionId = Guid.NewGuid();
                     }
@@ -637,10 +638,10 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSessions(CancellationToken cancellationToken)
         {
-            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
-            var sessions = currentUser is null
+            var currentUserId = CurrentUserId();
+            var sessions = currentUserId is null
                 ? Array.Empty<ChatSession>()
-                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
+                : await _repository.GetSessionsForOwnerAsync(currentUserId.Value, cancellationToken);
             return Json(sessions.Select(ToSessionSummary));
         }
 
@@ -648,13 +649,13 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSession(Guid id, CancellationToken cancellationToken)
         {
-            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
-            if (currentUser is null)
+            var currentUserId = CurrentUserId();
+            if (currentUserId is null)
             {
                 return NotFound(new { error = "Chat session not found." });
             }
 
-            var session = await _repository.GetSessionForOwnerAsync(id, currentUser.Id, cancellationToken);
+            var session = await _repository.GetSessionForOwnerAsync(id, currentUserId.Value, cancellationToken);
             if (session is null)
             {
                 return NotFound(new { error = "Chat session not found." });
@@ -734,7 +735,7 @@ namespace PresentationLayer.Controllers
                 : null;
         }
 
-        private static UserOptionViewModel ToUserOption(UserAccount user)
+        private static UserOptionViewModel ToUserOption(DataAccessLayer.Entities.KnowledgeSqlUser user)
         {
             return new UserOptionViewModel
             {
@@ -777,17 +778,6 @@ namespace PresentationLayer.Controllers
                 User.FindFirstValue(ClaimTypes.Email));
         }
 
-        private async Task<UserAccount?> GetCurrentUserAccountAsync(CancellationToken cancellationToken)
-        {
-            if (CurrentUserId() is not { } userId)
-            {
-                return null;
-            }
-
-            return (await _users.GetAllAsync(cancellationToken))
-                .FirstOrDefault(user => user.Id == userId);
-        }
-
         private IReadOnlyList<CourseSubject> FilterCourseCatalogForCurrentUser(IReadOnlyList<CourseSubject> catalog)
         {
             if (IsAdmin())
@@ -807,15 +797,14 @@ namespace PresentationLayer.Controllers
 
         private IReadOnlyList<IndexedDocument> FilterDocumentsForCurrentUser(
             IReadOnlyList<IndexedDocument> documents,
-            IReadOnlyList<CourseSubject> catalog,
-            UserAccount? currentUser)
+            IReadOnlyList<CourseSubject> catalog)
         {
             if (IsAdmin())
             {
                 return documents;
             }
 
-            if (currentUser is null)
+            if (CurrentUserId() is null)
             {
                 return Array.Empty<IndexedDocument>();
             }
@@ -823,7 +812,7 @@ namespace PresentationLayer.Controllers
             if (IsLecturer())
             {
                 return documents
-                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == currentUser.Id)
+                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == CurrentUserId())
                     .ToList();
             }
 

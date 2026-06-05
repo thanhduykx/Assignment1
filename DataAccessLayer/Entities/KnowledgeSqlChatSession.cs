@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlChatSession
+public sealed class KnowledgeSqlChatSession
 {
     public Guid Id { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -10,5 +10,6 @@ internal sealed class KnowledgeSqlChatSession
     public Guid? OwnerUserId { get; set; }
     public string? OwnerName { get; set; }
     public string? OwnerEmail { get; set; }
+    public KnowledgeSqlUser? Owner { get; set; }
     public ICollection<KnowledgeSqlChatMessage> Messages { get; set; } = new List<KnowledgeSqlChatMessage>();
 }

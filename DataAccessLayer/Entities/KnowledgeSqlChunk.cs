@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlChunk
+public sealed class KnowledgeSqlChunk
 {
     public Guid Id { get; set; }
     public Guid DocumentId { get; set; }
