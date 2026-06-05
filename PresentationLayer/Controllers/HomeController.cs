@@ -3,11 +3,13 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using DataAccessLayer;
+using DataAccessLayer.Entities;
 using DataAccessLayer.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
 using PresentationLayer.Security;
+using PresentationLayer.Services;
 using ServicesLayer;
 
 namespace PresentationLayer.Controllers
@@ -53,9 +55,9 @@ namespace PresentationLayer.Controllers
                 await SyncCourseCatalogFromDocumentsAsync(allDocuments, cancellationToken);
             }
             var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
-            var currentUserId = CurrentUserId();
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
             var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
-            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog).ToList();
+            var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog, currentUser).ToList();
             var normalizedSubjectFilter = subjectFilter?.Trim();
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
                 ? accessibleDocuments
@@ -186,7 +188,7 @@ namespace PresentationLayer.Controllers
         {
             var documents = await _indexingService.GetDocumentsAsync(cancellationToken);
             var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
-            var currentUserId = CurrentUserId();
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
             var allIndexedDocuments = documents
                 .Where(document => document.Status == DocumentIndexStatus.Indexed)
                 .ToList();
@@ -199,7 +201,7 @@ namespace PresentationLayer.Controllers
                 .ToList();
             var chatSessions = currentUser is null
                 ? Array.Empty<ChatSession>()
-                : await _repository.GetSessionsForOwnerAsync(currentUserId.Value, cancellationToken);
+                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
             var model = new ChatIndexViewModel
             {
                 ChatSessions = chatSessions,
@@ -308,12 +310,12 @@ namespace PresentationLayer.Controllers
 
             try
             {
-                var currentUserId = CurrentUserId();
+                var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
                 var courseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
                 var indexedDocuments = (await _indexingService.GetDocumentsAsync(cancellationToken))
                     .Where(document => document.Status == DocumentIndexStatus.Indexed)
                     .ToList();
-                var accessibleDocuments = FilterDocumentsForCurrentUser(indexedDocuments, courseCatalog).ToList();
+                var accessibleDocuments = FilterDocumentsForCurrentUser(indexedDocuments, courseCatalog, currentUser).ToList();
                 var allowedSubjects = accessibleDocuments
                     .Select(document => document.Subject)
                     .Where(subject => !string.IsNullOrWhiteSpace(subject))
@@ -321,10 +323,10 @@ namespace PresentationLayer.Controllers
                     .ToList();
                 var displayName = User.FindFirstValue(ClaimTypes.Name)
                     ?? User.FindFirstValue(ClaimTypes.Email)?.Split('@')[0];
-                if (currentUserId is not null)
+                if (currentUser is not null)
                 {
                     var existingSession = await _repository.GetSessionAsync(sessionId, cancellationToken);
-                    if (existingSession?.OwnerUserId is { } ownerUserId && ownerUserId != currentUserId)
+                    if (existingSession?.OwnerUserId is { } ownerUserId && ownerUserId != currentUser.Id)
                     {
                         sessionId = Guid.NewGuid();
                     }
@@ -641,10 +643,10 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSessions(CancellationToken cancellationToken)
         {
-            var currentUserId = CurrentUserId();
-            var sessions = currentUserId is null
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            var sessions = currentUser is null
                 ? Array.Empty<ChatSession>()
-                : await _repository.GetSessionsForOwnerAsync(currentUserId.Value, cancellationToken);
+                : await _repository.GetSessionsForOwnerAsync(currentUser.Id, cancellationToken);
             return Json(sessions.Select(ToSessionSummary));
         }
 
@@ -652,13 +654,13 @@ namespace PresentationLayer.Controllers
         [Authorize(Policy = AuthorizationPolicies.ChatAccess)]
         public async Task<IActionResult> ChatSession(Guid id, CancellationToken cancellationToken)
         {
-            var currentUserId = CurrentUserId();
-            if (currentUserId is null)
+            var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
+            if (currentUser is null)
             {
                 return NotFound(new { error = "Chat session not found." });
             }
 
-            var session = await _repository.GetSessionForOwnerAsync(id, currentUserId.Value, cancellationToken);
+            var session = await _repository.GetSessionForOwnerAsync(id, currentUser.Id, cancellationToken);
             if (session is null)
             {
                 return NotFound(new { error = "Chat session not found." });
@@ -738,7 +740,7 @@ namespace PresentationLayer.Controllers
                 : null;
         }
 
-        private static UserOptionViewModel ToUserOption(DataAccessLayer.Entities.KnowledgeSqlUser user)
+        private static UserOptionViewModel ToUserOption(KnowledgeSqlUser user)
         {
             return new UserOptionViewModel
             {
@@ -781,6 +783,16 @@ namespace PresentationLayer.Controllers
                 User.FindFirstValue(ClaimTypes.Email));
         }
 
+        private async Task<KnowledgeSqlUser?> GetCurrentUserAccountAsync(CancellationToken cancellationToken)
+        {
+            if (CurrentUserId() is not { } userId)
+            {
+                return null;
+            }
+
+            return await _users.GetByIdAsync(userId, cancellationToken);
+        }
+
         private IReadOnlyList<CourseSubject> FilterCourseCatalogForCurrentUser(IReadOnlyList<CourseSubject> catalog)
         {
             if (IsAdmin())
@@ -800,14 +812,15 @@ namespace PresentationLayer.Controllers
 
         private IReadOnlyList<IndexedDocument> FilterDocumentsForCurrentUser(
             IReadOnlyList<IndexedDocument> documents,
-            IReadOnlyList<CourseSubject> catalog)
+            IReadOnlyList<CourseSubject> catalog,
+            KnowledgeSqlUser? currentUser)
         {
             if (IsAdmin())
             {
                 return documents;
             }
 
-            if (CurrentUserId() is null)
+            if (currentUser is null)
             {
                 return Array.Empty<IndexedDocument>();
             }
@@ -815,7 +828,7 @@ namespace PresentationLayer.Controllers
             if (IsLecturer())
             {
                 return documents
-                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == CurrentUserId())
+                    .Where(document => FindSubjectForDocumentSubject(catalog, document.Subject)?.OwnerUserId == currentUser.Id)
                     .ToList();
             }
 
@@ -960,6 +973,7 @@ namespace PresentationLayer.Controllers
         private async Task SyncCourseCatalogFromDocumentAsync(IndexedDocument document, CancellationToken cancellationToken)
         {
             var parsed = ParseSubjectForCatalog(document.Subject);
+
             if (string.IsNullOrWhiteSpace(parsed.Code))
             {
                 return;
