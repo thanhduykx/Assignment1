@@ -363,4 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Runtime data for the demo chatbot/auth store
-PresentationLayer/App_Data/
+PresentationLayer/App_Data/*
+!PresentationLayer/App_Data/
+!PresentationLayer/App_Data/fine-tuned-chat-examples.json

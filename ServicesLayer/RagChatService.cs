@@ -157,18 +157,15 @@ public sealed class RagChatService : IRagChatService
     private readonly IKnowledgeRepository _repository;
     private readonly IEmbeddingService _embeddingService;
     private readonly ILocalChatCompletionService _chatCompletionService;
-    private readonly IFineTunedChatService _fineTunedChatService;
 
     public RagChatService(
         IKnowledgeRepository repository,
         IEmbeddingService embeddingService,
-        ILocalChatCompletionService chatCompletionService,
-        IFineTunedChatService? fineTunedChatService = null)
+        ILocalChatCompletionService chatCompletionService)
     {
         _repository = repository;
         _embeddingService = embeddingService;
         _chatCompletionService = chatCompletionService;
-        _fineTunedChatService = fineTunedChatService ?? NullFineTunedChatService.Instance;
     }
 
     public async Task<ChatAnswer> AskAsync(
@@ -303,7 +300,7 @@ public sealed class RagChatService : IRagChatService
         scopedChunks ??= await GetScopedChunksAsync(allowedSubjects, cancellationToken);
         if (scopedChunks.Count == 0)
         {
-            return await BuildInsufficientOrFineTunedAnswerAsync(
+            return await BuildInsufficientAnswerAsync(
                 question,
                 subjectFilter,
                 historyBeforeQuestion,
@@ -332,7 +329,7 @@ public sealed class RagChatService : IRagChatService
                 .ToList();
             if (scopedChunks.Count == 0)
             {
-                return await BuildInsufficientOrFineTunedAnswerAsync(
+                return await BuildInsufficientAnswerAsync(
                     question,
                     route.SelectedSubject,
                     historyBeforeQuestion,
@@ -365,7 +362,7 @@ public sealed class RagChatService : IRagChatService
 
         if (candidateMatches.Count == 0)
         {
-            return await BuildInsufficientOrFineTunedAnswerAsync(
+            return await BuildInsufficientAnswerAsync(
                 question,
                 route.SelectedSubject ?? subjectFilter,
                 historyBeforeQuestion,
@@ -393,7 +390,7 @@ public sealed class RagChatService : IRagChatService
         var matches = await RerankMatchesAsync(retrievalQuestion, candidateMatches, responseLanguage, cancellationToken);
         if (matches.Count == 0)
         {
-            return await BuildInsufficientOrFineTunedAnswerAsync(
+            return await BuildInsufficientAnswerAsync(
                 question,
                 route.SelectedSubject ?? subjectFilter,
                 historyBeforeQuestion,
@@ -427,7 +424,7 @@ public sealed class RagChatService : IRagChatService
 
         if (IsInsufficientDataAnswer(answer))
         {
-            return await BuildInsufficientOrFineTunedAnswerAsync(
+            return await BuildInsufficientAnswerAsync(
                 question,
                 resolvedSubject,
                 historyBeforeQuestion,
@@ -439,7 +436,7 @@ public sealed class RagChatService : IRagChatService
 
         if (!await IsAnswerGroundedAsync(resolvedQuestion, answer, matchedChunks, queryTerms, responseLanguage, cancellationToken))
         {
-            return await BuildInsufficientOrFineTunedAnswerAsync(
+            return await BuildInsufficientAnswerAsync(
                 question,
                 resolvedSubject,
                 historyBeforeQuestion,
@@ -471,7 +468,7 @@ public sealed class RagChatService : IRagChatService
             .ToList();
     }
 
-    private async Task<SingleQuestionAnswer> BuildInsufficientOrFineTunedAnswerAsync(
+    private async Task<SingleQuestionAnswer> BuildInsufficientAnswerAsync(
         string question,
         string? subject,
         IReadOnlyList<ChatMessage> historyBeforeQuestion,
@@ -492,31 +489,13 @@ public sealed class RagChatService : IRagChatService
             return documentFallback;
         }
 
-        var fallback = await _fineTunedChatService.TryAnswerAsync(
-            question,
-            subject,
-            historyBeforeQuestion,
-            allowedSubjects,
-            cancellationToken);
-        if (fallback is null || string.IsNullOrWhiteSpace(fallback.Answer))
-        {
-            return new SingleQuestionAnswer(
-                question,
-                BuildOutOfScopeAnswer(responseLanguage),
-                Array.Empty<SourceCitation>(),
-                subject,
-                AnswerSource: "OutOfScope",
-                HasDirectCitation: false);
-        }
-
         return new SingleQuestionAnswer(
             question,
-            BuildFineTunedFallbackAnswer(fallback.Answer, responseLanguage),
+            BuildOutOfScopeAnswer(responseLanguage),
             Array.Empty<SourceCitation>(),
             subject,
-            AnswerSource: "FineTunedFallback",
-            HasDirectCitation: false,
-            FallbackModel: fallback.ModelName);
+            AnswerSource: "OutOfScope",
+            HasDirectCitation: false);
     }
 
     private async Task<SingleQuestionAnswer?> TryBuildDocumentFallbackAnswerAsync(
@@ -1713,19 +1692,6 @@ public sealed class RagChatService : IRagChatService
         return language == "vi"
             ? "M\u00ecnh ch\u1ec9 h\u1ed7 tr\u1ee3 h\u1ecfi \u0111\u00e1p d\u1ef1a tr\u00ean t\u00e0i li\u1ec7u \u0111\u00e3 index. C\u00e2u n\u00e0y n\u1eb1m ngo\u00e0i ph\u1ea1m vi t\u00e0i li\u1ec7u, n\u00ean m\u00ecnh kh\u00f4ng truy xu\u1ea5t ngu\u1ed3n \u0111\u1ec3 tr\u1ea3 l\u1eddi."
             : "I only answer from indexed documents. This question is outside the document scope, so I will not retrieve sources for it.";
-    }
-
-    private static string BuildFineTunedFallbackAnswer(string answer, string language)
-    {
-        var trimmed = answer.Trim();
-        if (language == "vi")
-        {
-            return "D\u1ef1a tr\u00ean b\u1ed9 c\u00e2u h\u1ecfi \u0111\u00e3 hu\u1ea5n luy\u1ec7n, m\u00ecnh c\u00f3 th\u1ec3 tr\u1ea3 l\u1eddi nh\u01b0 sau. C\u00e2u tr\u1ea3 l\u1eddi n\u00e0y kh\u00f4ng c\u00f3 tr\u00edch d\u1eabn tr\u1ef1c ti\u1ebfp t\u1eeb t\u00e0i li\u1ec7u indexed:\n\n"
-                   + trimmed;
-        }
-
-        return "Based on the trained Q&A set, I can answer as follows. This answer does not have a direct citation from indexed documents:\n\n"
-               + trimmed;
     }
 
     private static string BuildBotIdentityAnswer(string language)

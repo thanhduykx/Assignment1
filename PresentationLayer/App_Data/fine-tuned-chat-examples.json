@@ -1,0 +1,310 @@
+﻿{
+    "examples":  [
+                     {
+                         "question":  "DBA103 là môn học gì?",
+                         "answer":  "DBA103 là môn Nhạc cụ truyền thống - Đàn Bầu, tên tiếng Anh là Traditional musical instrument.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Tên tiếng Anh của syllabus DBA103 là gì?",
+                         "answer":  "Tên tiếng Anh của syllabus là Traditional musical instrument.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "DBA103 có bao nhiêu tín chỉ?",
+                         "answer":  "DBA103 có 3 tín chỉ.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Cấp độ của môn DBA103 là gì?",
+                         "answer":  "Degree Level của DBA103 là Sơ cấp / Beginner.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Thời lượng học trên lớp của DBA103 là bao nhiêu?",
+                         "answer":  "DBA103 có 30 slot học trên lớp, mỗi slot 90 phút.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "DBA103 có môn tiên quyết không?",
+                         "answer":  "Pre-Requisite của DBA103 là Không / None.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Mục tiêu kiến thức của DBA103 là gì?",
+                         "answer":  "Sinh viên nắm lịch sử phát triển, cấu trúc Đàn Bầu, làm quen nhạc lý và kỹ thuật cơ bản của Đàn Bầu.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Mục tiêu kỹ năng của DBA103 là gì?",
+                         "answer":  "Sinh viên đánh được tối thiểu 3 bài, gồm 1 bài nhạc nước ngoài thông dụng, và vận dụng đúng kỹ thuật cơ bản.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Nội dung chính của DBA103 gồm những gì?",
+                         "answer":  "Nội dung gồm lịch sử Đàn Bầu, cấu trúc và đặc điểm Đàn Bầu, tư thế đánh đàn, nhạc lý, kỹ thuật cơ bản và luyện tập các bài nhạc.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "DBA103 dạy những kỹ thuật cơ bản nào?",
+                         "answer":  "Kỹ thuật cơ bản gồm gảy dây buông và nhấn lên/xuống quãng 2.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Sinh viên luyện tập bài Việt Nam nào trong DBA103?",
+                         "answer":  "Sinh viên luyện tập Cò lả và Lý cây đa theo hình thức hòa tấu.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Bài quốc tế trong DBA103 là bài nào?",
+                         "answer":  "Bài quốc tế là Auld lang syne, dân ca Scotland.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Điều kiện tham dự thi cuối môn DBA103 là gì?",
+                         "answer":  "Sinh viên phải tham dự tối thiểu 80% thời lượng môn học để đủ điều kiện thi cuối môn.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Công cụ học tập của DBA103 là gì?",
+                         "answer":  "Công cụ học tập là nhạc cụ cho từng sinh viên.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Điểm assignment của DBA103 chiếm bao nhiêu phần trăm?",
+                         "answer":  "Assignment chiếm 15%.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Điểm tham gia lớp của DBA103 chiếm bao nhiêu phần trăm?",
+                         "answer":  "Participation chiếm 15%.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Thi cuối môn DBA103 chiếm bao nhiêu phần trăm?",
+                         "answer":  "Final exam chiếm 70% và là điểm thực hành chơi nhạc cụ theo yêu cầu.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Tài liệu chính của DBA103 là gì?",
+                         "answer":  "Tài liệu chính là Sách học Đàn Bầu.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Tác giả Sách học Đàn Bầu là ai?",
+                         "answer":  "Tác giả là Nguyễn Thanh Tâm và Trần Quốc Lộc.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO1 của DBA103 là gì?",
+                         "answer":  "CLO1 là hiểu biết cơ bản về lịch sử và sự phát triển hình thành của nền âm nhạc truyền thống Việt Nam.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO2 của DBA103 là gì?",
+                         "answer":  "CLO2 là chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Syllabus DBA103 ghi có bao nhiêu session?",
+                         "answer":  "Syllabus DBA103 ghi 30 sessions.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Bài đầu tiên sinh viên bắt đầu học trong DBA103 là bài nào?",
+                         "answer":  "Bài đầu tiên là Đội kèn tí hon, bắt đầu ở session 7.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "DBA103 có bao nhiêu assessment?",
+                         "answer":  "DBA103 có 3 assessment.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Thi cuối môn DBA103 yêu cầu sinh viên chơi mấy bài?",
+                         "answer":  "Sinh viên chơi 3 bài gồm 2 bài hòa tấu và 1 bài độc tấu, trong đó có 2 bài dân ca Việt Nam và 1 bài quốc tế.",
+                         "subject":  "DBA103",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 là môn học gì?",
+                         "answer":  "IOT102 là môn Internet of Things / Internet vạn vật.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Tên tiếng Anh của syllabus IOT102 là gì?",
+                         "answer":  "Tên tiếng Anh của syllabus IOT102 là Internet of Things.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có bao nhiêu tín chỉ?",
+                         "answer":  "IOT102 có 3 tín chỉ.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Cấp độ của môn IOT102 là gì?",
+                         "answer":  "Degree Level của IOT102 là Bachelor.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Phân bổ thời gian học của IOT102 như thế nào?",
+                         "answer":  "IOT102 có tổng 150 giờ học: 22.5 giờ contact, 22.5 giờ online, 4.5 giờ final project presentation, 1 giờ final exam và 99.5 giờ self-study.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có môn tiên quyết không?",
+                         "answer":  "Mục Pre-Requisite của IOT102 để trống, không nêu môn tiên quyết cụ thể.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Nội dung chính của IOT102 gồm những gì?",
+                         "answer":  "Nội dung gồm khái niệm cơ bản và ứng dụng IoT, cùng các bài thực hành trên learning KIT.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Sinh viên IOT102 cần làm gì để đủ điều kiện thi cuối kỳ?",
+                         "answer":  "Sinh viên phải tham dự ít nhất 80% contact sessions để được dự thi cuối kỳ.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Sinh viên IOT102 cần học video và làm lab ở đâu?",
+                         "answer":  "Sinh viên phải học toàn bộ video lý thuyết online và làm toàn bộ lab theo syllabus tại nhà.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có bao nhiêu tài liệu học tập?",
+                         "answer":  "IOT102 có 7 tài liệu học tập.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Kể tên một số tài liệu học tập của IOT102.",
+                         "answer":  "Tài liệu gồm Course from Edx IOT1x/IOT2x, Free Hardware and IoT Ebooks O\u0027Reilly, Introduction to Arduino, Arduino Documents, Instructables Arduino Projects và IOT102 guide documents.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có bao nhiêu CLO?",
+                         "answer":  "IOT102 có 13 CLO.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO1 của IOT102 là gì?",
+                         "answer":  "CLO1 là hiểu khái niệm IoT và các ứng dụng.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO3 của IOT102 là gì?",
+                         "answer":  "CLO3 là hiểu Networking trong IoT.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO4 của IOT102 là gì?",
+                         "answer":  "CLO4 là hiểu Securing trong IoT.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO6 của IOT102 là gì?",
+                         "answer":  "CLO6 là lập trình Digital Input/Output với Arduino UNO.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "CLO9 của IOT102 là gì?",
+                         "answer":  "CLO9 là lập trình Communication với Arduino UNO.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có bao nhiêu session?",
+                         "answer":  "IOT102 có 60 sessions, mỗi session 45 phút.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Session 1 của IOT102 học nội dung gì?",
+                         "answer":  "Session 1 giới thiệu môn IoT và nội dung “What in the world is the Internet of Things?”.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Session 3 của IOT102 làm lab gì?",
+                         "answer":  "Session 3 làm lab Getting Started with Arduino and Genuino UNO và Fritzing building circuit.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Session 15 của IOT102 có nội dung gì?",
+                         "answer":  "Session 15 gồm lab Analog In/Out Serial, Photoresistor Analog Input và Project Topic Registration.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Progress test 1 của IOT102 diễn ra ở session nào?",
+                         "answer":  "Progress test 1 diễn ra ở session 34.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Final project report preparation của IOT102 diễn ra ở session nào?",
+                         "answer":  "Final project report preparation diễn ra ở session 54.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "IOT102 có bao nhiêu assessment?",
+                         "answer":  "IOT102 có 6 assessment.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Final Project Presentation của IOT102 chiếm bao nhiêu phần trăm?",
+                         "answer":  "Final Project Presentation chiếm 20%.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     },
+                     {
+                         "question":  "Final exam của IOT102 kéo dài bao lâu và chiếm bao nhiêu phần trăm?",
+                         "answer":  "Final exam kéo dài 60 phút và chiếm 20%.",
+                         "subject":  "IOT102",
+                         "status":  "Approved"
+                     }
+                 ]
+}
