@@ -3220,6 +3220,108 @@ body.rbl-body {
   color: #fff;
 }
 
+.rbl-account-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.rbl-account-toggle {
+  cursor: pointer;
+  gap: 4px;
+}
+
+.rbl-account-chevron {
+  font-size: 18px;
+  transition: transform 180ms ease;
+}
+
+.rbl-account-dropdown.is-open .rbl-account-chevron {
+  transform: rotate(180deg);
+}
+
+.rbl-account-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1100;
+  min-width: 220px;
+  padding: 6px 0;
+  border: 1px solid var(--rbl-border);
+  border-radius: var(--rbl-radius);
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  transform-origin: top right;
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+
+.rbl-account-dropdown.is-open .rbl-account-menu {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.rbl-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--rbl-text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.rbl-account-menu-item:hover,
+.rbl-account-menu-item:focus {
+  background: var(--rbl-surface-low);
+  color: var(--rbl-primary);
+  outline: none;
+}
+
+.rbl-account-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--rbl-muted);
+}
+
+.rbl-account-menu-item:hover .material-symbols-outlined,
+.rbl-account-menu-item:focus .material-symbols-outlined {
+  color: var(--rbl-primary);
+}
+
+.rbl-account-menu-logout {
+  color: #b91c1c;
+}
+
+.rbl-account-menu-logout:hover,
+.rbl-account-menu-logout:focus {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.rbl-account-menu-logout .material-symbols-outlined {
+  color: #b91c1c;
+}
+
+.rbl-account-menu-divider {
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--rbl-border);
+}
+
+.rbl-account-menu form {
+  margin: 0;
+}
+
 .rbl-language-switch.language-switch {
   min-height: 36px;
   padding: 3px;

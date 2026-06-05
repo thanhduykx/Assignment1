@@ -1,0 +1,62 @@
+@model ProfileViewModel
+@{
+    ViewData["Title"] = "Profile";
+    ViewData["UseRblShell"] = true;
+    ViewData["ShellTitle"] = "Chỉnh sửa hồ sơ / Edit Profile";
+    ViewData["ShellTitleI18n"] = "profile.shellTitle";
+    ViewData["BodyClass"] = "profile-page";
+}
+
+<div class="rbl-page-heading">
+    <div>
+        <p class="eyebrow" data-i18n="profile.kicker">Hồ sơ / Profile</p>
+        <h1 data-i18n="profile.title">Chỉnh sửa hồ sơ / Edit Profile</h1>
+    </div>
+</div>
+
+<div class="rbl-hero-panel">
+    <p class="subtitle" data-i18n="profile.subtitle">
+        Bạn có thể chỉnh sửa Full Name. Email, Password và Role chỉ có thể xem.
+    </p>
+</div>
+
+@if (TempData["ProfileSuccess"] is not null)
+{
+    <div class="rbl-alert rbl-alert-success">
+        <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+        <span>@TempData["ProfileSuccess"]</span>
+    </div>
+}
+
+<form asp-controller="Account" asp-action="Profile" method="post" class="rbl-form-grid" style="max-width: 520px;">
+    @Html.AntiForgeryToken()
+
+    <div class="rbl-field">
+        <label asp-for="Email" data-i18n="profile.email">Email</label>
+        <input asp-for="Email" class="form-control" readonly disabled />
+        <span class="rbl-field-hint" data-i18n="profile.emailHint">Email không thể chỉnh sửa.</span>
+    </div>
+
+    <div class="rbl-field">
+        <label asp-for="Role" data-i18n="profile.role">Vai trò / Role</label>
+        <input asp-for="Role" class="form-control" readonly disabled />
+        <span class="rbl-field-hint" data-i18n="profile.roleHint">Vai trò không thể chỉnh sửa.</span>
+    </div>
+
+    <div class="rbl-field">
+        <label asp-for="FullName" data-i18n="profile.fullName">Tên đầy đủ / Full Name</label>
+        <input asp-for="FullName" class="form-control" />
+        <span asp-validation-for="FullName" class="rbl-field-error"></span>
+    </div>
+
+    <div class="rbl-field rbl-field-actions">
+        <button type="submit" class="rbl-submit-button" data-i18n="profile.save">
+            <span class="material-symbols-outlined" aria-hidden="true">save</span>
+            Lưu thay đổi / Save
+        </button>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
