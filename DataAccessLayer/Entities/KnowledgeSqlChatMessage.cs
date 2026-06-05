@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlChatMessage
+public sealed class KnowledgeSqlChatMessage
 {
     public Guid Id { get; set; }
     public Guid SessionId { get; set; }

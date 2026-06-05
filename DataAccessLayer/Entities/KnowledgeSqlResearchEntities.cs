@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlResearchEmbeddingModel
+public sealed class KnowledgeSqlResearchEmbeddingModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
@@ -11,7 +11,7 @@ internal sealed class KnowledgeSqlResearchEmbeddingModel
     public string ConfigJson { get; set; } = "{}";
 }
 
-internal sealed class KnowledgeSqlResearchChunkingStrategy
+public sealed class KnowledgeSqlResearchChunkingStrategy
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
@@ -22,7 +22,7 @@ internal sealed class KnowledgeSqlResearchChunkingStrategy
     public bool IsActive { get; set; } = true;
 }
 
-internal sealed class KnowledgeSqlResearchFineTunedModel
+public sealed class KnowledgeSqlResearchFineTunedModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
@@ -32,7 +32,7 @@ internal sealed class KnowledgeSqlResearchFineTunedModel
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-internal sealed class KnowledgeSqlResearchExperiment
+public sealed class KnowledgeSqlResearchExperiment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
@@ -46,7 +46,7 @@ internal sealed class KnowledgeSqlResearchExperiment
     public List<KnowledgeSqlResearchTestQuestion> Questions { get; set; } = new();
 }
 
-internal sealed class KnowledgeSqlResearchRun
+public sealed class KnowledgeSqlResearchRun
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ExperimentId { get; set; }
@@ -67,7 +67,7 @@ internal sealed class KnowledgeSqlResearchRun
     public List<KnowledgeSqlResearchBenchmarkResult> Results { get; set; } = new();
 }
 
-internal sealed class KnowledgeSqlResearchTestQuestion
+public sealed class KnowledgeSqlResearchTestQuestion
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ExperimentId { get; set; }
@@ -78,7 +78,7 @@ internal sealed class KnowledgeSqlResearchTestQuestion
     public KnowledgeSqlResearchExperiment Experiment { get; set; } = null!;
 }
 
-internal sealed class KnowledgeSqlResearchBenchmarkResult
+public sealed class KnowledgeSqlResearchBenchmarkResult
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RunId { get; set; }

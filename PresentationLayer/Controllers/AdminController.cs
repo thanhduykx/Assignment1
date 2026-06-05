@@ -1,23 +1,24 @@
 using System.Security.Claims;
 using DataAccessLayer;
+using DataAccessLayer.Entities;
+using DataAccessLayer.Repositories;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PresentationLayer.Models;
 using PresentationLayer.Security;
-using PresentationLayer.Services;
 
 namespace PresentationLayer.Controllers;
 
 [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
 public sealed class AdminController : Controller
 {
-    private readonly IUserAccountStore _users;
+    private readonly IUserRepository _users;
     private readonly IKnowledgeRepository _knowledge;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IUserAccountStore users, IKnowledgeRepository knowledge, ILogger<AdminController> logger)
+    public AdminController(IUserRepository users, IKnowledgeRepository knowledge, ILogger<AdminController> logger)
     {
         _users = users;
         _knowledge = knowledge;
@@ -42,11 +43,13 @@ public sealed class AdminController : Controller
 
         try
         {
-            var user = await _users.CreateLocalForAdminAsync(
+            var passwordHash = SqlUserRepository.HashPassword(model.Password);
+            var user = await _users.CreateAsync(
                 model.FullName,
                 model.Email,
-                model.Password,
+                passwordHash,
                 model.Role,
+                "local",
                 cancellationToken);
             TempData["Success"] = $"Created {user.Email} as {user.Role}.";
         }
@@ -245,7 +248,7 @@ public sealed class AdminController : Controller
     }
 
     private static IReadOnlyList<string> ResolveAssignedSubjectLabels(
-        UserAccount user,
+        KnowledgeSqlUser user,
         IReadOnlyList<CourseSubject> subjects,
         IReadOnlyDictionary<Guid, IReadOnlyList<string>> lecturerSubjectsByUser)
     {
@@ -270,7 +273,7 @@ public sealed class AdminController : Controller
                && currentUserId == userId;
     }
 
-    private async Task RefreshCurrentUserClaimsAsync(UserAccount user)
+    private async Task RefreshCurrentUserClaimsAsync(KnowledgeSqlUser user)
     {
         var claims = new List<Claim>
         {

@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlDocument
+public sealed class KnowledgeSqlDocument
 {
     public Guid Id { get; set; }
     public string FileName { get; set; } = string.Empty;
@@ -20,5 +20,6 @@ internal sealed class KnowledgeSqlDocument
     public string EmbeddingModel { get; set; } = string.Empty;
     public int EmbeddingDimensions { get; set; }
     public string ChunkingStrategy { get; set; } = string.Empty;
+    public KnowledgeSqlUser? UploadedByUser { get; set; }
     public ICollection<KnowledgeSqlChunk> Chunks { get; set; } = new List<KnowledgeSqlChunk>();
 }

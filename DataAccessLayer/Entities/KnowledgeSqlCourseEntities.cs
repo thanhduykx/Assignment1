@@ -1,6 +1,6 @@
 namespace DataAccessLayer.Entities;
 
-internal sealed class KnowledgeSqlCourseSubject
+public sealed class KnowledgeSqlCourseSubject
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Code { get; set; } = string.Empty;
@@ -10,10 +10,11 @@ internal sealed class KnowledgeSqlCourseSubject
     public Guid? OwnerUserId { get; set; }
     public string? OwnerName { get; set; }
     public string? OwnerEmail { get; set; }
+    public KnowledgeSqlUser? Owner { get; set; }
     public List<KnowledgeSqlCourseChapter> Chapters { get; set; } = new();
 }
 
-internal sealed class KnowledgeSqlCourseChapter
+public sealed class KnowledgeSqlCourseChapter
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SubjectId { get; set; }

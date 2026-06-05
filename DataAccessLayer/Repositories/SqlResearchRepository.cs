@@ -8,17 +8,16 @@ namespace DataAccessLayer.Repositories;
 public sealed class SqlResearchRepository : IResearchRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly DbContextOptions<KnowledgeSqlDbContext> _options;
+    private readonly KnowledgeSqlDbContext _context;
 
-    public SqlResearchRepository(string connectionString)
+    public SqlResearchRepository(KnowledgeSqlDbContext context)
     {
-        _options = KnowledgeSqlDbContextOptionsFactory.Create(connectionString);
+        _context = context;
     }
 
     public async Task<IReadOnlyList<ResearchExperimentSummary>> GetExperimentsAsync(CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var experiments = await context.ResearchExperiments
+        var experiments = await _context.ResearchExperiments
             .AsNoTracking()
             .Include(item => item.Runs)
             .ThenInclude(item => item.Results)
@@ -31,8 +30,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task<ResearchExperimentDetail?> GetExperimentAsync(Guid experimentId, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var experiment = await context.ResearchExperiments
+        var experiment = await _context.ResearchExperiments
             .AsNoTracking()
             .Include(item => item.Questions)
             .Include(item => item.Runs)
@@ -87,8 +85,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task<IReadOnlyList<ResearchOption>> GetEmbeddingModelsAsync(CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        return await context.ResearchEmbeddingModels
+        return await _context.ResearchEmbeddingModels
             .AsNoTracking()
             .Where(item => item.IsActive
                 && (item.Provider == "Gemini" || item.Provider == "HuggingFace"))
@@ -106,8 +103,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task<IReadOnlyList<ResearchOption>> GetChunkingStrategiesAsync(CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        return await context.ResearchChunkingStrategies
+        return await _context.ResearchChunkingStrategies
             .AsNoTracking()
             .Where(item => item.IsActive)
             .OrderBy(item => item.Name)
@@ -125,8 +121,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task<ResearchFineTunedModelInfo?> GetLatestFineTunedModelAsync(CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        return await context.ResearchFineTunedModels
+        return await _context.ResearchFineTunedModels
             .AsNoTracking()
             .Where(item => item.Status == "Ready" || item.Status == "Trained")
             .OrderByDescending(item => item.CreatedAt)
@@ -144,13 +139,12 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task<Guid> CreateExperimentAsync(CreateResearchExperimentRequest request, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var embeddings = await context.ResearchEmbeddingModels
+        var embeddings = await _context.ResearchEmbeddingModels
             .Where(item => request.EmbeddingModelIds.Contains(item.Id)
                 && item.IsActive
                 && (item.Provider == "Gemini" || item.Provider == "HuggingFace"))
             .ToListAsync(cancellationToken);
-        var strategies = await context.ResearchChunkingStrategies
+        var strategies = await _context.ResearchChunkingStrategies
             .Where(item => request.ChunkingStrategyIds.Contains(item.Id) && item.IsActive)
             .ToListAsync(cancellationToken);
 
@@ -242,7 +236,7 @@ public sealed class SqlResearchRepository : IResearchRepository
                     },
                     JsonOptions)
             };
-            context.ResearchFineTunedModels.Add(fineTunedModel);
+            _context.ResearchFineTunedModels.Add(fineTunedModel);
             experiment.Runs.Add(new KnowledgeSqlResearchRun
             {
                 Id = Guid.NewGuid(),
@@ -265,7 +259,7 @@ public sealed class SqlResearchRepository : IResearchRepository
                 Status = "Ready",
                 CreatedAt = DateTimeOffset.UtcNow
             };
-            context.ResearchFineTunedModels.Add(fineTunedModel);
+            _context.ResearchFineTunedModels.Add(fineTunedModel);
             experiment.Runs.Add(new KnowledgeSqlResearchRun
             {
                 Id = Guid.NewGuid(),
@@ -278,15 +272,14 @@ public sealed class SqlResearchRepository : IResearchRepository
             });
         }
 
-        context.ResearchExperiments.Add(experiment);
-        await context.SaveChangesAsync(cancellationToken);
+        _context.ResearchExperiments.Add(experiment);
+        await _context.SaveChangesAsync(cancellationToken);
         return experiment.Id;
     }
 
     public async Task<IReadOnlyList<ResearchRunSummary>> GetRunnableRunsAsync(Guid experimentId, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var runs = await context.ResearchRuns
+        var runs = await _context.ResearchRuns
             .AsNoTracking()
             .Include(item => item.EmbeddingModel)
             .Include(item => item.ChunkingStrategy)
@@ -301,8 +294,7 @@ public sealed class SqlResearchRepository : IResearchRepository
 
     public async Task SetExperimentStatusAsync(Guid experimentId, string status, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var experiment = await context.ResearchExperiments.FirstOrDefaultAsync(item => item.Id == experimentId, cancellationToken);
+        var experiment = await _context.ResearchExperiments.FirstOrDefaultAsync(item => item.Id == experimentId, cancellationToken);
         if (experiment is null)
         {
             return;
@@ -318,13 +310,12 @@ public sealed class SqlResearchRepository : IResearchRepository
             experiment.EndedAt = DateTimeOffset.UtcNow;
         }
 
-        await context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task SetRunStatusAsync(Guid runId, string status, string? errorMessage = null, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var run = await context.ResearchRuns.FirstOrDefaultAsync(item => item.Id == runId, cancellationToken);
+        var run = await _context.ResearchRuns.FirstOrDefaultAsync(item => item.Id == runId, cancellationToken);
         if (run is null)
         {
             return;
@@ -337,15 +328,14 @@ public sealed class SqlResearchRepository : IResearchRepository
             run.CompletedAt = DateTimeOffset.UtcNow;
         }
 
-        await context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task SaveBenchmarkResultsAsync(Guid runId, IReadOnlyList<ResearchBenchmarkResult> results, CancellationToken cancellationToken = default)
     {
-        await using var context = CreateContext();
-        var existing = context.ResearchBenchmarkResults.Where(item => item.RunId == runId);
-        context.ResearchBenchmarkResults.RemoveRange(existing);
-        context.ResearchBenchmarkResults.AddRange(results.Select(item => new KnowledgeSqlResearchBenchmarkResult
+        var existing = _context.ResearchBenchmarkResults.Where(item => item.RunId == runId);
+        _context.ResearchBenchmarkResults.RemoveRange(existing);
+        _context.ResearchBenchmarkResults.AddRange(results.Select(item => new KnowledgeSqlResearchBenchmarkResult
         {
             Id = Guid.NewGuid(),
             RunId = runId,
@@ -360,12 +350,7 @@ public sealed class SqlResearchRepository : IResearchRepository
             RetrievedChunksJson = item.RetrievedChunksJson,
             EvaluatedAt = DateTimeOffset.UtcNow
         }));
-        await context.SaveChangesAsync(cancellationToken);
-    }
-
-    private KnowledgeSqlDbContext CreateContext()
-    {
-        return new KnowledgeSqlDbContext(_options);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     private static ResearchExperimentSummary ToSummary(KnowledgeSqlResearchExperiment experiment)
