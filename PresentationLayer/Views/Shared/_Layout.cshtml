@@ -171,13 +171,27 @@
                         </button>
                         @if (isAuthenticated)
                         {
-                            <form asp-controller="Account" asp-action="Logout" method="post" class="rbl-account-form">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="rbl-account-button">
+                            <div class="rbl-account-dropdown">
+                                <button type="button" class="rbl-account-button rbl-account-toggle" aria-haspopup="true" aria-expanded="false">
                                     <span class="material-symbols-outlined" aria-hidden="true">person</span>
                                     @displayName
+                                    <span class="material-symbols-outlined rbl-account-chevron" aria-hidden="true">arrow_drop_down</span>
                                 </button>
-                            </form>
+                                <div class="rbl-account-menu" role="menu" hidden>
+                                    <a class="rbl-account-menu-item" role="menuitem" asp-controller="Account" asp-action="Profile">
+                                        <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                                        <span data-i18n="nav.editProfile">Chỉnh sửa Profile / Edit Profile</span>
+                                    </a>
+                                    <div class="rbl-account-menu-divider" role="separator"></div>
+                                    <form asp-controller="Account" asp-action="Logout" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="rbl-account-menu-item rbl-account-menu-logout" role="menuitem">
+                                            <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+                                            <span data-i18n="nav.logout">Logout</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
                         }
                         else
                         {

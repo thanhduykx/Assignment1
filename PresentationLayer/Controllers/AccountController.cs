@@ -144,6 +144,65 @@ public sealed class AccountController : Controller
         return View();
     }
 
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> Profile(CancellationToken cancellationToken)
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userIdString) || !Guid.TryParse(userIdString, out var userId))
+        {
+            return RedirectToAction("Login", "Account");
+        }
+
+        var user = await _users.GetByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            return RedirectToAction("Login", "Account");
+        }
+
+        var model = new ProfileViewModel
+        {
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = AppRoles.Normalize(user.Role)
+        };
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize]
+    public async Task<IActionResult> Profile(ProfileViewModel model, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userIdString) || !Guid.TryParse(userIdString, out var userId))
+        {
+            return RedirectToAction("Login", "Account");
+        }
+
+        var user = await _users.GetByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            return RedirectToAction("Login", "Account");
+        }
+
+        // Update FullName only
+        await _users.UpdateFullNameAsync(userId, model.FullName, cancellationToken);
+
+        // Re-sign in to refresh the claims (so the new name appears in the UI)
+        user.FullName = model.FullName;
+        await SignInAsync(user);
+
+        TempData["ProfileSuccess"] = "Profile updated successfully.";
+        return RedirectToAction("Profile");
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize]

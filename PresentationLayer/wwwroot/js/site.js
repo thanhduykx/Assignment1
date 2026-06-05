@@ -2,9 +2,20 @@ const translations = {
   en: {
     "nav.documents": "Documents",
     "nav.chat": "Chat",
+    "nav.editProfile": "Edit Profile",
     "nav.logout": "Logout",
     "nav.login": "Login",
     "nav.register": "Create account",
+    "profile.shellTitle": "Edit Profile",
+    "profile.kicker": "Profile",
+    "profile.title": "Edit Profile",
+    "profile.subtitle": "You can edit your Full Name. Email, Password and Role are read-only.",
+    "profile.email": "Email",
+    "profile.emailHint": "Email cannot be edited.",
+    "profile.role": "Role",
+    "profile.roleHint": "Role cannot be edited.",
+    "profile.fullName": "Full Name",
+    "profile.save": "Save changes",
     "shell.portal": "Research Portal",
     "shell.dashboard": "Research Dashboard",
     "shell.chatbot": "Chatbot",
@@ -161,9 +172,20 @@ const translations = {
   vi: {
     "nav.documents": "T\u00e0i li\u1ec7u",
     "nav.chat": "H\u1ecfi \u0111\u00e1p",
+    "nav.editProfile": "Ch\u1ec9nh s\u1eeda Profile / Edit Profile",
     "nav.logout": "\u0110\u0103ng xu\u1ea5t",
     "nav.login": "\u0110\u0103ng nh\u1eadp",
     "nav.register": "T\u1ea1o t\u00e0i kho\u1ea3n",
+    "profile.shellTitle": "Ch\u1ec9nh s\u1eeda h\u1ed3 s\u01a1 / Edit Profile",
+    "profile.kicker": "H\u1ed3 s\u01a1 / Profile",
+    "profile.title": "Ch\u1ec9nh s\u1eeda h\u1ed3 s\u01a1 / Edit Profile",
+    "profile.subtitle": "B\u1ea1n c\u00f3 th\u1ec3 ch\u1ec9nh s\u1eeda Full Name. Email, Password v\u00e0 Role ch\u1ec9 c\u00f3 th\u1ec3 xem.",
+    "profile.email": "Email",
+    "profile.emailHint": "Email kh\u00f4ng th\u1ec3 ch\u1ec9nh s\u1eeda.",
+    "profile.role": "Vai tr\u00f2 / Role",
+    "profile.roleHint": "Vai tr\u00f2 kh\u00f4ng th\u1ec3 ch\u1ec9nh s\u1eeda.",
+    "profile.fullName": "T\u00ean \u0111\u1ea7y \u0111\u1ee7 / Full Name",
+    "profile.save": "L\u01b0u thay \u0111\u1ed5i / Save",
     "shell.portal": "C\u1ed5ng nghi\u00ean c\u1ee9u",
     "shell.dashboard": "Dashboard nghi\u00ean c\u1ee9u",
     "shell.chatbot": "Chatbot",
@@ -1736,3 +1758,75 @@ if (questionInput && chatForm) {
     }
   });
 }
+
+/* RBL account dropdown */
+(function initAccountDropdown() {
+  document.addEventListener("click", function (event) {
+    var toggle = event.target.closest(".rbl-account-toggle");
+    var dropdown = toggle ? toggle.closest(".rbl-account-dropdown") : null;
+    var menu = dropdown ? dropdown.querySelector(".rbl-account-menu") : null;
+
+    /* Close all other dropdowns first */
+    document.querySelectorAll(".rbl-account-dropdown.is-open").forEach(function (openDropdown) {
+      if (openDropdown !== dropdown) {
+        openDropdown.classList.remove("is-open");
+        var openToggle = openDropdown.querySelector(".rbl-account-toggle");
+        if (openToggle) {
+          openToggle.setAttribute("aria-expanded", "false");
+        }
+        var openMenu = openDropdown.querySelector(".rbl-account-menu");
+        if (openMenu) {
+          openMenu.hidden = true;
+        }
+      }
+    });
+
+    if (dropdown && menu) {
+      var isOpen = dropdown.classList.contains("is-open");
+      if (isOpen) {
+        dropdown.classList.remove("is-open");
+        toggle.setAttribute("aria-expanded", "false");
+        menu.hidden = true;
+      } else {
+        dropdown.classList.add("is-open");
+        toggle.setAttribute("aria-expanded", "true");
+        menu.hidden = false;
+      }
+      event.stopPropagation();
+    }
+  });
+
+  /* Close dropdown when clicking outside */
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest(".rbl-account-dropdown")) {
+      document.querySelectorAll(".rbl-account-dropdown.is-open").forEach(function (dropdown) {
+        dropdown.classList.remove("is-open");
+        var toggle = dropdown.querySelector(".rbl-account-toggle");
+        if (toggle) {
+          toggle.setAttribute("aria-expanded", "false");
+        }
+        var menu = dropdown.querySelector(".rbl-account-menu");
+        if (menu) {
+          menu.hidden = true;
+        }
+      });
+    }
+  });
+
+  /* Close dropdown with Escape key */
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      document.querySelectorAll(".rbl-account-dropdown.is-open").forEach(function (dropdown) {
+        dropdown.classList.remove("is-open");
+        var toggle = dropdown.querySelector(".rbl-account-toggle");
+        if (toggle) {
+          toggle.setAttribute("aria-expanded", "false");
+        }
+        var menu = dropdown.querySelector(".rbl-account-menu");
+        if (menu) {
+          menu.hidden = true;
+        }
+      });
+    }
+  });
+})();

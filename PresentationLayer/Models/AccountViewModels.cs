@@ -36,3 +36,14 @@ public sealed class RegisterViewModel
     [DataType(DataType.Password)]
     public string ConfirmPassword { get; set; } = string.Empty;
 }
+
+public sealed class ProfileViewModel
+{
+    [Required(ErrorMessage = "Full name is required.")]
+    [StringLength(120, ErrorMessage = "Full name must be 120 characters or fewer.")]
+    public string FullName { get; set; } = string.Empty;
+
+    public string Email { get; set; } = string.Empty;
+
+    public string Role { get; set; } = string.Empty;
+}
