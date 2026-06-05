@@ -26,6 +26,13 @@ public sealed class ChatIndexViewModel
     public IReadOnlyList<ChatSession> ChatSessions { get; set; } = Array.Empty<ChatSession>();
     public IReadOnlyList<IndexedDocument> Documents { get; set; } = Array.Empty<IndexedDocument>();
     public IReadOnlyList<string> SubjectOptions { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<ChatQuestionSuggestionViewModel> BenchmarkQuestions { get; set; } = Array.Empty<ChatQuestionSuggestionViewModel>();
+}
+
+public sealed class ChatQuestionSuggestionViewModel
+{
+    public string Question { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
 }
 
 public sealed class DocumentUploadViewModel

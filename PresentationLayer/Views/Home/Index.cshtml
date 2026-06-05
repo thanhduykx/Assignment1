@@ -186,6 +186,31 @@
                 </form>
             </section>
         }
+
+        <section class="rbl-storage-panel" aria-label="Dung lượng tài liệu đã upload">
+            <div class="rbl-panel-header">
+                <div>
+                    <span class="rbl-section-label">Dữ liệu</span>
+                    <h2>Dữ liệu đã upload</h2>
+                </div>
+                <span class="material-symbols-outlined" aria-hidden="true">database</span>
+            </div>
+
+            <div class="rbl-storage-stats">
+                <article>
+                    <span data-i18n="documents.uploadedSize">Dung lượng đã upload</span>
+                    <strong>@FormatBytes(totalUploadedBytes)</strong>
+                </article>
+                <article>
+                    <span data-i18n="documents.statsDocuments">Tài liệu</span>
+                    <strong>@totalDocuments</strong>
+                </article>
+                <article>
+                    <span>Chunks</span>
+                    <strong>@totalChunks</strong>
+                </article>
+            </div>
+        </section>
     </div>
     }
 

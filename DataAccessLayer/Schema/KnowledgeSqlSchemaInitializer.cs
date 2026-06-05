@@ -18,8 +18,7 @@ public static class KnowledgeSqlSchemaInitializer
         EnsureKnowledgeIndexes(context);
         EnsureCourseCatalogTables(context);
         EnsureSubjectOwnerColumns(context);
-        EnsureUsersTable(context);
-        EnsureUserForeignKeys(context);
+        DropLegacyUserForeignKeys(context);
         BackfillDocumentFileSizes(context);
         SeedCourseCatalog(context);
         SeedResearchCatalog(context);
@@ -309,6 +308,31 @@ public static class KnowledgeSqlSchemaInitializer
             IF COL_LENGTH('rag_subjects', 'OwnerEmail') IS NULL
             BEGIN
                 ALTER TABLE rag_subjects ADD OwnerEmail NVARCHAR(255) NULL
+            END
+            """);
+    }
+
+    private static void DropLegacyUserForeignKeys(KnowledgeSqlDbContext context)
+    {
+        // User accounts are stored by the presentation layer, so knowledge data keeps user ids only as loose ownership metadata.
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('FK_rag_documents_rag_users', 'F') IS NOT NULL
+            BEGIN
+                ALTER TABLE rag_documents DROP CONSTRAINT FK_rag_documents_rag_users
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('FK_rag_chat_sessions_rag_users', 'F') IS NOT NULL
+            BEGIN
+                ALTER TABLE rag_chat_sessions DROP CONSTRAINT FK_rag_chat_sessions_rag_users
+            END
+            """);
+
+        context.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID('FK_rag_subjects_rag_users', 'F') IS NOT NULL
+            BEGIN
+                ALTER TABLE rag_subjects DROP CONSTRAINT FK_rag_subjects_rag_users
             END
             """);
     }
