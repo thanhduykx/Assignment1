@@ -245,11 +245,6 @@ public sealed class RagChatServiceTests
     [Fact]
     public async Task AskAsync_DoesNotRetrieveChunks_ForExternalQuestion()
     {
-        var fineTuned = new StubFineTunedChatService(new FineTunedChatAnswer(
-            "Fallback should not be called.",
-            0.99,
-            "external",
-            "test-model"));
         var repository = new InMemoryChatKnowledgeRepository(new[]
         {
             new DocumentChunk
@@ -266,8 +261,7 @@ public sealed class RagChatServiceTests
         var service = new RagChatService(
             repository,
             new HashingEmbeddingService(),
-            new NoOpChatCompletionService(),
-            fineTuned);
+            new NoOpChatCompletionService());
 
         var answer = await service.AskAsync(
             Guid.NewGuid(),
@@ -278,7 +272,6 @@ public sealed class RagChatServiceTests
         Assert.Contains("t\u00e0i li\u1ec7u", answer.Answer);
         Assert.Empty(answer.Citations);
         Assert.Equal(0, repository.GetChunksCallCount);
-        Assert.Equal(0, fineTuned.CallCount);
     }
 
     [Fact]
@@ -367,7 +360,7 @@ public sealed class RagChatServiceTests
     }
 
     [Fact]
-    public async Task AskAsync_UsesFineTunedFallback_WhenRagHasNoEvidence()
+    public async Task AskAsync_DoesNotUseFineTunedFallback_WhenRagHasNoEvidence()
     {
         var repository = new InMemoryChatKnowledgeRepository(new[]
         {
@@ -382,16 +375,10 @@ public sealed class RagChatServiceTests
                 Embedding = new Dictionary<int, double> { [1] = 1 }
             }
         });
-        var fineTuned = new StubFineTunedChatService(new FineTunedChatAnswer(
-            "DBA103 c\u00f3 chu\u1ea9n \u0111\u1ea7u ra v\u1ec1 nh\u1eadn bi\u1ebft, th\u1ef1c h\u00e0nh v\u00e0 tr\u00ecnh b\u00e0y \u0111\u00e0n b\u1ea7u.",
-            0.8,
-            "DBA103 c\u00f3 chu\u1ea9n \u0111\u1ea7u ra n\u00e0o?",
-            "local-supervised-qa"));
         var service = new RagChatService(
             repository,
             new HashingEmbeddingService(),
-            new NoOpChatCompletionService(),
-            fineTuned);
+            new NoOpChatCompletionService());
 
         var answer = await service.AskAsync(
             Guid.NewGuid(),
@@ -399,16 +386,15 @@ public sealed class RagChatServiceTests
             language: "vi",
             allowedSubjects: new[] { "DBA103 - Nhac cu truyen thong - Dan Bau" });
 
-        Assert.Equal("FineTunedFallback", answer.AnswerSource);
+        Assert.Equal("OutOfScope", answer.AnswerSource);
         Assert.False(answer.HasDirectCitation);
-        Assert.Equal("local-supervised-qa", answer.FallbackModel);
+        Assert.Null(answer.FallbackModel);
         Assert.Empty(answer.Citations);
-        Assert.Contains("kh\u00f4ng c\u00f3 tr\u00edch d\u1eabn tr\u1ef1c ti\u1ebfp", answer.Answer);
-        Assert.Contains("chu\u1ea9n \u0111\u1ea7u ra", answer.Answer);
+        Assert.Equal("M\u00ecnh kh\u00f4ng \u0111\u1ee7 d\u1eef li\u1ec7u trong t\u00e0i li\u1ec7u \u0111\u1ec3 tr\u1ea3 l\u1eddi c\u00e2u h\u1ecfi n\u00e0y.", answer.Answer);
     }
 
     [Fact]
-    public async Task AskAsync_ChecksDocumentChunksBeforeFineTunedFallback()
+    public async Task AskAsync_UsesDocumentChunksWithoutFineTunedFallback()
     {
         var repository = new InMemoryChatKnowledgeRepository(new[]
         {
@@ -423,16 +409,10 @@ public sealed class RagChatServiceTests
                 Embedding = new Dictionary<int, double> { [1] = 1 }
             }
         });
-        var fineTuned = new StubFineTunedChatService(new FineTunedChatAnswer(
-            "Fallback should not be used.",
-            0.99,
-            "DBA103 assessment",
-            "local-supervised-qa"));
         var service = new RagChatService(
             repository,
             new HashingEmbeddingService(),
-            new NoOpChatCompletionService(),
-            fineTuned);
+            new NoOpChatCompletionService());
 
         var answer = await service.AskAsync(
             Guid.NewGuid(),
@@ -444,7 +424,6 @@ public sealed class RagChatServiceTests
         Assert.True(answer.HasDirectCitation);
         Assert.NotEmpty(answer.Citations);
         Assert.Contains("70%", answer.Answer);
-        Assert.Equal(0, fineTuned.CallCount);
     }
 
     [Fact]
@@ -479,8 +458,7 @@ public sealed class RagChatServiceTests
         var service = new RagChatService(
             repository,
             new HashingEmbeddingService(),
-            new NoOpChatCompletionService(),
-            new StubFineTunedChatService(null));
+            new NoOpChatCompletionService());
 
         var answer = await service.AskAsync(
             Guid.NewGuid(),
@@ -647,29 +625,6 @@ public sealed class RagChatServiceTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(_groundingDecision);
-        }
-    }
-
-    private sealed class StubFineTunedChatService : IFineTunedChatService
-    {
-        private readonly FineTunedChatAnswer? _answer;
-
-        public StubFineTunedChatService(FineTunedChatAnswer? answer)
-        {
-            _answer = answer;
-        }
-
-        public int CallCount { get; private set; }
-
-        public Task<FineTunedChatAnswer?> TryAnswerAsync(
-            string question,
-            string? subject,
-            IReadOnlyList<ChatMessage> history,
-            IReadOnlyCollection<string>? allowedSubjects,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            return Task.FromResult(_answer);
         }
     }
 

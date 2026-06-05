@@ -444,6 +444,7 @@ function readRelatedQuestionPool() {
       .filter((item) => item?.en && item?.vi)
       .map((item, index) => ({
         id: item.id || `subject-${index}`,
+        subject: item.subject || "",
         en: item.en,
         vi: item.vi
       }));
@@ -452,16 +453,19 @@ function readRelatedQuestionPool() {
   return [
     {
       id: "available-subjects",
+      subject: "",
       en: "Which subjects have indexed documents?",
       vi: "Hiện có những môn nào đã index tài liệu?"
     },
     {
       id: "summarize-documents",
+      subject: "",
       en: "Summarize the uploaded documents.",
       vi: "Tóm tắt các tài liệu đã upload."
     },
     {
       id: "askable-content",
+      subject: "",
       en: "What can I ask from the document repository?",
       vi: "Tôi có thể hỏi gì từ kho tài liệu?"
     }
@@ -662,10 +666,40 @@ function normalizeSubjectForCompare(subject) {
   return normalizeQuestionForMemory(subject);
 }
 
+function extractCourseCode(value) {
+  const match = String(value || "").match(/\b[A-Za-z]{2,}\d{2,}\b/);
+  return match ? match[0].toUpperCase() : "";
+}
+
+function questionItemMatchesSubject(item, subject) {
+  const selectedCode = extractCourseCode(subject);
+  const itemCode = extractCourseCode(item?.subject || `${item?.en || ""} ${item?.vi || ""}`);
+  if (selectedCode && itemCode) {
+    return selectedCode === itemCode;
+  }
+
+  const normalizedSubject = normalizeSubjectForCompare(subject);
+  const normalizedItemSubject = normalizeSubjectForCompare(item?.subject || "");
+  return normalizedSubject
+    && normalizedItemSubject
+    && (normalizedItemSubject === normalizedSubject
+      || normalizedItemSubject.includes(normalizedSubject)
+      || normalizedSubject.includes(normalizedItemSubject));
+}
+
+function getKnownQuestionItemsForSubject(subject) {
+  return relatedQuestionPool.filter((item) => questionItemMatchesSubject(item, subject));
+}
+
 function buildSubjectQuestionItems(subject) {
   const trimmedSubject = (subject || "").trim();
   if (!trimmedSubject) {
     return [];
+  }
+
+  const knownItems = getKnownQuestionItemsForSubject(trimmedSubject);
+  if (knownItems.length > 0) {
+    return knownItems;
   }
 
   return [
@@ -878,7 +912,7 @@ function renderRelatedQuestions() {
 
   list.innerHTML = picked.map((item) => {
     const text = language === "vi" ? item.vi : item.en;
-    return `<button type="button" class="related-question-chip" data-question-id="${escapeHtml(item.id)}" data-question="${escapeHtml(text)}" data-question-en="${escapeHtml(item.en)}" data-question-vi="${escapeHtml(item.vi)}">${escapeHtml(text)}</button>`;
+    return `<button type="button" class="related-question-chip" data-question-id="${escapeHtml(item.id)}" data-question-subject="${escapeHtml(item.subject || "")}" data-question="${escapeHtml(text)}" data-question-en="${escapeHtml(item.en)}" data-question-vi="${escapeHtml(item.vi)}">${escapeHtml(text)}</button>`;
   }).join("");
   bindSuggestionButtons();
 }

@@ -12,34 +12,44 @@
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(subject => subject)
         .ToList();
-    var suggestedQuestions = subjectOptions.Count == 0
-        ? new[]
+    var benchmarkQuestionItems = Model.BenchmarkQuestions
+        .Where(item => !string.IsNullOrWhiteSpace(item.Question))
+        .Select(item => (En: item.Question.Trim(), Vi: item.Question.Trim(), Subject: item.Subject.Trim()))
+        .ToArray();
+    var suggestedQuestions = benchmarkQuestionItems.Length > 0
+        ? benchmarkQuestionItems.Take(6).ToArray()
+        : subjectOptions.Count == 0
+        ? new (string En, string Vi, string Subject)[]
         {
-            new { En = "Which subjects have indexed documents?", Vi = "Hiện có những môn nào đã index tài liệu?" },
-            new { En = "Summarize the uploaded documents.", Vi = "Tóm tắt các tài liệu đã upload." },
-            new { En = "What can I ask from the document repository?", Vi = "Tôi có thể hỏi gì từ kho tài liệu?" }
+            ("Which subjects have indexed documents?", "Hiện có những môn nào đã index tài liệu?", string.Empty),
+            ("Summarize the uploaded documents.", "Tóm tắt các tài liệu đã upload.", string.Empty),
+            ("What can I ask from the document repository?", "Tôi có thể hỏi gì từ kho tài liệu?", string.Empty)
         }
         : subjectOptions
             .Take(6)
             .Select(subject => new
             {
                 En = $"What is {subject} about?",
-                Vi = $"{subject} là môn gì?"
+                Vi = $"{subject} là môn gì?",
+                Subject = subject
             })
+            .Select(item => (item.En, item.Vi, item.Subject))
             .ToArray();
-    var relatedQuestions = subjectOptions.Count == 0
-        ? Array.Empty<(string En, string Vi)>()
+    var relatedQuestions = benchmarkQuestionItems.Length > 0
+        ? benchmarkQuestionItems
+        : subjectOptions.Count == 0
+        ? Array.Empty<(string En, string Vi, string Subject)>()
         : subjectOptions
             .Take(12)
             .SelectMany(subject => new[]
             {
-                ($"How many credits does {subject} have?", $"{subject} có bao nhiêu tín chỉ?"),
-                ($"What is {subject} about?", $"{subject} là môn gì?"),
-                ($"What are the main contents of {subject}?", $"Nội dung chính của {subject} gồm những gì?"),
-                ($"How is {subject} assessed?", $"{subject} được đánh giá như thế nào?"),
-                ($"What learning outcomes does {subject} mention?", $"{subject} có chuẩn đầu ra nào?"),
-                ($"What materials or resources are used in {subject}?", $"{subject} dùng tài liệu hoặc nguồn học nào?"),
-                ($"What does the syllabus say students need to do in {subject}?", $"Sinh viên cần làm gì trong {subject}?")
+                ($"How many credits does {subject} have?", $"{subject} có bao nhiêu tín chỉ?", subject),
+                ($"What is {subject} about?", $"{subject} là môn gì?", subject),
+                ($"What are the main contents of {subject}?", $"Nội dung chính của {subject} gồm những gì?", subject),
+                ($"How is {subject} assessed?", $"{subject} được đánh giá như thế nào?", subject),
+                ($"What learning outcomes does {subject} mention?", $"{subject} có chuẩn đầu ra nào?", subject),
+                ($"What materials or resources are used in {subject}?", $"{subject} dùng tài liệu hoặc nguồn học nào?", subject),
+                ($"What does the syllabus say students need to do in {subject}?", $"Sinh viên cần làm gì trong {subject}?", subject)
             })
             .ToArray();
     var suggestionsEn = suggestedQuestions.Select(item => item.En).ToArray();
@@ -48,24 +58,9 @@
         .Select((subject, index) => new { id = $"subject-option-{index}", subject, en = subject, vi = subject })
         .ToArray();
     var relatedPayload = relatedQuestions
-        .Select((item, index) => new { id = $"subject-{index}", en = item.Item1, vi = item.Item2 })
+        .Select((item, index) => new { id = $"subject-{index}", subject = item.Item3, en = item.Item1, vi = item.Item2 })
         .ToArray();
-    var totalUploadedBytes = Model.Documents.Sum(item => item.FileSizeBytes);
-
-    string FormatBytes(long bytes)
-    {
-        var units = new[] { "B", "KB", "MB", "GB", "TB" };
-        var size = Math.Max(0, bytes);
-        var unitIndex = 0;
-        var value = (double)size;
-        while (value >= 1024 && unitIndex < units.Length - 1)
-        {
-            value /= 1024;
-            unitIndex++;
-        }
-
-        return unitIndex == 0 ? $"{size} {units[unitIndex]}" : $"{value:0.##} {units[unitIndex]}";
-    }
+    var initialRelatedQuestions = relatedQuestions.Take(8).ToArray();
 }
 
 <section class="rbl-chat-page"
@@ -107,7 +102,7 @@
                 <div class="chat-related-strip rbl-related-strip" aria-label="Related questions" data-i18n-aria-label="chat.relatedAria">
                     <span data-i18n="chat.relatedLabel">Related questions</span>
                     <div class="chat-related-list">
-                        @foreach (var question in relatedQuestions)
+                        @foreach (var question in initialRelatedQuestions)
                         {
                             <button type="button" class="related-question-chip" data-question="@question.Item1" data-question-en="@question.Item1" data-question-vi="@question.Item2">@question.Item1</button>
                         }
@@ -184,9 +179,5 @@
             }
         </div>
 
-        <div class="rbl-session-storage">
-            <span data-i18n="documents.uploadedSize">Dung lượng đã upload</span>
-            <strong>@FormatBytes(totalUploadedBytes)</strong>
-        </div>
     </aside>
 </section>
