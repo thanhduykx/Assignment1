@@ -528,9 +528,12 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         return $"""
             You are a learning assistant for {subjectName}.
             Answer naturally and clearly, but only use information from the provided Documents section.
+            When the documents directly support an answer, use one short conversational lead-in such as "I checked the documents:" or "I found this in the syllabus:" before the factual answer.
+            Keep the lead-in short; do not add praise, jokes, guesses, or a separate source disclaimer because the UI already shows citations.
             Do not add outside knowledge, facts, definitions, numbers, rules, or conclusions.
             If the documents do not contain enough data to answer directly, reply with exactly:
             "I do not have enough data in the documents to answer this question."
+            Do not add a conversational lead-in to that insufficient-data response.
             Answer in English and keep it concise.
             """;
     }
@@ -578,8 +581,11 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         builder.AppendLine();
         builder.AppendLine("Answer requirements:");
         builder.AppendLine("- Prefer a natural answer, like a chatbot talking to a student.");
+        builder.AppendLine("- If the evidence is enough, start with one short conversational lead-in such as \"I checked the documents:\" or \"I found this in the syllabus:\".");
+        builder.AppendLine("- Keep small talk to at most one short sentence; do not add jokes, praise, or a separate source disclaimer.");
         builder.AppendLine("- Only answer the parts clearly supported by the documents.");
         builder.AppendLine("- If the chunks above are only loosely related or not enough to answer directly, reply: \"I do not have enough data in the documents to answer this question.\"");
+        builder.AppendLine("- Do not add a conversational lead-in to the insufficient-data response.");
         builder.AppendLine("- Answer in English.");
         builder.AppendLine();
         builder.AppendLine("Student question:");
@@ -609,8 +615,11 @@ public sealed class GeminiChatCompletionService : ILocalChatCompletionService
         builder.AppendLine();
         builder.AppendLine("Yêu cầu trả lời:");
         builder.AppendLine("- Ưu tiên trả lời tự nhiên như một chatbot đang trò chuyện với sinh viên.");
+        builder.AppendLine("- Nếu tài liệu đủ căn cứ, mở đầu bằng một câu dẫn rất ngắn như \"Mình xem trong tài liệu rồi:\" hoặc \"Mình thấy trong syllabus:\".");
+        builder.AppendLine("- Small talk chỉ tối đa một câu ngắn; không đùa, không khen, không viết thêm đoạn cam kết nguồn vì giao diện đã hiển thị citation.");
         builder.AppendLine("- Chỉ trả lời phần có căn cứ rõ trong tài liệu.");
         builder.AppendLine("- Nếu các đoạn tài liệu bên trên chỉ liên quan lỏng lẻo hoặc không đủ để trả lời trực tiếp, trả lời: \"Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này.\"");
+        builder.AppendLine("- Không thêm câu dẫn small talk vào câu trả lời không đủ dữ liệu.");
         builder.AppendLine();
         builder.AppendLine("Câu hỏi của sinh viên:");
         builder.AppendLine(question.Trim());
@@ -685,9 +694,12 @@ internal static class ChatPromptBuilder
         return $"""
             Bạn là chatbot hỗ trợ sinh viên môn {subjectName}.
             Hãy trả lời tự nhiên, thân thiện, dễ hiểu, nhưng chỉ dùng thông tin có trong phần Tài liệu được cung cấp.
+            Khi tài liệu đủ căn cứ, mở đầu bằng một câu dẫn rất ngắn như "Mình xem trong tài liệu rồi:" hoặc "Mình thấy trong syllabus:".
+            Small talk chỉ tối đa một câu ngắn; không đùa, không khen, không đoán, không viết thêm đoạn cam kết nguồn vì giao diện đã hiển thị citation.
             Không dùng kiến thức ngoài tài liệu để bổ sung sự kiện, định nghĩa, số liệu, quy định hoặc kết luận.
             Nếu tài liệu không đủ dữ liệu để trả lời trực tiếp câu hỏi, chỉ trả lời đúng câu:
             "Mình không đủ dữ liệu trong tài liệu để trả lời câu hỏi này."
+            Không thêm câu dẫn small talk vào câu trả lời không đủ dữ liệu.
             Trả lời bằng tiếng Việt, ngắn gọn, rõ ý; có thể diễn giải lại nội dung tài liệu thay vì chép nguyên văn.
             """;
     }

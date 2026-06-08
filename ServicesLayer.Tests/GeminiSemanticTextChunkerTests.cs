@@ -32,7 +32,7 @@ public sealed class GeminiSemanticTextChunkerTests
             The final question asks students to explain indexed chunks.
             """);
 
-        Assert.Equal("gemini-assisted-950-160", result.StrategyName);
+        Assert.Equal("gemini-assisted-950-0", result.StrategyName);
         Assert.Equal(2, result.Chunks.Count);
         Assert.Equal("Overview", result.Chunks[0].SectionTitle);
         Assert.Equal("Assessment", result.Chunks[1].SectionTitle);
@@ -66,8 +66,48 @@ public sealed class GeminiSemanticTextChunkerTests
             The second paragraph is still indexed by fallback.
             """);
 
-        Assert.Equal("paragraph-aware-950-160", result.StrategyName);
+        Assert.Equal("paragraph-aware-950-0", result.StrategyName);
         Assert.NotEmpty(result.Chunks);
+    }
+
+    [Fact]
+    public async Task CreateChunkingResultAsync_DoesNotOverlap_WhenGeminiSectionExceedsChunkSize()
+    {
+        var paragraphIds = string.Join(",", Enumerable.Range(1, 8));
+        var chunker = CreateChunker($$"""
+            {
+              "candidates": [
+                {
+                  "content": {
+                    "parts": [
+                      {
+                        "text": "{\"sections\":[{\"title\":\"Student requirements\",\"paragraphIds\":[{{paragraphIds}}]}]}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+            """);
+        var text = string.Join("\n", Enumerable.Range(1, 8).Select(index =>
+            $"- Requirement {index}: " + string.Join(' ', Enumerable.Repeat($"student must complete task {index}", 8))));
+
+        var result = await chunker.CreateChunkingResultAsync(text);
+
+        Assert.Equal("gemini-assisted-950-0", result.StrategyName);
+        Assert.True(result.Chunks.Count > 1);
+        for (var index = 1; index < result.Chunks.Count; index++)
+        {
+            var previousLines = result.Chunks[index - 1].Text.Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0);
+            var currentLines = result.Chunks[index].Text.Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0);
+
+            Assert.Empty(previousLines.Intersect(currentLines));
+            Assert.True(result.Chunks[index].CharStart >= result.Chunks[index - 1].CharEnd);
+        }
     }
 
     private static GeminiSemanticTextChunker CreateChunker(string responseJson)

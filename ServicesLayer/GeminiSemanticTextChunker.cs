@@ -17,9 +17,7 @@ public sealed class GeminiSemanticTextChunker : ITextChunker
 {
     private const int TargetSize = 950;
     private const int MaxSize = 1200;
-    private const int Overlap = 160;
-    private const int MaxOverlap = 320;
-    private const int MinOverlap = 40;
+    private const int Overlap = 0;
     private const int ParagraphPreviewLength = 220;
     private const int LongBlockSplitSize = 900;
 
@@ -205,7 +203,8 @@ public sealed class GeminiSemanticTextChunker : ITextChunker
                 if (builder.Length > 0 && builder.Length + separatorLength + block.Text.Length > MaxSize)
                 {
                     AddChunk(chunks, builder.ToString(), title, chunkStart, chunkEnd);
-                    SeedOverlap(builder, chunkEnd, out chunkStart);
+                    builder.Clear();
+                    chunkStart = block.Start;
                 }
 
                 if (builder.Length > 0)
@@ -343,121 +342,6 @@ public sealed class GeminiSemanticTextChunker : ITextChunker
             sectionTitle,
             Math.Max(0, start),
             Math.Max(start, end)));
-    }
-
-    private static void SeedOverlap(StringBuilder builder, int previousEnd, out int chunkStart)
-    {
-        var overlapText = GetOverlapText(builder.ToString());
-        builder.Clear();
-
-        if (string.IsNullOrWhiteSpace(overlapText))
-        {
-            chunkStart = previousEnd;
-            return;
-        }
-
-        builder.Append(overlapText);
-        chunkStart = Math.Max(0, previousEnd - overlapText.Length);
-    }
-
-    private static string GetOverlapText(string text)
-    {
-        var trimmed = text.Trim();
-        if (trimmed.Length <= Overlap)
-        {
-            return trimmed;
-        }
-
-        var desiredStart = Math.Max(0, trimmed.Length - Overlap);
-        var earliestStart = Math.Max(0, trimmed.Length - MaxOverlap);
-        var boundaryStart = FindOverlapBoundary(trimmed, desiredStart, earliestStart);
-        return trimmed[boundaryStart..].Trim();
-    }
-
-    private static int FindOverlapBoundary(string text, int desiredStart, int earliestStart)
-    {
-        var forwardBoundary = FindForwardBoundary(text, desiredStart);
-        if (IsUsefulOverlapStart(text, forwardBoundary))
-        {
-            return forwardBoundary;
-        }
-
-        var backwardBoundary = FindBackwardBoundary(text, desiredStart, earliestStart);
-        if (IsUsefulOverlapStart(text, backwardBoundary))
-        {
-            return backwardBoundary;
-        }
-
-        var wordBoundary = FindForwardWordBoundary(text, desiredStart);
-        return IsUsefulOverlapStart(text, wordBoundary) ? wordBoundary : desiredStart;
-    }
-
-    private static int FindForwardBoundary(string text, int start)
-    {
-        for (var index = start; index < text.Length - MinOverlap; index++)
-        {
-            if (IsParagraphBoundary(text, index) || IsSentenceBoundary(text, index))
-            {
-                return SkipBoundaryWhitespace(text, index + 1);
-            }
-        }
-
-        return -1;
-    }
-
-    private static int FindBackwardBoundary(string text, int start, int earliestStart)
-    {
-        for (var index = Math.Min(start, text.Length - 1); index >= earliestStart; index--)
-        {
-            if (IsParagraphBoundary(text, index) || IsSentenceBoundary(text, index))
-            {
-                return SkipBoundaryWhitespace(text, index + 1);
-            }
-        }
-
-        return -1;
-    }
-
-    private static int FindForwardWordBoundary(string text, int start)
-    {
-        var index = Math.Clamp(start, 0, Math.Max(0, text.Length - 1));
-        while (index < text.Length - MinOverlap && !char.IsWhiteSpace(text[index]))
-        {
-            index++;
-        }
-
-        return SkipBoundaryWhitespace(text, index);
-    }
-
-    private static bool IsParagraphBoundary(string text, int index)
-    {
-        return text[index] == '\n';
-    }
-
-    private static bool IsSentenceBoundary(string text, int index)
-    {
-        return index >= 0
-               && index < text.Length - 1
-               && text[index] is '.' or '?' or '!' or ';' or ':'
-               && char.IsWhiteSpace(text[index + 1]);
-    }
-
-    private static int SkipBoundaryWhitespace(string text, int index)
-    {
-        while (index < text.Length && char.IsWhiteSpace(text[index]))
-        {
-            index++;
-        }
-
-        return index;
-    }
-
-    private static bool IsUsefulOverlapStart(string text, int start)
-    {
-        return start >= 0
-               && start < text.Length
-               && text.Length - start >= MinOverlap
-               && text.Length - start <= MaxOverlap;
     }
 
     private static bool IsHeading(string line)

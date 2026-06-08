@@ -54,8 +54,10 @@ namespace PresentationLayer.Controllers
             }
             var allCourseCatalog = await _repository.GetCourseCatalogAsync(cancellationToken);
             var currentUser = await GetCurrentUserAccountAsync(cancellationToken);
-            var courseCatalog = FilterCourseCatalogForCurrentUser(allCourseCatalog).ToList();
             var accessibleDocuments = FilterDocumentsForCurrentUser(allDocuments, allCourseCatalog, currentUser).ToList();
+            var courseCatalog = BuildSynchronizedCourseCatalogForView(
+                FilterCourseCatalogForCurrentUser(allCourseCatalog),
+                accessibleDocuments);
             var normalizedSubjectFilter = subjectFilter?.Trim();
             var documents = string.IsNullOrWhiteSpace(normalizedSubjectFilter)
                 ? accessibleDocuments
@@ -929,6 +931,103 @@ namespace PresentationLayer.Controllers
                 || subject.Name.Equals(normalizedSubject, StringComparison.OrdinalIgnoreCase)
                 || (!string.IsNullOrWhiteSpace(parsed.Code)
                     && subject.Code.Equals(parsed.Code, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static IReadOnlyList<CourseSubject> BuildSynchronizedCourseCatalogForView(
+            IEnumerable<CourseSubject> catalog,
+            IEnumerable<IndexedDocument> documents)
+        {
+            var synchronized = catalog
+                .Select(CloneCourseSubject)
+                .ToList();
+
+            foreach (var document in documents.Where(item => !string.IsNullOrWhiteSpace(item.Subject)))
+            {
+                var parsed = ParseSubjectForCatalog(document.Subject);
+                if (string.IsNullOrWhiteSpace(parsed.Code))
+                {
+                    continue;
+                }
+
+                var subject = synchronized.FirstOrDefault(item =>
+                    item.Code.Equals(parsed.Code, StringComparison.OrdinalIgnoreCase)
+                    || item.DisplayName.Equals(document.Subject.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (subject is null)
+                {
+                    subject = new CourseSubject
+                    {
+                        Id = CreateStableCatalogId(parsed.Code),
+                        Code = parsed.Code,
+                        Name = string.IsNullOrWhiteSpace(parsed.Name) ? parsed.Code : parsed.Name,
+                        Description = "Tự đồng bộ từ tài liệu đã index.",
+                        CreatedAt = document.UploadedAt
+                    };
+                    synchronized.Add(subject);
+                }
+                else if (string.IsNullOrWhiteSpace(subject.Name)
+                         || subject.Name.Equals(subject.Code, StringComparison.OrdinalIgnoreCase))
+                {
+                    subject.Name = string.IsNullOrWhiteSpace(parsed.Name) ? parsed.Code : parsed.Name;
+                }
+
+                var chapterTitle = document.Chapter.Trim();
+                if (string.IsNullOrWhiteSpace(chapterTitle)
+                    || subject.Chapters.Any(item => item.Title.Equals(chapterTitle, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var nextSortOrder = subject.Chapters.Count == 0
+                    ? 1
+                    : subject.Chapters.Max(item => item.SortOrder) + 1;
+                subject.Chapters.Add(new CourseChapter
+                {
+                    Id = CreateStableCatalogId($"{subject.Code}:{chapterTitle}"),
+                    SubjectId = subject.Id,
+                    SubjectCode = subject.Code,
+                    SubjectName = subject.Name,
+                    Title = chapterTitle,
+                    SortOrder = nextSortOrder
+                });
+            }
+
+            return synchronized
+                .OrderBy(item => item.Code)
+                .ToList();
+        }
+
+        private static CourseSubject CloneCourseSubject(CourseSubject subject)
+        {
+            return new CourseSubject
+            {
+                Id = subject.Id,
+                Code = subject.Code,
+                Name = subject.Name,
+                Description = subject.Description,
+                CreatedAt = subject.CreatedAt,
+                OwnerUserId = subject.OwnerUserId,
+                OwnerName = subject.OwnerName,
+                OwnerEmail = subject.OwnerEmail,
+                Chapters = subject.Chapters
+                    .OrderBy(item => item.SortOrder)
+                    .ThenBy(item => item.Title)
+                    .Select(chapter => new CourseChapter
+                    {
+                        Id = chapter.Id,
+                        SubjectId = chapter.SubjectId,
+                        SubjectCode = chapter.SubjectCode,
+                        SubjectName = chapter.SubjectName,
+                        Title = chapter.Title,
+                        SortOrder = chapter.SortOrder
+                    })
+                    .ToList()
+            };
+        }
+
+        private static Guid CreateStableCatalogId(string value)
+        {
+            var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim().ToUpperInvariant()));
+            return new Guid(bytes[..16]);
         }
 
         private static string ToVietnameseUploadError(string message)

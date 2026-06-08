@@ -27,6 +27,7 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
     private const int MaxGeminiRetryAttempts = 6;
     private const int GeminiEmbeddingBatchSize = 8;
     private const int HuggingFaceEmbeddingBatchSize = 4;
+    private const int HuggingFaceMaxInputCharacters = 500;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -620,16 +621,34 @@ public sealed class ResearchBenchmarkService : IResearchBenchmarkService
         IReadOnlyList<string> batch)
     {
         var safeModel = string.Join("/", model.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
-        var endpoint = BuildHuggingFaceEndpoint($"models/{safeModel}");
+        var endpoint = BuildHuggingFaceEndpoint($"models/{safeModel}/pipeline/feature-extraction");
+        var inputs = batch.Select(PrepareHuggingFaceInput).ToList();
         var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _huggingFaceOptions.ApiKey);
         request.Headers.TryAddWithoutValidation("x-wait-for-model", "true");
         request.Content = JsonContent.Create(
             new HuggingFaceFeatureExtractionRequest(
-                batch.Count == 1 ? batch[0] : batch,
+                inputs.Count == 1 ? inputs[0] : inputs,
                 new HuggingFaceFeatureExtractionOptions(true)),
             options: JsonOptions);
         return request;
+    }
+
+    private static string PrepareHuggingFaceInput(string text)
+    {
+        var normalized = Regex.Replace(text.Trim(), @"\s+", " ");
+        if (normalized.Length <= HuggingFaceMaxInputCharacters)
+        {
+            return normalized;
+        }
+
+        var boundary = normalized.LastIndexOf(' ', HuggingFaceMaxInputCharacters);
+        if (boundary < HuggingFaceMaxInputCharacters / 2)
+        {
+            boundary = HuggingFaceMaxInputCharacters;
+        }
+
+        return normalized[..boundary].Trim();
     }
 
     private Uri BuildHuggingFaceEndpoint(string relativePath)

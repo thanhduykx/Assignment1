@@ -1,0 +1,52 @@
+Q|A
+---|---
+IOT102 là môn gì?|IOT102 là môn Internet of Things - Internet vạn vật, học về khái niệm IoT, ứng dụng IoT, networking, security, Arduino, cảm biến, mạch điện, mô phỏng và final project.
+IOT102 có bao nhiêu tín chỉ?|IOT102 có 3 tín chỉ.
+IOT102 có môn tiên quyết không?|Syllabus không ghi nhận môn tiên quyết cho IOT102.
+Điểm tối thiểu để qua môn IOT102 là bao nhiêu?|Điểm đạt môn tối thiểu của IOT102 là 5/10.
+Tổng thời lượng học tập của IOT102 là bao nhiêu giờ?|Tổng thời lượng học tập của IOT102 là 150 giờ.
+Thời lượng học tập IOT102 được phân bổ như thế nào?|IOT102 gồm 22.5 giờ contact hours, 22.5 giờ online hours, 4.5 giờ final project presentation, 1 giờ final exam và 99.5 giờ self-study.
+Hình thức học của IOT102 là gì?|IOT102 học kết hợp online và offline.
+Sinh viên IOT102 cần tham dự bao nhiêu contact sessions để đủ điều kiện thi cuối kỳ?|Sinh viên cần tham dự ít nhất 80% các buổi contact sessions để đủ điều kiện thi cuối kỳ.
+Sinh viên IOT102 cần làm gì với video lý thuyết online?|Sinh viên cần học tất cả video lý thuyết online do giảng viên cung cấp trên syllabus.
+Sinh viên IOT102 cần làm gì với các bài lab?|Sinh viên cần làm tất cả bài lab do giảng viên giao trên syllabus.
+IOT102 dùng những dụng cụ và phần mềm học tập nào?|IOT102 dùng learning KIT, advanced components, Arduino UNO/ATmega328p, Tinkercad Arduino simulator, Fritzing, Latex/Overleaf hoặc template report, Arduino documents và edX learning platform.
+IOT102 có bao nhiêu nguồn hoặc tài liệu học chính?|IOT102 có 7 nguồn/tài liệu học chính.
+Hai khóa edX chính được dùng trong IOT102 là gì?|Hai khóa edX chính là CurtinX IOT1x và CurtinX IOT2x.
+CurtinX IOT1x dùng cho những chủ đề nào trong IOT102?|CurtinX IOT1x dùng cho nhập môn IoT, things, networking, securing IoT và programming IoT.
+CurtinX IOT2x dùng cho những chủ đề nào trong IOT102?|CurtinX IOT2x dùng cho electronics, project concept planning và các nội dung nâng cao.
+CLO1 của IOT102 là gì?|CLO1 của IOT102 là hiểu khái niệm IoT và các ứng dụng của IoT.
+CLO5 của IOT102 yêu cầu gì?|CLO5 yêu cầu sinh viên biết chọn và tính toán linh kiện điện tử, đồng thời lập trình IoT.
+CLO11 của IOT102 nói về nội dung nào?|CLO11 yêu cầu sinh viên hiểu Arduino UNO và kiến trúc vi điều khiển ATmega328.
+IOT102 có bao nhiêu CLO?|IOT102 có 13 CLO.
+IOT102 được đánh giá bằng những thành phần nào?|IOT102 gồm Active learning 10%, Final Project Presentation 20%, On-Going Project Assessment 30%, Presentation 10%, Progress test 10% và Final exam 20%.
+Final exam của IOT102 chiếm bao nhiêu phần trăm?|Final exam của IOT102 chiếm 20%.
+Final exam IOT102 kéo dài bao lâu và có bao nhiêu câu hỏi?|Final exam IOT102 kéo dài 60 phút và gồm 50 câu hỏi.
+Final Project Presentation của IOT102 được chấm dựa trên những gì?|Final Project Presentation được chấm dựa trên final report, project demonstration và Q&A interaction.
+On-Going Project Assessment của IOT102 chiếm bao nhiêu phần trăm?|On-Going Project Assessment của IOT102 chiếm 30%.
+Giai đoạn 1 của lịch học IOT102 gồm nội dung gì?|Giai đoạn 1, sessions 1-9, gồm nhập môn IoT và Arduino, học IoT là gì, kiến trúc Arduino ATmega328p, bắt đầu learning KIT, Fritzing, Tinkercad, Blink LED, Analog Read, Analog Write và giới thiệu project topic.
+DBA103 là môn gì?|DBA103 là môn Nhạc cụ truyền thống - Đàn Bầu, dạy về lịch sử, cấu trúc, đặc điểm và kỹ thuật cơ bản của Đàn Bầu.
+DBA103 có bao nhiêu tín chỉ?|DBA103 có 3 tín chỉ.
+DBA103 có môn tiên quyết không?|DBA103 không có môn tiên quyết.
+Điểm tối thiểu để qua môn DBA103 là bao nhiêu?|Điểm tối thiểu để qua môn DBA103 là 5/10.
+DBA103 học trong bao lâu?|DBA103 có 30 slots trên lớp, mỗi slot 90 phút.
+Hình thức học của DBA103 là gì?|DBA103 học offline, kết hợp lý thuyết và thực hành nhạc cụ.
+Quy mô lớp DBA103 khoảng bao nhiêu sinh viên?|DBA103 được tổ chức theo lớp khoảng 15 sinh viên/lớp.
+DBA103 giúp sinh viên rèn luyện những kỹ năng mềm nào?|DBA103 giúp rèn luyện tính kiên trì, tự tin biểu diễn trước đám đông, kỹ năng làm việc nhóm và khả năng hoạt động độc lập.
+Sinh viên DBA103 cần tham dự tối thiểu bao nhiêu thời lượng môn học?|Sinh viên cần tham dự tối thiểu 80% thời lượng môn học để đủ điều kiện thi cuối môn.
+Sinh viên DBA103 cần chuẩn bị gì trước khi đến lớp?|Sinh viên cần ôn tập bài cũ, đọc và tìm hiểu tài liệu bài mới trước khi đến lớp.
+Dụng cụ học tập chính của DBA103 là gì?|Dụng cụ học tập chính là nhạc cụ Đàn Bầu cho từng sinh viên.
+Tài liệu chính để học Đàn Bầu trong DBA103 là gì?|Tài liệu chính là sách học Đàn Bầu của Nguyễn Thanh Tâm và Trần Quốc Lộc, thuộc Học viện Âm nhạc Quốc gia Việt Nam.
+DBA103 có những chuẩn đầu ra CLO nào?|DBA103 có CLO1 là hiểu lịch sử và phát triển của âm nhạc truyền thống Việt Nam, CLO2 là chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài.
+CLO1 của DBA103 là gì?|CLO1 là sinh viên hiểu biết cơ bản về lịch sử và sự phát triển hình thành của nền âm nhạc truyền thống Việt Nam.
+CLO2 của DBA103 là gì?|CLO2 là sinh viên chơi được một số bài cơ bản của nhạc truyền thống Việt Nam và nước ngoài.
+DBA103 được đánh giá bằng những thành phần nào?|DBA103 gồm Assignment 15%, Participation 15% và Final exam 70%.
+Final exam của DBA103 chiếm bao nhiêu phần trăm?|Final exam của DBA103 chiếm 70%.
+Final exam DBA103 kéo dài bao lâu?|Final exam DBA103 kéo dài 5 phút cho mỗi sinh viên.
+Thi cuối kỳ DBA103 yêu cầu sinh viên chơi những gì?|Sinh viên phải chơi 3 bài nhạc, gồm 2 bài dân ca Việt Nam và 1 bài quốc tế.
+Tổng điểm FE cần đạt của DBA103 là bao nhiêu?|Tổng điểm FE của DBA103 cần đạt từ 5 trở lên.
+Các bài nhạc có thể dùng trong DBA103 gồm những bài nào?|Danh mục gồm Bắc Kim Thang, Inh lả ơi, Xòe hoa, Lý cây đa, Trống cơm, Đội kèn tí hon, Auld Lang Syne, Chờ người nơi ấy, Độ ta không độ nàng, Futari No Kimochi, Thằng Cuội và Từ đó.
+Giai đoạn 1 của lịch học DBA103 gồm nội dung gì?|Giai đoạn 1, sessions 1-6, học nền tảng lý thuyết và kỹ thuật cơ bản như lịch sử, tên gọi, cấu tạo Đàn Bầu, tư thế ngồi, tư thế tay, cách gảy đàn, gảy dây buông, tìm điểm đàn, đọc nốt nhạc và kỹ thuật nhấn lên quãng 2.
+Giai đoạn 2 của DBA103 học những bài nào?|Giai đoạn 2, sessions 7-15, học Đội kèn tí hon và Lý cây đa, luyện hai bài này và kiểm tra giữa kỳ.
+Giai đoạn 3 của DBA103 có bài quốc tế nào?|Giai đoạn 3 học và luyện bài quốc tế Auld Lang Syne.
+Giai đoạn 4 của DBA103 gồm những hoạt động gì?|Giai đoạn 4, sessions 24-30, gồm hòa tấu Lý cây đa và Cò lả với nhạc cụ khác, luyện tập cùng các lớp khác, thu bài luận và thi kết thúc khóa học trong sessions 29-30.

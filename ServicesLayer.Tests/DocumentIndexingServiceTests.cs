@@ -52,7 +52,7 @@ public sealed class DocumentIndexingServiceTests
             Assert.Equal(chunks.Count, indexedDocument.ChunkCount);
             Assert.Equal(embeddingService.ModelName, indexedDocument.EmbeddingModel);
             Assert.Equal(embeddingService.Dimensions, indexedDocument.EmbeddingDimensions);
-            Assert.Equal("paragraph-aware-950-160", indexedDocument.ChunkingStrategy);
+            Assert.Equal("paragraph-aware-950-0", indexedDocument.ChunkingStrategy);
             Assert.NotNull(indexedDocument.IndexedAt);
             Assert.NotEmpty(chunks);
             Assert.All(chunks, chunk =>

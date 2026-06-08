@@ -36,7 +36,7 @@ public sealed class ParagraphAwareTextChunkerTests
     }
 
     [Fact]
-    public void CreateChunks_UsesOverlapBetweenLongChunks()
+    public void CreateChunks_DoesNotOverlapBetweenLongChunks()
     {
         var chunker = new ParagraphAwareTextChunker();
         var text = string.Join("\n", Enumerable.Range(1, 22).Select(index =>
@@ -47,20 +47,27 @@ public sealed class ParagraphAwareTextChunkerTests
         Assert.True(chunks.Count > 1);
         for (var index = 1; index < chunks.Count; index++)
         {
-            Assert.True(chunks[index].CharStart < chunks[index - 1].CharEnd);
+            Assert.True(chunks[index].CharStart >= chunks[index - 1].CharEnd);
         }
     }
 
     [Fact]
-    public void CreateChunks_StartsOverlapAtReadableBoundary()
+    public void CreateChunks_DoesNotRepeatBulletsAcrossChunks()
     {
         var chunker = new ParagraphAwareTextChunker();
-        var text = string.Join(" ", Enumerable.Range(1, 90).Select(index =>
-            $"Sentence {index} explains indexing boundaries for retrieval quality."));
+        var bullets = Enumerable.Range(1, 24)
+            .Select(index => $"- Requirement {index}: " + string.Join(' ', Enumerable.Repeat($"student action {index}", 8)));
+        var text = "===== SINH VIEN CAN LAM GI TRONG IOT102 =====\n\nSinh vien can:\n\n" + string.Join("\n", bullets);
 
         var chunks = chunker.CreateChunks(text);
 
         Assert.True(chunks.Count > 1);
-        Assert.StartsWith("Sentence", chunks[1].Text);
+        for (var index = 1; index < chunks.Count; index++)
+        {
+            var previousLines = chunks[index - 1].Text.Split('\n').Select(line => line.Trim()).Where(line => line.StartsWith("- Requirement"));
+            var currentLines = chunks[index].Text.Split('\n').Select(line => line.Trim()).Where(line => line.StartsWith("- Requirement"));
+
+            Assert.Empty(previousLines.Intersect(currentLines));
+        }
     }
 }

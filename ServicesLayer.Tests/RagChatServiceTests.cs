@@ -49,7 +49,8 @@ public sealed class RagChatServiceTests
             language: "vi",
             allowedSubjects: new[] { "DBA103 - Nhac cu truyen thong - Dan Bau" });
 
-        Assert.Equal("DBA103 c\u00f3 3 t\u00edn ch\u1ec9.", answer.Answer);
+        Assert.StartsWith("M\u00ecnh xem trong t\u00e0i li\u1ec7u r\u1ed3i:", answer.Answer);
+        Assert.Contains("DBA103 c\u00f3 3 t\u00edn ch\u1ec9", answer.Answer);
         Assert.Single(answer.Citations);
         Assert.Equal(1, answer.Citations[0].ChunkIndex);
         Assert.Contains("NoCredit: 3", answer.Citations[0].Excerpt);
@@ -102,7 +103,8 @@ public sealed class RagChatServiceTests
             language: "vi",
             allowedSubjects: new[] { "DBA103 - Nhac cu truyen thong - Dan Bau", "PRU - UNITY" });
 
-        Assert.Equal("DBA103 c\u00f3 3 t\u00edn ch\u1ec9.", answer.Answer);
+        Assert.StartsWith("M\u00ecnh xem trong t\u00e0i li\u1ec7u r\u1ed3i:", answer.Answer);
+        Assert.Contains("DBA103 c\u00f3 3 t\u00edn ch\u1ec9", answer.Answer);
         Assert.Single(answer.Citations);
         Assert.Equal("DBA103 - Nhac cu truyen thong - Dan Bau", answer.Citations[0].Subject);
     }
@@ -198,7 +200,8 @@ public sealed class RagChatServiceTests
             language: "vi",
             allowedSubjects: new[] { "DBA103 - Nhac cu truyen thong - Dan Bau", "IOT102 - Internet of Things" });
 
-        Assert.Equal("DBA103 c\u00f3 3 t\u00edn ch\u1ec9.", answer.Answer);
+        Assert.StartsWith("M\u00ecnh xem trong t\u00e0i li\u1ec7u r\u1ed3i:", answer.Answer);
+        Assert.Contains("DBA103 c\u00f3 3 t\u00edn ch\u1ec9", answer.Answer);
         Assert.Single(answer.Citations);
         Assert.Equal("DBA103 - Nhac cu truyen thong - Dan Bau", answer.Citations[0].Subject);
         Assert.Equal("FLM-Syllabus-11835-DBA103.txt", answer.Citations[0].FileName);
@@ -291,6 +294,7 @@ public sealed class RagChatServiceTests
 
         Assert.Empty(answer.Citations);
         Assert.Equal(0, repository.GetChunksCallCount);
+        Assert.Contains("tr\u1ef1c kho t\u00e0i li\u1ec7u", answer.Answer);
     }
 
     [Fact]
