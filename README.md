@@ -48,23 +48,9 @@ Sơ đồ chi tiết được thiết kế trên diagrams.net:
 
 [Mở sơ đồ hệ thống](https://app.diagrams.net/#G1Ireq80WAgnChacUyk76dZQyWvbLdtH19#%7B%22pageId%22%3A%22Vo5JyxTqIsNgc_N_pEdJ%22%7D)
 
-Sơ đồ kiến trúc rút gọn:
+Sơ đồ kiến trúc tổng quan trong project:
 
-```mermaid
-flowchart LR
-    User["User"] --> MVC["PresentationLayer\nASP.NET Core MVC"]
-    MVC --> Auth["Cookie/Google Auth\nRole Policies"]
-    MVC --> Services["ServicesLayer"]
-    Services --> Extract["Text Extractor\nPDF/DOCX/PPTX/TXT/Web"]
-    Services --> Chunk["Text Chunker\nParagraph/Semantic"]
-    Services --> Embed["Embedding Service\nGemini + Hashing fallback"]
-    Services --> Chat["RAG Chat Service"]
-    Services --> Benchmark["Research Benchmark Service"]
-    Services --> DAL["DataAccessLayer"]
-    DAL --> SQL[("SQL Server\nEduVietRAG")]
-    Chat --> LLM["Gemini Chat Completion"]
-    Benchmark --> HF["HuggingFace API"]
-```
+![Sơ đồ kiến trúc EduVietRAG](Docs/images/architecture-overview.png)
 
 ## Cấu Trúc Source Code
 
