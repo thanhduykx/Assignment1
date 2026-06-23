@@ -62,25 +62,7 @@ Fine-tuned local baseline:
 - Khi tao experiment, bat `Train local supervised QA baseline`.
 - Neu khong nhap training set rieng, baseline train tu QA pairs cua experiment va benchmark theo leave-one-out de tranh copy dung cau dang cham.
 - Artifact model duoc luu trong DB `rbl_fine_tuned_models.ConfigJson`.
-- Day la supervised QA baseline noi bo de so sanh voi RAG. Neu can fine-tune LLM that, can provider/API rieng.
-
-## Audit de bai
-
-| Yeu cau | Trang thai hien tai |
-|---|---|
-| Upload PDF/DOCX/PPTX/TXT | Dat |
-| Tu dong chunk va embed | Dat |
-| Quan ly mon hoc/chuong | Dat: co CRUD `rag_subjects` va `rag_chapters` tren trang Kho tai lieu |
-| Xem danh sach tai lieu da index | Dat |
-| Chat theo ngu canh hoi thoai | Dat |
-| Citation nguon tai lieu goc | Dat |
-| Gioi han tra loi trong pham vi tai lieu | Dat sau toi uu: retrieval can bang chung text va co answer-grounding guard |
-| Lich su hoi thoai theo phien | Dat |
-| So sanh RAG vs fine-tuned | Dat: co RAG runs, local supervised fine-tuned baseline va endpoint ngoai tuy chon |
-| Benchmark nhieu chunking strategy | Dat |
-| Benchmark nhieu embedding model | Dat: Gemini + HuggingFace `vinai/phobert-base`/PhoBERT-base; chua co local e5/bge-m3 |
-| Dashboard/Bang RAGAS | Dat ve code/UI; so lieu that can chay benchmark voi DB/API key |
-
+- Day la supervised QA baseline noi bo de so sanh voi RAG. Neu can fine-tune LLM that, 
 ## Bo test set 50 cau DBA103
 
 ```text
