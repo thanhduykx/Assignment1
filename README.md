@@ -52,7 +52,7 @@ Sơ đồ kiến trúc tổng quan trong project:
 
 ![Sơ đồ kiến trúc EduVietRAG](Docs\images\architecture.jpg)
 
-## Cấu Trúc Source Code
+## Cấu Trúc Source Code Project
 
 ```text
 C:\Assignment1
