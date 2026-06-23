@@ -50,7 +50,7 @@ Sơ đồ chi tiết được thiết kế trên diagrams.net:
 
 Sơ đồ kiến trúc tổng quan trong project:
 
-![Sơ đồ kiến trúc EduVietRAG](Docs/images/architecture-overview.png)
+![Sơ đồ kiến trúc EduVietRAG](Docs\images\architecture.jpg)
 
 ## Cấu Trúc Source Code
 
