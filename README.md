@@ -157,18 +157,4 @@ dotnet run --project PresentationLayer\Group07MVC.csproj --urls http://localhost
 Connection string, Google auth va Gemini API key duoc giu trong `PresentationLayer/appsettings.json` cho demo. Co the override bang User Secrets/env vars neu can, nhung khong bat buoc.
 Google callback khong tu tao user moi; email Google phai trung voi tai khoan da duoc admin cap.
 
-Mo web:
 
-```text
-http://localhost:5097
-```
-
-## Ghi chu nghiep vu
-
-- Metadata nhu ma mon, ten file, chuong chi dung de gioi han/tang hang retrieval; khong duoc xem la bang chung tra loi.
-- Cau tra loi theo tai lieu phai co citation.
-- Cau hoi ngoai pham vi tai lieu phai tra ve thong bao khong du du lieu.
-- Sinh vien khong tu dang ky; admin cap tai khoan. Neu khong co tai khoan, man dang nhap bao lien he Nha truong de xin cap tai khoan.
-- RBL score chi co y nghia khi co test set va ground truth duoc chuan bi truoc.
-- PhoBERT-base duoc goi qua HuggingFace feature-extraction va mean-pooling de tao vector so sanh; day khong phai native sentence embedding model nen can doc ket qua benchmark theo huong tham khao thuc nghiem.
-- Neu chia se public repo, nen thay API key/OAuth secret demo bang gia tri rieng cua moi moi truong.
